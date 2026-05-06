@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# 日志和配置
+*.log
+.env
+*.key
+
+# 临时文件
+*.tmp
+*.bak
