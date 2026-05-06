@@ -1,0 +1,6 @@
+flask>=3.0.0
+flask-cors>=4.0.0
+openai>=1.0.0
+requests>=2.25.0
+beautifulsoup4>=4.12.0
+cssutils>=2.0.0
