@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Source Viewer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="source-code-container">
+            <h1>Page Source Viewer</h1>
+            <div class="status" id="status"></div>
+            <pre class="source-code" id="sourceCode"></pre>
+        </div>
+        <div class="input-container">
+            <label for="identifier">Identifier:</label>
+            <input type="text" id="identifier">
+            <label for="name">Name:</label>
+            <input type="text" id="name">
+            <label for="description">Description:</label>
+            <input type="text" id="description">
+            <label for="keyword">Keyword:</label>
+            <input type="text" id="keyword">
+            <label for="dataofcreate">Date of Creation:</label>
+            <input type="text" id="dataofcreate">
+            <label for="dataoflast">Date of Last Update:</label>
+            <input type="text" id="dataoflast">
+            <label for="resourceurl">Resource URL:</label>
+            <input type="text" id="resourceurl">
+            <label for="resourceauthor">Resource Author:</label>
+            <input type="text" id="resourceauthor">
+            <label for="resourceorginazation">Resource Organization:</label>
+            <input type="text" id="resourceorginazation">
+            <label for="authoremail">Author Email:</label>
+            <input type="text" id="authoremail">
+            <label for="journal">Journal:</label>
+            <input type="text" id="journal">
+            <button id="downloadButton">Download JSON</button>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
