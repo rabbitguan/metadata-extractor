@@ -103,12 +103,26 @@ const MODE_LABELS = {
 const UI_TEXT = {
     zh: {
         appTitle: 'Metadata Organizer',
+        startTitle: 'Metadata Organizer',
+        startDescription: '请选择分析方式：分析网页 / 上传文件',
+        chooseWebLabel: '分析网页',
+        chooseWebHint: '提取当前页面并整理元数据',
+        chooseUploadLabel: '上传数据',
+        chooseUploadHint: '上传 JSON / TXT 等文本文件',
+        uploadTitle: '上传数据文件',
+        uploadDescription: '支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadButton: '选择文件',
+        confirmUploadButton: '确认并分析',
+        reselectUploadButton: '重新选择',
+        selectedFileEmpty: '尚未选择文件',
+        selectedFilePrefix: '已选择：',
         modeSwitcherLabel: '元数据模式切换',
         extensionTitle: '扩展信息',
         waiting: '等待提取结果',
         noContent: '未提取到内容',
         updatedAt: '更新于 ',
         loadingExtract: '正在提取当前页面文字...',
+        loadingFile: '正在读取文件内容...',
         loadingSend: '正在分析...',
         downloadBlocked: '当前语言尚未完成提取，无法下载。',
         refreshTitle: '重新加载',
@@ -120,12 +134,26 @@ const UI_TEXT = {
     },
     en: {
         appTitle: 'Metadata Organizer',
+        startTitle: 'Metadata Organizer',
+        startDescription: 'Choose an analysis mode: analyze web page / upload file',
+        chooseWebLabel: 'Analyze web page',
+        chooseWebHint: 'Extract the current page and organize metadata',
+        chooseUploadLabel: 'Upload data',
+        chooseUploadHint: 'Upload JSON / TXT and other text files',
+        uploadTitle: 'Upload data file',
+        uploadDescription: 'Supported file formats: JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadButton: 'Choose file',
+        confirmUploadButton: 'Confirm and analyze',
+        reselectUploadButton: 'Choose again',
+        selectedFileEmpty: 'No file selected yet',
+        selectedFilePrefix: 'Selected: ',
         modeSwitcherLabel: 'Metadata mode switcher',
         extensionTitle: 'Extension Info',
         waiting: 'Waiting for results',
         noContent: 'No content extracted',
         updatedAt: 'Updated at ',
         loadingExtract: 'Extracting page text...',
+        loadingFile: 'Reading file content...',
         loadingSend: 'Sending to the model...',
         downloadBlocked: 'Nothing is ready to download yet.',
         refreshTitle: 'Reload',
@@ -138,11 +166,21 @@ const UI_TEXT = {
 };
 
 const state = {
+    sourceMode: null,
     mode: 'common',
     language: 'zh',
     schemaCache: {},
+    resultCacheBySource: {
+        web: {},
+        upload: {},
+    },
     resultCache: {},
     lastFetchedAt: null,
+    uploadedFile: null,
+    uploadedText: '',
+    uploadedTitle: '',
+    uploadStage: 'idle',
+    uploadResultReady: false,
 };
 
 function isObject(value) {
@@ -155,6 +193,71 @@ function normalizeWhitespace(value) {
 
 function getUIText(language = state.language) {
     return UI_TEXT[language] || UI_TEXT.zh;
+}
+
+function getSourceKey() {
+    return state.sourceMode || 'web';
+}
+
+function getSourceResultCache() {
+    const sourceKey = getSourceKey();
+    if (!state.resultCacheBySource[sourceKey]) {
+        state.resultCacheBySource[sourceKey] = {};
+    }
+    return state.resultCacheBySource[sourceKey];
+}
+
+function activateSourceMode(sourceMode) {
+    state.sourceMode = sourceMode;
+    state.resultCache = getSourceResultCache();
+}
+
+function setActiveView(isAnalysisVisible) {
+    document.getElementById('startScreen').hidden = isAnalysisVisible;
+    document.getElementById('analysisWorkspace').hidden = !isAnalysisVisible;
+}
+
+function setUploadPanelState() {
+    const ui = getUIText();
+    const uploadIdleState = document.getElementById('uploadIdleState');
+    const uploadSelectedState = document.getElementById('uploadSelectedState');
+    const uploadButton = document.getElementById('uploadButton');
+    const confirmUploadButton = document.getElementById('confirmUploadButton');
+    const reselectUploadButton = document.getElementById('reselectUploadButton');
+
+    const hasSelectedFile = Boolean(state.uploadedFile);
+    uploadIdleState.hidden = hasSelectedFile;
+    uploadSelectedState.hidden = !hasSelectedFile;
+
+    if (uploadButton) {
+        uploadButton.hidden = hasSelectedFile;
+        uploadButton.textContent = ui.uploadButton;
+    }
+    if (confirmUploadButton) {
+        confirmUploadButton.hidden = !hasSelectedFile;
+        confirmUploadButton.textContent = ui.confirmUploadButton;
+    }
+    if (reselectUploadButton) {
+        reselectUploadButton.hidden = !hasSelectedFile;
+        reselectUploadButton.textContent = ui.reselectUploadButton;
+    }
+}
+
+function setAnalysisVisibility() {
+    const modeSwitcher = document.querySelector('.mode-switcher');
+    const analysisContent = document.getElementById('analysisContent');
+    const uploadPanel = document.getElementById('uploadPanel');
+
+    if (state.sourceMode === 'upload') {
+        uploadPanel.hidden = false;
+        modeSwitcher.hidden = !state.uploadResultReady;
+        analysisContent.hidden = !state.uploadResultReady;
+        return;
+    }
+
+    uploadPanel.hidden = true;
+    modeSwitcher.hidden = false;
+    analysisContent.hidden = false;
 }
 
 function getTranslatedLabel(label, language = state.language) {
@@ -196,6 +299,64 @@ function normalizeObjectKeys(value, language = state.language) {
         normalized[translatedKey] = normalizeObjectKeys(nestedValue, language);
     });
     return normalized;
+}
+
+function flattenStructuredValue(value, prefix = '', lines = []) {
+    if (value === null || typeof value === 'undefined') {
+        return lines;
+    }
+
+    if (Array.isArray(value)) {
+        if (prefix) {
+            lines.push(`${prefix}:`);
+        }
+        value.forEach((item, index) => {
+            const nextPrefix = prefix ? `${prefix}[${index}]` : `[${index}]`;
+            flattenStructuredValue(item, nextPrefix, lines);
+        });
+        return lines;
+    }
+
+    if (isObject(value)) {
+        const entries = Object.entries(value);
+        if (prefix && entries.length === 0) {
+            lines.push(`${prefix}: {}`);
+            return lines;
+        }
+
+        entries.forEach(([key, nestedValue]) => {
+            const nextPrefix = prefix ? `${prefix}.${key}` : key;
+            flattenStructuredValue(nestedValue, nextPrefix, lines);
+        });
+        return lines;
+    }
+
+    const scalarText = String(value).replace(/\s+/g, ' ').trim();
+    if (scalarText) {
+        lines.push(prefix ? `${prefix}: ${scalarText}` : scalarText);
+    }
+    return lines;
+}
+
+async function readFileAsText(file) {
+    const rawText = await file.text();
+    const trimmedText = rawText.trim();
+
+    if (!trimmedText) {
+        return '';
+    }
+
+    if (file.name.toLowerCase().endsWith('.json') || trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(rawText);
+            const flattenedText = flattenStructuredValue(parsed).join('\n').trim();
+            return flattenedText || normalizeWhitespace(rawText);
+        } catch (error) {
+            console.warn('Failed to parse JSON upload, falling back to raw text.', error);
+        }
+    }
+
+    return normalizeWhitespace(rawText);
 }
 
 function getModeSchemaKey(mode) {
@@ -449,13 +610,10 @@ async function extractPageText() {
     };
 }
 
-async function requestMetadataForMode(mode) {
+async function requestMetadataFromText(mode, text, { title = '', url = '' } = {}) {
     const language = state.language;
-    updateStatus(getUIText(language).loadingExtract, 'loading');
-
-    const pageData = await extractPageText();
-    if (!pageData.text) {
-        throw new Error('当前页面没有可提取的文本');
+    if (!text) {
+        throw new Error('没有可发送给大模型的内容');
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
@@ -465,9 +623,9 @@ async function requestMetadataForMode(mode) {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            text: pageData.text,
-            url: pageData.url,
-            title: pageData.title,
+            text,
+            url,
+            title,
             mode,
         }),
     });
@@ -482,6 +640,42 @@ async function requestMetadataForMode(mode) {
     state.resultCache[getCacheKey(mode)] = payload;
     state.lastFetchedAt = new Date();
     return payload;
+}
+
+async function requestMetadataForMode(mode) {
+    const language = state.language;
+    updateStatus(getUIText(language).loadingExtract, 'loading');
+
+    const pageData = await extractPageText();
+    if (!pageData.text) {
+        throw new Error('当前页面没有可提取的文本');
+    }
+
+    return requestMetadataFromText(mode, pageData.text, {
+        url: pageData.url,
+        title: pageData.title,
+    });
+}
+
+async function requestMetadataForUploadedFile(mode) {
+    const language = state.language;
+    const file = state.uploadedFile;
+    if (!file) {
+        throw new Error('请先选择一个文件');
+    }
+
+    updateStatus(getUIText(language).loadingFile, 'loading');
+    const normalizedText = await readFileAsText(file);
+    if (!normalizedText) {
+        throw new Error('文件内容为空');
+    }
+
+    state.uploadedText = normalizedText;
+    state.uploadedTitle = file.name;
+    return requestMetadataFromText(mode, normalizedText, {
+        title: file.name,
+        url: '',
+    });
 }
 
 function renderFieldValue(data) {
@@ -683,13 +877,36 @@ function updateStaticText() {
     const language = state.language;
     const ui = getUIText(language);
 
+    document.getElementById('startTitle').textContent = ui.startTitle;
+    document.getElementById('startDescription').textContent = ui.startDescription;
+    document.getElementById('chooseWebLabel').textContent = ui.chooseWebLabel;
+    document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
+    document.getElementById('chooseUploadLabel').textContent = ui.chooseUploadLabel;
+    document.getElementById('chooseUploadHint').textContent = ui.chooseUploadHint;
     document.getElementById('appTitle').textContent = ui.appTitle;
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
+    document.getElementById('uploadTitle').textContent = ui.uploadTitle;
+    document.getElementById('uploadDescription').textContent = ui.uploadDescription;
+    document.getElementById('homeButton').setAttribute('aria-label', '返回初始页');
+    document.getElementById('homeButton').setAttribute('title', '返回初始页');
     document.getElementById('refreshButton').setAttribute('aria-label', ui.refreshTitle);
     document.getElementById('refreshButton').setAttribute('title', ui.refreshTitle);
     document.getElementById('downloadButton').setAttribute('aria-label', ui.downloadTitle);
     document.getElementById('downloadButton').setAttribute('title', ui.downloadTitle);
     document.querySelector('.mode-switcher').setAttribute('aria-label', ui.modeSwitcherLabel);
+
+    const selectedFileName = document.getElementById('selectedFileName');
+    if (state.uploadedFile) {
+        selectedFileName.textContent = `${ui.selectedFilePrefix}${state.uploadedFile.name}`;
+    } else {
+        selectedFileName.textContent = ui.selectedFileEmpty;
+    }
+
+    const uploadPanel = document.getElementById('uploadPanel');
+    uploadPanel.hidden = state.sourceMode !== 'upload';
+
+    setUploadPanelState();
+    setAnalysisVisibility();
 
     const commonButton = document.querySelector('.mode-button[data-mode="common"]');
     const domainButton = document.querySelector('.mode-button[data-mode="domain"]');
@@ -717,8 +934,14 @@ async function refreshCurrentMode() {
     const language = state.language;
     try {
         await loadModeSchema(mode);
-        updateStatus(getUIText(language).loadingExtract, 'loading');
-        await requestMetadataForMode(mode);
+        if (state.sourceMode === 'upload') {
+            await requestMetadataForUploadedFile(mode);
+            state.uploadResultReady = true;
+        } else {
+            updateStatus(getUIText(language).loadingExtract, 'loading');
+            await requestMetadataForMode(mode);
+        }
+        setAnalysisVisibility();
         renderMode(mode);
         updateStatus('', 'idle');
     } catch (error) {
@@ -744,6 +967,88 @@ function setMode(mode) {
     refreshCurrentMode();
 }
 
+function clearAnalysisView() {
+    const metadataRoot = document.getElementById('metadataRoot');
+    const extensionInfo = document.getElementById('extensionInfo');
+    const modeTitle = document.getElementById('modeTitle');
+    const lastUpdated = document.getElementById('lastUpdated');
+
+    metadataRoot.innerHTML = '';
+    extensionInfo.textContent = getUIText().waiting;
+    extensionInfo.classList.add('empty');
+    modeTitle.textContent = MODE_LABELS.common[state.language];
+    lastUpdated.textContent = '';
+}
+
+function selectSourceMode(sourceMode) {
+    activateSourceMode(sourceMode);
+    state.uploadStage = 'idle';
+    state.uploadResultReady = false;
+    state.uploadedFile = null;
+    state.uploadedText = '';
+    state.uploadedTitle = '';
+    setActiveView(true);
+    updateStaticText();
+    clearAnalysisView();
+
+    if (sourceMode === 'web') {
+        refreshCurrentMode();
+        return;
+    }
+
+    if (state.resultCache.common || state.resultCache.domain) {
+        renderMode(state.mode);
+    }
+    updateStatus('', 'idle');
+}
+
+function resetToStartScreen() {
+    state.sourceMode = null;
+    state.resultCache = {};
+    state.resultCacheBySource = { web: {}, upload: {} };
+    state.uploadedFile = null;
+    state.uploadedText = '';
+    state.uploadedTitle = '';
+    state.uploadStage = 'idle';
+    state.uploadResultReady = false;
+    setActiveView(false);
+    clearAnalysisView();
+    updateStatus('', 'idle');
+}
+
+function handleUploadSelection(file) {
+    if (!file) {
+        return;
+    }
+
+    state.uploadedFile = file;
+    state.uploadedText = '';
+    state.uploadedTitle = file.name;
+    state.uploadStage = 'selected';
+    state.uploadResultReady = false;
+    updateStaticText();
+}
+
+async function confirmUploadAndAnalyze() {
+    if (!state.uploadedFile) {
+        return;
+    }
+
+    state.uploadStage = 'confirmed';
+    updateStaticText();
+    await refreshCurrentMode();
+}
+
+function reselectUploadFile() {
+    state.uploadedFile = null;
+    state.uploadedText = '';
+    state.uploadedTitle = '';
+    state.uploadStage = 'idle';
+    state.uploadResultReady = false;
+    updateStaticText();
+    document.getElementById('fileInput').click();
+}
+
 function setLanguage(language) {
     if (language === state.language) {
         return;
@@ -755,6 +1060,10 @@ function setLanguage(language) {
 }
 
 function bindEvents() {
+    document.getElementById('homeButton').addEventListener('click', resetToStartScreen);
+    document.getElementById('chooseWebButton').addEventListener('click', () => selectSourceMode('web'));
+    document.getElementById('chooseUploadButton').addEventListener('click', () => selectSourceMode('upload'));
+
     document.querySelectorAll('.mode-button').forEach((button) => {
         button.addEventListener('click', () => setMode(button.dataset.mode));
     });
@@ -765,6 +1074,22 @@ function bindEvents() {
 
     document.getElementById('refreshButton').addEventListener('click', refreshCurrentMode);
     document.getElementById('downloadButton').addEventListener('click', () => downloadJsonFile(state.mode));
+
+    document.getElementById('uploadButton').addEventListener('click', () => {
+        if (state.sourceMode !== 'upload') {
+            selectSourceMode('upload');
+        }
+        document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('confirmUploadButton').addEventListener('click', confirmUploadAndAnalyze);
+    document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
+
+    document.getElementById('fileInput').addEventListener('change', (event) => {
+        const [file] = event.target.files || [];
+        handleUploadSelection(file);
+        event.target.value = '';
+    });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -773,7 +1098,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await loadModeSchema('common');
         await loadModeSchema('domain');
-        await refreshCurrentMode();
+        setActiveView(false);
+        setAnalysisVisibility();
     } catch (error) {
         console.error(error);
         updateStatus(`${getUIText(state.language).initErrorPrefix}${error.message}`, 'error');

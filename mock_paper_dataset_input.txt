@@ -1,0 +1,43 @@
+Paper and Dataset Notes for Metadata Extraction
+
+Title: A Multi-Source Urban Water Quality Dataset for Seasonal Analysis
+
+Overview:
+This study presents a multi-source urban water quality dataset collected from 18 monitoring sites across a large metropolitan area. The paper focuses on seasonal variation, water chemistry indicators, and spatial differences between upstream, midstream, and downstream locations.
+
+Authors:
+Li Ming, Chen Yu, Wang Tao, and Emily Zhang
+Corresponding author: emily.zhang@example.edu
+
+Publication:
+Journal of Environmental Data Science
+2025, Volume 12, Issue 3, pages 88-112
+DOI: 10.1234/jeds.2025.0318
+
+Dataset:
+The dataset includes CSV tables, calibration logs, sensor metadata, sampling schedules, and a README describing column definitions.
+File formats: CSV, TXT, XLSX, JSON
+Download page: https://data.example.org/water-quality
+
+Methods:
+Samples were collected monthly between March 2022 and February 2024.
+Measurements include pH, dissolved oxygen, conductivity, turbidity, nitrate, phosphate, ammonia nitrogen, and temperature.
+Quality control followed a two-stage validation process with manual review and automated outlier detection.
+
+Keywords:
+urban water quality, seasonal analysis, monitoring network, dataset, environmental sensing, spatiotemporal variation
+
+Funding:
+Supported by the National Natural Science Foundation and the City Environmental Monitoring Program.
+Grant numbers: NSFC-2024-1007, CEMP-2023-44
+
+Usage Notes:
+Users should cite both the article and the dataset.
+The dataset license is CC BY 4.0.
+Missing values are marked as NA.
+The dataset is intended for reproducibility studies, baseline model training, and environmental trend analysis.
+
+Additional Info:
+Repository: https://github.com/example/urban-water-quality
+Contact: data-support@example.org
+Related material: supplementary tables, sampling protocol, variable dictionary, figure captions

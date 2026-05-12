@@ -8,9 +8,32 @@
 </head>
 <body>
     <div class="app-shell">
+        <section id="startScreen" class="start-screen">
+            <div class="start-hero">
+                <h1 id="startTitle"><span>Meta</span><span>Extractor</span></h1>
+                <p id="startDescription" class="start-description">请选择分析方式：分析网页 / 上传文件</p>
+            </div>
+            <div class="start-actions">
+                <button id="chooseWebButton" class="start-button primary" type="button">
+                    <span id="chooseWebLabel">分析网页</span>
+                    <small id="chooseWebHint">提取当前页面并整理元数据</small>
+                </button>
+                <button id="chooseUploadButton" class="start-button secondary" type="button">
+                    <span id="chooseUploadLabel">上传数据</span>
+                    <small id="chooseUploadHint">上传 JSON / TXT 等文本文件</small>
+                </button>
+            </div>
+        </section>
+
+        <div id="analysisWorkspace" hidden>
+        <button id="homeButton" class="icon-button home-button" type="button" aria-label="返回初始页" title="返回初始页">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5.69 18.31 12H16v5h-4v-3H12v3H8v-5H5.69L12 5.69Zm0-3.18L2 12h3v7h6v-5h2v5h6v-7h3L12 2.5Z"/>
+            </svg>
+        </button>
         <header class="hero">
             <div class="hero-copy">
-                <h1 id="appTitle">Metadata Organizer</h1>
+                <h1 id="appTitle"><span>Meta</span><span>Extractor</span></h1>
             </div>
             <div class="hero-actions">
                 <div class="lang-toggle" role="group" aria-label="Language switcher">
@@ -35,9 +58,25 @@
             <button class="mode-button" data-mode="domain" type="button">领域专用元数据项目表</button>
         </section>
 
+        <section id="uploadPanel" class="upload-panel" hidden>
+            <div id="uploadIdleState" class="upload-state">
+                <h2 id="uploadTitle">上传数据文件</h2>
+                <p id="uploadDescription">支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG</p>
+                <button id="uploadButton" class="upload-button" type="button">选择文件</button>
+            </div>
+            <div id="uploadSelectedState" class="upload-state" hidden>
+                <div id="selectedFileName" class="selected-file-name">尚未选择文件</div>
+                <div class="upload-actions">
+                    <button id="confirmUploadButton" class="upload-button primary-action" type="button">确认并分析</button>
+                    <button id="reselectUploadButton" class="upload-button secondary-action" type="button">重新选择</button>
+                </div>
+                <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
+            </div>
+        </section>
+
         <div id="status" class="status idle" hidden></div>
 
-        <main class="content">
+        <main id="analysisContent" class="content">
             <section class="panel">
                 <div class="panel-head">
                     <div>
@@ -57,6 +96,7 @@
                 <pre id="extensionInfo" class="extension-info empty">等待提取结果</pre>
             </section>
         </main>
+        </div>
     </div>
     <script src="sidepanel.js"></script>
 </body>
