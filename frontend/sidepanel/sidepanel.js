@@ -8,6 +8,8 @@ const LABEL_TRANSLATIONS_EN = {
     核心元数据: 'Core Metadata',
     数据集元数据: 'Dataset Metadata',
     数据论文元数据: 'Data Paper Metadata',
+    标准文献元数据: 'Standard Literature Metadata',
+    生态科学数据元数据: 'Ecological Science Data Metadata',
     数据集基本信息: 'Dataset Basic Information',
     数据集出版信息: 'Dataset Publication Information',
     数据集服务信息: 'Dataset Service Information',
@@ -21,9 +23,24 @@ const LABEL_TRANSLATIONS_EN = {
     数据集作者: 'Dataset Authors',
     数据论文作者: 'Data Paper Authors',
     标识符: 'Identifier',
+    标题: 'titles',
+    CSTR标识符: 'identifier',
+    创建者: 'creators',
+    发布机构: 'publisher',
+    发布日期: 'publish_date',
+    描述: 'descriptions',
+    关键词: 'keywords',
+    学科: 'subjects',
+    语言: 'language',
+    贡献者: 'contributors',
+    替代标识符: 'alternative_identifiers',
+    关联标识符: 'related_identifiers',
+    权限: 'rights',
+    资助者: 'funders',
+    版本: 'version',
+    资源链接: 'urls',
+    资源类型: 'ResourceType',
     资源名称: 'Resource Name',
-    描述: 'Description',
-    关键词: 'Keywords',
     生成日期: 'Generation Date',
     注册日期: 'Registration Date',
     最新发布日期: 'Latest Release Date',
@@ -51,7 +68,6 @@ const LABEL_TRANSLATIONS_EN = {
     服务方联系电话: 'Service Provider Phone',
     服务方电子邮箱: 'Service Provider Email',
     服务方网站: 'Service Provider Website',
-    标题: 'Title',
     摘要: 'Abstract',
     时间范围: 'Time Range',
     空间范围: 'Spatial Range',
@@ -65,7 +81,6 @@ const LABEL_TRANSLATIONS_EN = {
     电子邮箱: 'Email',
     工作贡献: 'Contribution',
     作者简介: 'Biography',
-    发布日期: 'Publication Date',
     出版期刊: 'Journal',
     版本信息: 'Version Information',
     数据集引用格式: 'Dataset Citation',
@@ -83,7 +98,6 @@ const LABEL_TRANSLATIONS_EN = {
     收稿日期: 'Received Date',
     同评日期: 'Review Date',
     录用日期: 'Accepted Date',
-    出版日期: 'Publication Date',
     数据论文下载地址: 'Data Paper Download URL',
     数据论文共享许可协议: 'Data Paper License',
     数据集访问地址: 'Dataset Access URL',
@@ -181,6 +195,7 @@ const state = {
     uploadedTitle: '',
     uploadStage: 'idle',
     uploadResultReady: false,
+    currentPageData: null,  // 存储当前提取的页面数据
 };
 
 function isObject(value) {
@@ -271,6 +286,126 @@ function getTranslatedLabel(label, language = state.language) {
     return reverseMap[label] || label;
 }
 
+const FIELD_VALUE_ALIASES = {
+    titles: ['Title', 'Resource Name', '标题'],
+    identifier: ['Identifier', 'CSTR标识符', '标识符'],
+    creators: ['Creators', 'Author Name', 'Data Paper Authors', 'Dataset Authors', '创建者', '作者姓名'],
+    publisher: ['Publisher', '发布机构', '出版机构', '出版单位'],
+    publish_date: ['Publication Date', 'Generation Date', 'Received Date', '发布日期', '生成日期'],
+    descriptions: ['Description', 'Abstract', '摘要', '描述'],
+    keywords: ['Keywords', '关键词'],
+    subjects: ['Subjects', 'Discipline Classification', 'Subject Classification', '学科', '学科分类'],
+    language: ['Language', '语种', '语言'],
+    contributors: ['Contributors', '贡献者'],
+    alternative_identifiers: ['Alternative Identifiers', '替代标识符'],
+    related_identifiers: ['Related Identifiers', '关联标识符'],
+    rights: ['Rights', 'Usage License', '资源使用许可'],
+    funders: ['Funders', 'Funding Project', '基金项目', '资助者'],
+    version: ['Version', 'Version Information', '版本', '版本信息'],
+    urls: ['Resource URL', 'Resource Access URL', 'Dataset Download URL', 'Data Paper Download URL', '资源链接'],
+    ResourceType: ['ResourceType', 'Resource Type Classification', '资源类型'],
+    'Domain Classification': ['领域判定'],
+    'Extension Info': ['扩展信息'],
+    标题: ['资源名称', 'Title', 'Resource Name'],
+    CSTR标识符: ['标识符', 'Identifier'],
+    创建者: ['作者姓名', 'Data Paper Authors', 'Author Name', 'creators'],
+    发布机构: ['发布机构', 'Publisher', 'publisher'],
+    发布日期: ['发布日期', '生成日期', 'Registration Date', 'Received Date', 'publish_date'],
+    描述: ['摘要', 'Abstract', 'descriptions'],
+    关键词: ['关键词', 'Keywords', 'keywords'],
+    学科: ['学科分类', 'Discipline Classification', 'subjects'],
+    语言: ['语种', 'Language', 'language'],
+    贡献者: ['contributors'],
+    替代标识符: ['alternative_identifiers'],
+    关联标识符: ['related_identifiers'],
+    权限: ['资源使用许可', 'Usage License', 'rights'],
+    资助者: ['funders', '基金项目'],
+    版本: ['版本信息', 'version'],
+    资源链接: ['资源访问地址', '数据论文下载地址', 'Dataset Download URL', 'Data Paper Download URL', 'urls'],
+    资源类型: ['资源类型判定', 'Resource Type Classification', 'ResourceType'],
+    Title: ['titles', 'Resource Name', '资源名称'],
+    Identifier: ['identifier', 'CSTR标识符', '标识符'],
+    Creators: ['creators', 'Authors', 'Author Name', 'Data Paper Authors', 'Dataset Authors', '创建者'],
+    Publisher: ['publisher', '发布机构', '出版机构', '出版单位'],
+    'Publication Date': ['publish_date', 'Generated Date', 'Received Date', '出版日期', '发布日期'],
+    Description: ['descriptions', 'Abstract', '摘要', '描述'],
+    Keywords: ['keywords', '关键词'],
+    Subjects: ['subjects', 'Discipline Classification', 'Subject Classification', '学科', '学科分类'],
+    Language: ['language', '语种', '语言'],
+    Contributors: ['contributors', '贡献者'],
+    'Alternative Identifiers': ['alternative_identifiers', '替代标识符'],
+    'Related Identifiers': ['related_identifiers', '关联标识符'],
+    Rights: ['rights', 'Usage License', '资源使用许可'],
+    Funders: ['funders', 'Funding Project', '基金项目', '资助者'],
+    Version: ['version', 'Version Information', '版本', '版本信息'],
+    'Resource URL': ['urls', 'Resource Access URL', 'Dataset Download URL', 'Data Paper Download URL', '资源链接'],
+    ResourceType: ['Resource Type Classification', '资源类型'],
+    'Domain Classification': ['领域判定'],
+    'Extension Info': ['扩展信息'],
+    作者姓名: ['Author Name'],
+    工作单位: ['Affiliation'],
+    电子邮箱: ['Email'],
+    工作贡献: ['Contribution'],
+    作者简介: ['Biography'],
+    数据采集和处理方法: ['Data Collection and Processing Methods'],
+    数据论文下载地址: ['Data Paper Download URL', '资源访问地址'],
+    数据论文共享许可协议: ['Data Paper License', '资源使用许可'],
+    数据论文访问地址: ['数据论文访问地址', 'Data Paper URL'],
+    收稿日期: ['Received Date'],
+    同评日期: ['Review Date'],
+    录用日期: ['Accepted Date'],
+    出版期刊: ['Journal'],
+};
+
+const DOMAIN_SCHEMA_KEY_MAP = {
+    数据论文元数据: ['数据论文内容信息', '数据论文出版信息', '数据论文服务信息'],
+    数据集元数据: ['数据集基本信息', '数据集出版信息', '数据集服务信息'],
+    标准文献元数据: ['标准文献信息', '标准文献内容信息', '标准文献出版信息', '标准文献服务信息'],
+    生态科学数据元数据: ['生态科学数据基本信息', '生态科学数据出版信息', '生态科学数据服务信息'],
+};
+
+function findValueByKeyOrAlias(payload, key) {
+    if (!isObject(payload)) {
+        return undefined;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+        return payload[key];
+    }
+
+    const aliases = FIELD_VALUE_ALIASES[key] || [];
+    for (const alias of aliases) {
+        if (Object.prototype.hasOwnProperty.call(payload, alias)) {
+            return payload[alias];
+        }
+    }
+
+    for (const value of Object.values(payload)) {
+        if (isObject(value)) {
+            const nested = findValueByKeyOrAlias(value, key);
+            if (typeof nested !== 'undefined') {
+                return nested;
+            }
+        } else if (Array.isArray(value)) {
+            for (const item of value) {
+                if (isObject(item)) {
+                    const nested = findValueByKeyOrAlias(item, key);
+                    if (typeof nested !== 'undefined') {
+                        return nested;
+                    }
+                }
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function getFieldLookupKeys(key) {
+    const aliases = FIELD_VALUE_ALIASES[key] || [];
+    return [key, ...aliases];
+}
+
 function translateTree(node, language = state.language) {
     if (!isObject(node)) {
         return node;
@@ -359,7 +494,23 @@ async function readFileAsText(file) {
     return normalizeWhitespace(rawText);
 }
 
-function getModeSchemaKey(mode) {
+function getModeSchemaKey(mode, payload = null) {
+    if (mode !== 'domain') {
+        return '核心元数据';
+    }
+
+    const coreKey = payload && typeof payload === 'object'
+        ? (payload['核心元数据'] || payload['Core Metadata'] || payload)
+        : null;
+
+    if (isObject(coreKey)) {
+        for (const [schemaKey, sectionKeys] of Object.entries(DOMAIN_SCHEMA_KEY_MAP)) {
+            if (sectionKeys.some((sectionKey) => Object.prototype.hasOwnProperty.call(coreKey, sectionKey))) {
+                return schemaKey;
+            }
+        }
+    }
+
     return '核心元数据';
 }
 
@@ -440,24 +591,34 @@ function getSchemaKeyFromResourceType(resourceType, language = state.language) {
 function getSchemaKeyForMode(mode, payload, language = state.language) {
     if (mode === 'domain') {
         const coreKey = language === 'en' ? 'Core Metadata' : '核心元数据';
-        const coreData = isObject(payload) ? payload[coreKey] : null;
-        
-        // 从核心元数据中获取领域判定
-        const classificationKey = language === 'en' ? 'Domain Classification' : '领域判定';
-        const classification = isObject(coreData) ? coreData[classificationKey] : null;
-        
-        if (classification) {
-            // 直接映射领域判定到 schema 名称
-            if (language === 'en') {
-                return {
-                    'Core Metadata': '核心元数据',
-                    'Dataset Metadata': '数据集元数据',
-                    'Data Paper Metadata': '数据论文元数据',
-                    'Standard Literature Metadata': '标准文献元数据',
-                    'Ecological Science Data Metadata': '生态科学数据元数据',
-                }[classification] || '核心元数据';
-            } else {
-                return classification; // 直接返回，如 "数据论文元数据"
+        const coreData = isObject(payload) ? (payload[coreKey] || payload) : null;
+        const domainSectionMap = language === 'en'
+            ? {
+                'Dataset Metadata': DOMAIN_SCHEMA_KEY_MAP['数据集元数据'],
+                'Data Paper Metadata': DOMAIN_SCHEMA_KEY_MAP['数据论文元数据'],
+                'Standard Literature Metadata': DOMAIN_SCHEMA_KEY_MAP['标准文献元数据'],
+                'Ecological Science Data Metadata': DOMAIN_SCHEMA_KEY_MAP['生态科学数据元数据'],
+            }
+            : DOMAIN_SCHEMA_KEY_MAP;
+
+        if (isObject(coreData)) {
+            const classificationKey = language === 'en' ? 'Domain Classification' : '领域判定';
+            const classification = findValueByKeyOrAlias(coreData, classificationKey);
+            if (typeof classification === 'string' && classification.trim()) {
+                if (Object.prototype.hasOwnProperty.call(domainSectionMap, classification)) {
+                    return language === 'en' ? {
+                        'Dataset Metadata': '数据集元数据',
+                        'Data Paper Metadata': '数据论文元数据',
+                        'Standard Literature Metadata': '标准文献元数据',
+                        'Ecological Science Data Metadata': '生态科学数据元数据',
+                    }[classification] : classification;
+                }
+            }
+
+            for (const [schemaKey, sectionKeys] of Object.entries(DOMAIN_SCHEMA_KEY_MAP)) {
+                if (sectionKeys.some((sectionKey) => Object.prototype.hasOwnProperty.call(coreData, sectionKey))) {
+                    return schemaKey;
+                }
             }
         }
     }
@@ -592,6 +753,7 @@ async function extractPageText() {
 
             return {
                 text: chunks.join('\n'),
+                html: document.documentElement ? document.documentElement.outerHTML : '',
                 title: document.title || '',
                 url: location.href,
             };
@@ -605,12 +767,13 @@ async function extractPageText() {
     const pageData = result.result;
     return {
         text: normalizeWhitespace(pageData.text || ''),
+        html: pageData.html || '',
         title: pageData.title || '',
         url: pageData.url || '',
     };
 }
 
-async function requestMetadataFromText(mode, text, { title = '', url = '' } = {}) {
+async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto' } = {}) {
     const language = state.language;
     if (!text) {
         throw new Error('没有可发送给大模型的内容');
@@ -624,9 +787,11 @@ async function requestMetadataFromText(mode, text, { title = '', url = '' } = {}
         },
         body: JSON.stringify({
             text,
+            html,
             url,
             title,
             mode,
+            strategy,
         }),
     });
 
@@ -651,7 +816,12 @@ async function requestMetadataForMode(mode) {
         throw new Error('当前页面没有可提取的文本');
     }
 
+    // Save page data for potential re-extraction with LLM
+    state.currentPageData = pageData;
+    showReextractButton();
+
     return requestMetadataFromText(mode, pageData.text, {
+        html: pageData.html,
         url: pageData.url,
         title: pageData.title,
     });
@@ -751,8 +921,13 @@ function renderSchemaNode(container, schemaNode, valueNode, language = state.lan
     Object.entries(schemaNode).forEach(([key, description]) => {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
         if (typeof currentValue === 'undefined') {
-            // 回退：在整个语言 payload 中查找该字段，解决模型将字段放在不同层级的问题
-            currentValue = findValueInPayload(valueNode, key);
+            // 回退：按标准字段别名在整个 payload 中查找，解决模型字段名不一致的问题
+            for (const lookupKey of getFieldLookupKeys(key)) {
+                currentValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                if (typeof currentValue !== 'undefined') {
+                    break;
+                }
+            }
         }
         if (isObject(description)) {
             const group = document.createElement('section');
@@ -775,6 +950,43 @@ function renderSchemaNode(container, schemaNode, valueNode, language = state.lan
         }
 
         container.appendChild(createFieldRow(key, currentValue));
+    });
+}
+
+function renderPayloadSections(container, payload, schema, language = state.language) {
+    container.innerHTML = '';
+
+    if (!isObject(payload)) {
+        return;
+    }
+
+    Object.entries(payload).forEach(([sectionKey, sectionValue]) => {
+        const sectionSchema = schema && schema[sectionKey];
+        const sectionGroup = document.createElement('section');
+        sectionGroup.className = 'metadata-group';
+
+        const title = document.createElement('div');
+        title.className = 'group-title';
+
+        const titleText = document.createElement('h3');
+        titleText.textContent = getTranslatedLabel(sectionKey, language);
+        title.appendChild(titleText);
+
+        sectionGroup.appendChild(title);
+
+        if (isObject(sectionSchema) && isObject(sectionValue)) {
+            const fieldList = document.createElement('div');
+            fieldList.className = 'field-list';
+            renderSchemaNode(fieldList, sectionSchema, sectionValue, language);
+            sectionGroup.appendChild(fieldList);
+        } else {
+            const fieldList = document.createElement('div');
+            fieldList.className = 'field-list';
+            fieldList.appendChild(createFieldRow(sectionKey, sectionValue));
+            sectionGroup.appendChild(fieldList);
+        }
+
+        container.appendChild(sectionGroup);
     });
 }
 
@@ -1090,6 +1302,64 @@ function bindEvents() {
         handleUploadSelection(file);
         event.target.value = '';
     });
+
+    const llmBtn = document.getElementById('llmExtractButton');
+    if (llmBtn) {
+        llmBtn.addEventListener('click', async () => {
+            const originalText = llmBtn.textContent;
+            llmBtn.textContent = '已发送，请等待';
+            llmBtn.disabled = true;
+            try {
+                await reextractWithLLM();
+                llmBtn.textContent = '分析完成';
+                setTimeout(() => {
+                    llmBtn.textContent = originalText;
+                }, 2000);
+            } catch (e) {
+                console.error(e);
+                llmBtn.textContent = originalText;
+            } finally {
+                llmBtn.disabled = false;
+            }
+        });
+    }
+
+}
+
+function showReextractButton() {
+    const button = document.getElementById('reextractButton');
+    if (button && state.currentPageData) {
+        button.hidden = false;
+    }
+}
+
+async function reextractWithLLM() {
+    if (!state.currentPageData) {
+        return;
+    }
+    
+    const language = state.language;
+    const mode = state.mode;
+    
+    try {
+        updateStatus(getUIText(language).loadingSend, 'loading');
+        
+        // Force LLM extraction with strategy='llm'
+        await requestMetadataFromText(mode, state.currentPageData.text, {
+            html: state.currentPageData.html,
+            url: state.currentPageData.url,
+            title: state.currentPageData.title,
+            strategy: 'llm',  // Force LLM extraction
+        });
+        
+        renderMode(mode);
+        updateStatus('', 'idle');
+        
+        // extraction completed; UI update handled by caller (if any)
+    } catch (error) {
+        console.error(error);
+        updateStatus(`${getUIText(language).errorPrefix}${error.message}`, 'error');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

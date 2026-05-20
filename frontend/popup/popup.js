@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 执行脚本获取页面源代码
         chrome.scripting.executeScript({
             target: {tabId: tab.id},
-            function: () => document.documentElement.outerHTML
+            func: () => document.documentElement.outerHTML
         }).then((results) => {
             if (results && results[0] && results[0].result) {
                 let sourceCode = results[0].result;

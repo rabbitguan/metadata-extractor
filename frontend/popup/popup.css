@@ -1,6 +1,7 @@
 body {
-    min-width: 800px;      /* 增加最小宽度，避免内容溢出 */
-    min-height: 400px;
+    min-width: 360px;      /* 更合理的最小宽度，适用于扩展弹出 */
+    max-width: 800px;
+    min-height: 300px;
     margin: 0;
     padding: 10px;
     font-family: Arial, sans-serif;
