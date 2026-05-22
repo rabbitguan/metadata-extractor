@@ -13,7 +13,7 @@ def is_empty_value(value):
     return False
 
 
-def filter_response(data):
+def filter_response(data, empty_placeholder='未提取到'):
     """
     过滤响应数据：所有字段都是必选，没值就显示"未提取到"
     
@@ -21,13 +21,13 @@ def filter_response(data):
         data: LLM 返回的原始数据
     
     返回:
-        过滤后的数据，所有空值都被替换为"未提取到"
+        过滤后的数据，所有空值都被替换为指定占位文本
     """
     if not isinstance(data, dict):
         return data
     
     def filter_object(obj):
-        """递归处理对象，将所有空值替换为"未提取到" """
+        """递归处理对象，将所有空值替换为指定占位文本"""
         if not isinstance(obj, dict):
             return obj
         
@@ -37,11 +37,11 @@ def filter_response(data):
             # 处理嵌套对象
             if isinstance(field_value, dict):
                 filtered_nested = filter_object(field_value)
-                # 如果嵌套对象过滤后为空，也显示"未提取到"
+                # 如果嵌套对象过滤后为空，也显示占位文本
                 if filtered_nested:
                     result[field_key] = filtered_nested
                 else:
-                    result[field_key] = "未提取到"
+                    result[field_key] = empty_placeholder
                 continue
             
             # 处理列表
@@ -49,12 +49,12 @@ def filter_response(data):
                 if not is_empty_value(field_value):
                     result[field_key] = field_value
                 else:
-                    result[field_key] = "未提取到"
+                    result[field_key] = empty_placeholder
                 continue
             
             # 处理标量值：所有字段都是必选，空值显示"未提取到"
             if is_empty_value(field_value):
-                result[field_key] = "未提取到"
+                result[field_key] = empty_placeholder
             else:
                 result[field_key] = field_value
         
@@ -63,7 +63,7 @@ def filter_response(data):
     return filter_object(data)
 
 
-def apply_requirement_filter(data, schema_name=None):
+def apply_requirement_filter(data, schema_name=None, empty_placeholder='未提取到'):
     """
     应用字段要求过滤（简化版：所有字段必选）
     
@@ -74,4 +74,4 @@ def apply_requirement_filter(data, schema_name=None):
     返回:
         过滤后的数据
     """
-    return filter_response(data)
+    return filter_response(data, empty_placeholder=empty_placeholder)

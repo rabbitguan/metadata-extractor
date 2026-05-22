@@ -159,6 +159,18 @@ body {
     box-shadow: var(--shadow);
 }
 
+.llm-row {
+    margin: 12px 0;
+}
+
+.llm-row .upload-button {
+    width: 100%;
+    padding: 12px 16px;
+    font-weight: 700;
+}
+
+
+
 .upload-state {
     display: grid;
     gap: 14px;

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from openai import OpenAI
+from extractors.manager import extract_metadata, list_extractors
 
 client = OpenAI(
     api_key="sk-48c71abcf3a34104ad4870cd2c382b7a",
@@ -22,6 +23,23 @@ LABEL_TRANSLATIONS_EN = {
     '核心元数据': 'Core Metadata',
     '数据集元数据': 'Dataset Metadata',
     '数据论文元数据': 'Data Paper Metadata',
+    '标题': 'titles',
+    'CSTR标识符': 'identifier',
+    '创建者': 'creators',
+    '发布机构': 'publisher',
+    '发布日期': 'publish_date',
+    '描述': 'descriptions',
+    '关键词': 'keywords',
+    '学科': 'subjects',
+    '语言': 'language',
+    '贡献者': 'contributors',
+    '替代标识符': 'alternative_identifiers',
+    '关联标识符': 'related_identifiers',
+    '权限': 'rights',
+    '资助者': 'funders',
+    '版本': 'version',
+    '资源链接': 'urls',
+    '资源类型': 'ResourceType',
     '数据集基本信息': 'Dataset Basic Information',
     '数据集出版信息': 'Dataset Publication Information',
     '数据集服务信息': 'Dataset Service Information',
@@ -190,9 +208,9 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
     )
     
     # 核心元数据字段列表（强制要求）
-    core_fields_zh = "标识符、资源名称、描述、关键词、生成日期、注册日期、最新发布日期、学科分类、主题分类、知识产权类别、资源使用许可、资源访问地址、共享方式、提供方信息、服务方信息"
+    core_fields_zh = "标题、CSTR标识符、创建者、发布机构、发布日期、描述、关键词、学科、语言、贡献者、替代标识符、关联标识符、权限、资助者、版本、资源链接、资源类型"
     
-    core_fields_en = "Identifier, Resource Name, Description, Keywords, Generation Date, Registration Date, Latest Release Date, Discipline Classification, Subject Classification, Intellectual Property Type, Usage License, Resource Access URL, Sharing Details, Provider Information, Service Provider Information"
+    core_fields_en = "titles, identifier, creators, publisher, publish_date, descriptions, keywords, subjects, language, contributors, alternative_identifiers, related_identifiers, rights, funders, version, urls, ResourceType"
     
     # 使用字符串拼接避免 f-string 中的复杂格式问题
     rules = "\n".join([
@@ -200,10 +218,21 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
         "",
         "1) 返回严格 JSON，只包含 \"zh\" 和 \"en\" 两个顶层键，不要输出解释文本或多余字符。",
         "",
+        "【幻觉防控 - 严格遵守】:",
+        "• 你的任务是从网页中提取信息，NOT 推理、补充或编造。",
+        "• 禁止任何形式的信息补完或推理。例如：",
+        "  ✗ 错误：网页说\"来自山东\"，你推断出\"山东大学\"",
+        "  ✗ 错误：根据网址里的id编造标识符如\"DS-2024-001\"（原文不存在）",
+        "  ✗ 错误：自动补齐日期，如网页说\"2024年\"，你改为\"2024-01-01\"",
+        "  ✗ 错误：根据内容推测许可证，如\"免费开放数据\"→\"CC BY 4.0\"",
+        "• 对每个提取的值，你必须能在原网页文字中找到明确证据。",
+        "• 完全不存在的字段必须返回 null，不要编造。",
+        "• 当不确定时，选择 null 而不是猜测。",
+        "",
         "2) 【最重要】必须在顶层返回以下核心元数据字段（zh 和 en 都要有）:",
         "   中文必须包含：" + core_fields_zh,
         "   英文必须包含：" + core_fields_en,
-        "   如果无法从网页中提取到某个字段的值，使用 null。",
+        "   如果网页中完全没有提及这个字段，或者证据不足，使用 null。不要编造。",
         "",
         "3) 中文版本：所有键名和可翻译字段值必须是中文；英文版本：所有键名和可翻译字段值必须是英文。",
         "",
@@ -218,8 +247,9 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
         "8) 【重要】扩展信息字段：中文为\"扩展信息\"，英文为\"Extension Info\"。"
         "   请从网页中提取以上所有字段都没有覆盖到的、但你认为重要的额外信息，"
         "   例如：数据使用注意事项、相关项目信息、数据集特点、研究亮点、"
-        "   数据缺失说明、引用建议、版本更新记录、相关链接等。"
-        "   如果没有额外重要信息，返回空字符串。",   
+            "4) 不可翻译/保留原样的内容包括但不限于：网址、DOI、arXiv ID、邮箱、UUID、日期、数值、代码片段、专有编号。",
+            "• 标识符类型要求：对于核心字段中的“CSTR标识符”，必须是 CSTR 格式（示例：12345.12.123456.123456）。如果网页中没有明确的 CSTR 标识符，请返回 null，不要用 arXiv ID、DOI 或 URL 代替。",
+            "",
         "9) 必须从\"资源类型候选列表\"中判断资源类型，并将结果写入顶层：",
         "   - 中文键：\"资源类型判定\"（值只能是：\"数据集\"/\"数据论文\"/\"其他\"）",
         "   - 英文键：\"Resource Type Classification\"（值只能是：\"Dataset\"/\"Data Paper\"/\"Other\"）",
@@ -412,8 +442,25 @@ def _map_type_to_domain_and_en(resource_type_zh):
     return mapping.get(resource_type_zh, ('Other', '核心元数据', 'Core Metadata'))
 
 
-def qwen_chat(content, mode='核心元数据', url='', title=''):
+def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', strategy='auto'):
     standard = load_standard()
+    strategy = (strategy or 'auto').lower()
+    rule_content = raw_html or content
+    
+    # 第一步：尝试检测并处理已知网站（不调用大模型）
+    if strategy in ('auto', 'rule'):
+        website_result = extract_metadata(url=url, title=title, content=rule_content)
+        if website_result is not None:
+            return website_result
+        if strategy == 'rule':
+            return {
+                "error": "rule_not_matched",
+                "message": "规则模式未匹配到已知网站提取器",
+                "available_extractors": list_extractors(),
+            }
+    
+    # 第二步：如果未检测到已知网站，则调用大模型
+    print("[LLM Processing] 使用大模型处理...")
     pre_type_zh = classify_resource_type(content, url=url, title=title)
     prompt = _build_prompt(content, standard, url=url, title=title, preclassified_type=pre_type_zh)
 
