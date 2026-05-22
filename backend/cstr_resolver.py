@@ -98,8 +98,8 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
 def resolve_cstr(cstr, clean_html=None):
     quoted_cstr = quote(cstr, safe='._;()/:A-Z0-9-')
     candidates = [
+        ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
         ('cstr.cn', f'https://cstr.cn/{quoted_cstr}'),
-        ('identifiers.org', f'https://identifiers.org/cstr:{quoted_cstr}'),
     ]
     errors = []
 
