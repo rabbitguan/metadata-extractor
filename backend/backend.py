@@ -2,8 +2,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 
+from cstr_resolver import resolve_cstr
+from doi_resolver import resolve_doi
 from llm_api import qwen_chat
 from field_filter import apply_requirement_filter
+from get_id import get_typed_identifiers
+from identifier import process_source_code
 
 
 app = Flask(__name__)
@@ -20,28 +24,13 @@ def normalize_llm_answer(raw_answer):
     raise TypeError(f'Unsupported LLM answer type: {type(raw_answer)!r}')
 
 
-@app.route('/info', methods=['POST'])
-def search():
-    print("Received request")
-    data = request.get_json() or {}
-    text = data.get('text') or data.get('html', '')
-    url = data.get('url', '')
-    title = data.get('title', '')
-    mode = data.get('mode', 'common')
-    print("Asking LLM to process text")
+def build_metadata_response(raw_answer):
+    llm_answer = normalize_llm_answer(raw_answer)
+    zh_answer = llm_answer.get('zh')
+    en_answer = llm_answer.get('en')
+    if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
+        raise ValueError('LLM response must contain zh and en objects')
 
-    try:
-        llm_answer = normalize_llm_answer(qwen_chat(text, mode, url=url, title=title))
-        zh_answer = llm_answer.get('zh')
-        en_answer = llm_answer.get('en')
-        if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
-            raise ValueError('LLM response must contain zh and en objects')
-    except (json.JSONDecodeError, ValueError, TypeError) as error:
-        print(f"LLM Error: {error}")
-        return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
-
-    print("LLM processing complete")
-    
     # 获取领域判定
     schema_name_zh = zh_answer.get('领域判定', '核心元数据')
     schema_name_en_map = {
@@ -109,6 +98,114 @@ def search():
     merged_answer['en'] = apply_requirement_filter(merged_answer['en'])
 
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
+    return merged_answer
+
+
+def collect_identifier_text(data):
+    raw_identifiers = data.get('identifiers')
+    if isinstance(raw_identifiers, list):
+        chunks = [str(item) for item in raw_identifiers if item is not None]
+        return '\n'.join(chunks)
+    if raw_identifiers is not None:
+        return str(raw_identifiers)
+    return str(data.get('text') or data.get('html') or '')
+
+
+def extract_doi_cstr_identifiers(text):
+    return [
+        item
+        for item in get_typed_identifiers(text, include_patent=False)
+        if item['type'] in ('doi', 'cstr')
+    ]
+
+
+def resolve_identifier_item(identifier_type, identifier):
+    if identifier_type == 'doi':
+        return resolve_doi(identifier, clean_html=process_source_code)
+    if identifier_type == 'cstr':
+        return resolve_cstr(identifier, clean_html=process_source_code)
+    raise ValueError(f'Unsupported identifier type: {identifier_type}')
+
+
+def resolve_identifier_content(data):
+    identifier_text = collect_identifier_text(data)
+    identifiers = extract_doi_cstr_identifiers(identifier_text)
+    if not identifiers:
+        return None, {'message': 'No DOI or CSTR identifier found'}
+
+    content_sections = []
+    resolved_urls = []
+    errors = []
+
+    for item in identifiers:
+        identifier_type = item['type']
+        identifier = item['id']
+        try:
+            resolved = resolve_identifier_item(identifier_type, identifier)
+            content = resolved['content']
+            resolved_url = resolved['url']
+            source = resolved.get('source', identifier_type)
+            if not content:
+                raise ValueError('Resolved page has no readable content')
+
+            resolved_urls.append(resolved_url)
+            content_sections.append(
+                '\n'.join([
+                    f'Identifier Type: {identifier_type.upper()}',
+                    f'Identifier: {identifier}',
+                    f'Resolved URL: {resolved_url}',
+                    f'Resolver Source: {source}',
+                    'Resolved Page Content:',
+                    content,
+                ])
+            )
+        except Exception as error:
+            errors.append({'identifier': identifier, 'type': identifier_type, 'message': str(error)})
+            print(f"[WARNING] Failed to resolve {identifier_type.upper()} {identifier}: {error}")
+
+    if not content_sections:
+        return None, {
+            'message': 'Failed to resolve any DOI or CSTR identifier',
+            'errors': errors,
+        }
+
+    identifier_list = ', '.join(item['id'] for item in identifiers)
+    return {
+        'text': '\n\n--- DOI/CSTR RESOLVED RESOURCE ---\n\n'.join(content_sections),
+        'title': data.get('title') or f'DOI/CSTR identifiers: {identifier_list}',
+        'url': '\n'.join(resolved_urls),
+        'errors': errors,
+    }, None
+
+
+@app.route('/info', methods=['POST'])
+def search():
+    print("Received request")
+    data = request.get_json() or {}
+    source = data.get('source', 'text')
+    mode = data.get('mode', 'common')
+
+    if source == 'identifier':
+        resolved_payload, error_payload = resolve_identifier_content(data)
+        if error_payload:
+            return jsonify({"status": "error", **error_payload}), 400
+        text = resolved_payload['text']
+        url = resolved_payload['url']
+        title = resolved_payload['title']
+    else:
+        text = data.get('text') or data.get('html', '')
+        url = data.get('url', '')
+        title = data.get('title', '')
+
+    print("Asking LLM to process text")
+
+    try:
+        merged_answer = build_metadata_response(qwen_chat(text, mode, url=url, title=title))
+    except (json.JSONDecodeError, ValueError, TypeError) as error:
+        print(f"LLM Error: {error}")
+        return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
+
+    print("LLM processing complete")
     return jsonify(merged_answer), 200
 
 

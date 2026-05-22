@@ -22,6 +22,10 @@
                     <span id="chooseUploadLabel">上传数据</span>
                     <small id="chooseUploadHint">上传 JSON / TXT 等文本文件</small>
                 </button>
+                <button id="chooseIdentifierButton" class="start-button secondary" type="button">
+                    <span id="chooseIdentifierLabel">输入 DOI/CSTR</span>
+                    <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
+                </button>
             </div>
         </section>
 
@@ -71,6 +75,18 @@
                     <button id="reselectUploadButton" class="upload-button secondary-action" type="button">重新选择</button>
                 </div>
                 <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
+            </div>
+        </section>
+
+        <section id="identifierPanel" class="upload-panel" hidden>
+            <div class="upload-state">
+                <h2 id="identifierTitle">输入 DOI/CSTR</h2>
+                <p id="identifierDescription">支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔</p>
+                <textarea id="identifierInput" class="identifier-input" rows="5" placeholder="10.xxxx/example 或 12345.12.123456.123456"></textarea>
+                <div class="upload-actions">
+                    <button id="confirmIdentifierButton" class="upload-button primary-action" type="button">确认并分析</button>
+                    <button id="clearIdentifierButton" class="upload-button secondary-action" type="button">清空</button>
+                </div>
             </div>
         </section>
 

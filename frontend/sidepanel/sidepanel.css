@@ -90,7 +90,7 @@ body {
 
 .start-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
     margin-top: 8px;
 }
@@ -204,6 +204,24 @@ body {
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.8);
     border: 1px solid rgba(40, 28, 20, 0.08);
+}
+
+.identifier-input {
+    width: 100%;
+    min-height: 128px;
+    resize: vertical;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(40, 28, 20, 0.12);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--text);
+    font: inherit;
+    line-height: 1.5;
+}
+
+.identifier-input:focus {
+    outline: 2px solid rgba(31, 111, 120, 0.24);
+    border-color: rgba(31, 111, 120, 0.42);
 }
 
 .hero {
