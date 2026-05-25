@@ -153,6 +153,46 @@ body {
     box-shadow: var(--shadow);
 }
 
+.identifier-selector {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0;
+    padding: 14px 16px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, #ffffff, #f4f6fc);
+    box-shadow: var(--shadow);
+}
+
+.identifier-selector label {
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.identifier-select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    font: inherit;
+}
+
+.identifier-select:focus {
+    outline: 2px solid rgba(8, 110, 193, 0.18);
+    border-color: #2185d0;
+}
+
+.identifier-error {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid #f1c0c0;
+    background: #fff4f4;
+    color: var(--danger);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .llm-row {
     margin: 12px 0;
 }

@@ -135,6 +135,8 @@ const UI_TEXT = {
         identifierPlaceholder: '10.xxxx/example 或 12345.12.123456.123456',
         confirmIdentifierButton: '确认并分析',
         clearIdentifierButton: '清空',
+        identifierSelectLabel: '选择标识符',
+        identifierErrorPrefix: '解析失败: ',
         selectedFileEmpty: '尚未选择文件',
         selectedFilePrefix: '已选择：',
         modeSwitcherLabel: '元数据模式切换',
@@ -174,6 +176,8 @@ const UI_TEXT = {
         identifierPlaceholder: '10.xxxx/example or 12345.12.123456.123456',
         confirmIdentifierButton: 'Confirm and analyze',
         clearIdentifierButton: 'Clear',
+        identifierSelectLabel: 'Identifier',
+        identifierErrorPrefix: 'Error: ',
         selectedFileEmpty: 'No file selected yet',
         selectedFilePrefix: 'Selected: ',
         modeSwitcherLabel: 'Metadata mode switcher',
@@ -214,6 +218,8 @@ const state = {
     uploadResultReady: false,
     identifierInput: '',
     identifierResultReady: false,
+    identifierResults: [],
+    currentIdentifierIndex: 0,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -282,6 +288,7 @@ function setAnalysisVisibility() {
     const analysisContent = document.getElementById('analysisContent');
     const uploadPanel = document.getElementById('uploadPanel');
     const identifierPanel = document.getElementById('identifierPanel');
+    const identifierSelector = document.getElementById('identifierSelector');
 
     if (state.sourceMode === 'upload') {
         uploadPanel.hidden = false;
@@ -296,6 +303,9 @@ function setAnalysisVisibility() {
         identifierPanel.hidden = false;
         modeSwitcher.hidden = !state.identifierResultReady;
         analysisContent.hidden = !state.identifierResultReady;
+        if (identifierSelector) {
+            identifierSelector.hidden = !state.identifierResultReady || state.identifierResults.length === 0;
+        }
         return;
     }
 
@@ -303,6 +313,9 @@ function setAnalysisVisibility() {
     identifierPanel.hidden = true;
     modeSwitcher.hidden = false;
     analysisContent.hidden = false;
+    if (identifierSelector) {
+        identifierSelector.hidden = true;
+    }
 }
 
 function getTranslatedLabel(label, language = state.language) {
@@ -863,11 +876,76 @@ async function requestMetadataFromIdentifiers(mode) {
     }
 
     const payload = await response.json();
-    state.resultCache.common = payload;
-    state.resultCache.domain = payload;
-    state.resultCache[getCacheKey(mode)] = payload;
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    state.identifierResults = items;
+    state.currentIdentifierIndex = 0;
+    applyIdentifierItemToCache();
+    renderIdentifierSelector();
     state.lastFetchedAt = new Date();
     return payload;
+}
+
+function getCurrentIdentifierItem() {
+    const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+    return items[state.currentIdentifierIndex] || null;
+}
+
+function applyIdentifierItemToCache() {
+    const item = getCurrentIdentifierItem();
+    if (item && item.status === 'ok' && isObject(item.payload)) {
+        state.resultCache.common = item.payload;
+        state.resultCache.domain = item.payload;
+        state.resultCache[getCacheKey(state.mode)] = item.payload;
+        return;
+    }
+
+    delete state.resultCache.common;
+    delete state.resultCache.domain;
+    delete state.resultCache[getCacheKey(state.mode)];
+}
+
+function renderIdentifierSelector() {
+    const selector = document.getElementById('identifierSelector');
+    const select = document.getElementById('identifierSelect');
+    if (!selector || !select) {
+        return;
+    }
+
+    const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+    const shouldShow = state.sourceMode === 'identifier' && items.length > 0 && state.identifierResultReady;
+    selector.hidden = !shouldShow;
+    if (!shouldShow) {
+        return;
+    }
+
+    select.innerHTML = '';
+    items.forEach((item, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = item && item.identifier ? String(item.identifier) : `#${index + 1}`;
+        select.appendChild(option);
+    });
+    select.value = String(state.currentIdentifierIndex);
+    updateIdentifierError();
+}
+
+function updateIdentifierError() {
+    const error = document.getElementById('identifierError');
+    if (!error) {
+        return;
+    }
+
+    const item = getCurrentIdentifierItem();
+    if (item && item.status !== 'ok') {
+        const prefix = getUIText().identifierErrorPrefix;
+        const message = item.message || getUIText().noContent;
+        error.textContent = `${prefix}${message}`;
+        error.hidden = false;
+        return;
+    }
+
+    error.textContent = '';
+    error.hidden = true;
 }
 
 async function requestMetadataForMode(mode) {
@@ -1072,6 +1150,9 @@ function extractExtensionText(payload, language = state.language) {
 
 function renderMode(mode) {
     const language = state.language;
+    if (state.sourceMode === 'identifier' && state.identifierResults.length > 0) {
+        applyIdentifierItemToCache();
+    }
     const payloadBundle = state.resultCache[getCacheKey(mode)] || {};
     const payload = isObject(payloadBundle[language]) ? payloadBundle[language] : {};
     const schema = state.schemaCache[mode];
@@ -1096,7 +1177,19 @@ function renderMode(mode) {
     extensionInfo.textContent = extensionText || ui.waiting;
     extensionInfo.classList.toggle('empty', !extensionText);
 
-    lastUpdated.textContent = state.lastFetchedAt ? `${ui.updatedAt}${state.lastFetchedAt.toLocaleTimeString('zh-CN', { hour12: false })}` : '';
+    let lastUpdatedValue = state.lastFetchedAt;
+    const currentItem = getCurrentIdentifierItem();
+    if (state.sourceMode === 'identifier' && currentItem && currentItem.updated_at) {
+        const parsed = new Date(currentItem.updated_at);
+        if (!Number.isNaN(parsed.getTime())) {
+            lastUpdatedValue = parsed;
+        }
+    }
+    lastUpdated.textContent = lastUpdatedValue
+        ? `${ui.updatedAt}${lastUpdatedValue.toLocaleTimeString('zh-CN', { hour12: false })}`
+        : '';
+
+    updateIdentifierError();
 
     updateStaticText();
 }
@@ -1169,6 +1262,10 @@ function updateStaticText() {
     document.getElementById('identifierInput').setAttribute('placeholder', ui.identifierPlaceholder);
     document.getElementById('confirmIdentifierButton').textContent = ui.confirmIdentifierButton;
     document.getElementById('clearIdentifierButton').textContent = ui.clearIdentifierButton;
+    const identifierSelectLabel = document.getElementById('identifierSelectLabel');
+    if (identifierSelectLabel) {
+        identifierSelectLabel.textContent = ui.identifierSelectLabel;
+    }
     document.getElementById('homeButton').setAttribute('aria-label', '返回初始页');
     document.getElementById('homeButton').setAttribute('title', '返回初始页');
     document.getElementById('refreshButton').setAttribute('aria-label', ui.refreshTitle);
@@ -1191,6 +1288,7 @@ function updateStaticText() {
 
     setUploadPanelState();
     setAnalysisVisibility();
+    renderIdentifierSelector();
 
     const commonButton = document.querySelector('.mode-button[data-mode="common"]');
     const domainButton = document.querySelector('.mode-button[data-mode="domain"]');
@@ -1275,6 +1373,8 @@ function selectSourceMode(sourceMode) {
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     setActiveView(true);
     updateStaticText();
     clearAnalysisView();
@@ -1301,6 +1401,8 @@ function resetToStartScreen() {
     state.uploadResultReady = false;
     state.identifierInput = '';
     state.identifierResultReady = false;
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     document.getElementById('identifierInput').value = '';
     setActiveView(false);
     clearAnalysisView();
@@ -1341,6 +1443,8 @@ async function confirmIdentifierAndAnalyze() {
 function clearIdentifierInput() {
     state.identifierInput = '';
     state.identifierResultReady = false;
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     state.resultCache = getSourceResultCache();
     delete state.resultCache.common;
     delete state.resultCache.domain;
@@ -1398,14 +1502,23 @@ function bindEvents() {
     document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
     document.getElementById('confirmIdentifierButton').addEventListener('click', confirmIdentifierAndAnalyze);
     document.getElementById('clearIdentifierButton').addEventListener('click', clearIdentifierInput);
+    document.getElementById('identifierSelect').addEventListener('change', (event) => {
+        const nextIndex = Number(event.target.value);
+        state.currentIdentifierIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
+        applyIdentifierItemToCache();
+        renderMode(state.mode);
+    });
     document.getElementById('identifierInput').addEventListener('input', (event) => {
         state.identifierInput = event.target.value;
         state.identifierResultReady = false;
+        state.identifierResults = [];
+        state.currentIdentifierIndex = 0;
         state.resultCache = getSourceResultCache();
         delete state.resultCache.common;
         delete state.resultCache.domain;
         clearAnalysisView();
         setAnalysisVisibility();
+        renderIdentifierSelector();
     });
 
     document.getElementById('fileInput').addEventListener('change', (event) => {
