@@ -118,16 +118,23 @@ const UI_TEXT = {
     zh: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: '请选择分析方式：分析网页 / 上传文件',
+        startDescription: '请选择分析方式：分析网页 / 上传文件 / 输入 DOI/CSTR',
         chooseWebLabel: '分析网页',
         chooseWebHint: '提取当前页面并整理元数据',
         chooseUploadLabel: '上传数据',
         chooseUploadHint: '上传 JSON / TXT 等文本文件',
+        chooseIdentifierLabel: '输入 DOI/CSTR',
+        chooseIdentifierHint: '通过编号解析资源并整理元数据',
         uploadTitle: '上传数据文件',
         uploadDescription: '支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG',
         uploadButton: '选择文件',
         confirmUploadButton: '确认并分析',
         reselectUploadButton: '重新选择',
+        identifierTitle: '输入 DOI/CSTR',
+        identifierDescription: '支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔',
+        identifierPlaceholder: '10.xxxx/example 或 12345.12.123456.123456',
+        confirmIdentifierButton: '确认并分析',
+        clearIdentifierButton: '清空',
         selectedFileEmpty: '尚未选择文件',
         selectedFilePrefix: '已选择：',
         modeSwitcherLabel: '元数据模式切换',
@@ -137,6 +144,7 @@ const UI_TEXT = {
         updatedAt: '更新于 ',
         loadingExtract: '正在提取当前页面文字...',
         loadingFile: '正在读取文件内容...',
+        loadingIdentifier: '正在解析 DOI/CSTR...',
         loadingSend: '正在分析...',
         downloadBlocked: '当前语言尚未完成提取，无法下载。',
         refreshTitle: '重新加载',
@@ -149,16 +157,23 @@ const UI_TEXT = {
     en: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: 'Choose an analysis mode: analyze web page / upload file',
+        startDescription: 'Choose an analysis mode: analyze web page / upload file / enter DOI/CSTR',
         chooseWebLabel: 'Analyze web page',
         chooseWebHint: 'Extract the current page and organize metadata',
         chooseUploadLabel: 'Upload data',
         chooseUploadHint: 'Upload JSON / TXT and other text files',
+        chooseIdentifierLabel: 'Enter DOI/CSTR',
+        chooseIdentifierHint: 'Resolve identifiers and organize metadata',
         uploadTitle: 'Upload data file',
         uploadDescription: 'Supported file formats: JSON / TXT / CSV / MD / XML / HTML / LOG',
         uploadButton: 'Choose file',
         confirmUploadButton: 'Confirm and analyze',
         reselectUploadButton: 'Choose again',
+        identifierTitle: 'Enter DOI/CSTR',
+        identifierDescription: 'Supports one or more DOI / CSTR identifiers separated by new lines, spaces, or commas',
+        identifierPlaceholder: '10.xxxx/example or 12345.12.123456.123456',
+        confirmIdentifierButton: 'Confirm and analyze',
+        clearIdentifierButton: 'Clear',
         selectedFileEmpty: 'No file selected yet',
         selectedFilePrefix: 'Selected: ',
         modeSwitcherLabel: 'Metadata mode switcher',
@@ -168,6 +183,7 @@ const UI_TEXT = {
         updatedAt: 'Updated at ',
         loadingExtract: 'Extracting page text...',
         loadingFile: 'Reading file content...',
+        loadingIdentifier: 'Resolving DOI/CSTR...',
         loadingSend: 'Sending to the model...',
         downloadBlocked: 'Nothing is ready to download yet.',
         refreshTitle: 'Reload',
@@ -187,6 +203,7 @@ const state = {
     resultCacheBySource: {
         web: {},
         upload: {},
+        identifier: {},
     },
     resultCache: {},
     lastFetchedAt: null,
@@ -195,6 +212,8 @@ const state = {
     uploadedTitle: '',
     uploadStage: 'idle',
     uploadResultReady: false,
+    identifierInput: '',
+    identifierResultReady: false,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -262,15 +281,26 @@ function setAnalysisVisibility() {
     const modeSwitcher = document.querySelector('.mode-switcher');
     const analysisContent = document.getElementById('analysisContent');
     const uploadPanel = document.getElementById('uploadPanel');
+    const identifierPanel = document.getElementById('identifierPanel');
 
     if (state.sourceMode === 'upload') {
         uploadPanel.hidden = false;
+        identifierPanel.hidden = true;
         modeSwitcher.hidden = !state.uploadResultReady;
         analysisContent.hidden = !state.uploadResultReady;
         return;
     }
 
+    if (state.sourceMode === 'identifier') {
+        uploadPanel.hidden = true;
+        identifierPanel.hidden = false;
+        modeSwitcher.hidden = !state.identifierResultReady;
+        analysisContent.hidden = !state.identifierResultReady;
+        return;
+    }
+
     uploadPanel.hidden = true;
+    identifierPanel.hidden = true;
     modeSwitcher.hidden = false;
     analysisContent.hidden = false;
 }
@@ -807,6 +837,39 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     return payload;
 }
 
+async function requestMetadataFromIdentifiers(mode) {
+    const language = state.language;
+    const identifiers = normalizeWhitespace(state.identifierInput || '');
+    if (!identifiers) {
+        throw new Error('请输入 DOI 或 CSTR 编号');
+    }
+
+    updateStatus(getUIText(language).loadingIdentifier, 'loading');
+    const response = await fetch(BACKEND_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            source: 'identifier',
+            identifiers,
+            mode,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(errorPayload.message || `HTTP 错误: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    state.resultCache.common = payload;
+    state.resultCache.domain = payload;
+    state.resultCache[getCacheKey(mode)] = payload;
+    state.lastFetchedAt = new Date();
+    return payload;
+}
+
 async function requestMetadataForMode(mode) {
     const language = state.language;
     updateStatus(getUIText(language).loadingExtract, 'loading');
@@ -1095,10 +1158,17 @@ function updateStaticText() {
     document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
     document.getElementById('chooseUploadLabel').textContent = ui.chooseUploadLabel;
     document.getElementById('chooseUploadHint').textContent = ui.chooseUploadHint;
+    document.getElementById('chooseIdentifierLabel').textContent = ui.chooseIdentifierLabel;
+    document.getElementById('chooseIdentifierHint').textContent = ui.chooseIdentifierHint;
     document.getElementById('appTitle').textContent = ui.appTitle;
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
     document.getElementById('uploadTitle').textContent = ui.uploadTitle;
     document.getElementById('uploadDescription').textContent = ui.uploadDescription;
+    document.getElementById('identifierTitle').textContent = ui.identifierTitle;
+    document.getElementById('identifierDescription').textContent = ui.identifierDescription;
+    document.getElementById('identifierInput').setAttribute('placeholder', ui.identifierPlaceholder);
+    document.getElementById('confirmIdentifierButton').textContent = ui.confirmIdentifierButton;
+    document.getElementById('clearIdentifierButton').textContent = ui.clearIdentifierButton;
     document.getElementById('homeButton').setAttribute('aria-label', '返回初始页');
     document.getElementById('homeButton').setAttribute('title', '返回初始页');
     document.getElementById('refreshButton').setAttribute('aria-label', ui.refreshTitle);
@@ -1116,6 +1186,8 @@ function updateStaticText() {
 
     const uploadPanel = document.getElementById('uploadPanel');
     uploadPanel.hidden = state.sourceMode !== 'upload';
+    const identifierPanel = document.getElementById('identifierPanel');
+    identifierPanel.hidden = state.sourceMode !== 'identifier';
 
     setUploadPanelState();
     setAnalysisVisibility();
@@ -1149,6 +1221,9 @@ async function refreshCurrentMode() {
         if (state.sourceMode === 'upload') {
             await requestMetadataForUploadedFile(mode);
             state.uploadResultReady = true;
+        } else if (state.sourceMode === 'identifier') {
+            await requestMetadataFromIdentifiers(mode);
+            state.identifierResultReady = true;
         } else {
             updateStatus(getUIText(language).loadingExtract, 'loading');
             await requestMetadataForMode(mode);
@@ -1196,6 +1271,7 @@ function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
+    state.identifierResultReady = false;
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
@@ -1217,12 +1293,15 @@ function selectSourceMode(sourceMode) {
 function resetToStartScreen() {
     state.sourceMode = null;
     state.resultCache = {};
-    state.resultCacheBySource = { web: {}, upload: {} };
+    state.resultCacheBySource = { web: {}, upload: {}, identifier: {} };
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
+    state.identifierInput = '';
+    state.identifierResultReady = false;
+    document.getElementById('identifierInput').value = '';
     setActiveView(false);
     clearAnalysisView();
     updateStatus('', 'idle');
@@ -1251,6 +1330,26 @@ async function confirmUploadAndAnalyze() {
     await refreshCurrentMode();
 }
 
+async function confirmIdentifierAndAnalyze() {
+    const identifierInput = document.getElementById('identifierInput');
+    state.identifierInput = identifierInput.value.trim();
+    state.identifierResultReady = false;
+    updateStaticText();
+    await refreshCurrentMode();
+}
+
+function clearIdentifierInput() {
+    state.identifierInput = '';
+    state.identifierResultReady = false;
+    state.resultCache = getSourceResultCache();
+    delete state.resultCache.common;
+    delete state.resultCache.domain;
+    document.getElementById('identifierInput').value = '';
+    clearAnalysisView();
+    updateStaticText();
+    updateStatus('', 'idle');
+}
+
 function reselectUploadFile() {
     state.uploadedFile = null;
     state.uploadedText = '';
@@ -1275,6 +1374,7 @@ function bindEvents() {
     document.getElementById('homeButton').addEventListener('click', resetToStartScreen);
     document.getElementById('chooseWebButton').addEventListener('click', () => selectSourceMode('web'));
     document.getElementById('chooseUploadButton').addEventListener('click', () => selectSourceMode('upload'));
+    document.getElementById('chooseIdentifierButton').addEventListener('click', () => selectSourceMode('identifier'));
 
     document.querySelectorAll('.mode-button').forEach((button) => {
         button.addEventListener('click', () => setMode(button.dataset.mode));
@@ -1296,6 +1396,17 @@ function bindEvents() {
 
     document.getElementById('confirmUploadButton').addEventListener('click', confirmUploadAndAnalyze);
     document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
+    document.getElementById('confirmIdentifierButton').addEventListener('click', confirmIdentifierAndAnalyze);
+    document.getElementById('clearIdentifierButton').addEventListener('click', clearIdentifierInput);
+    document.getElementById('identifierInput').addEventListener('input', (event) => {
+        state.identifierInput = event.target.value;
+        state.identifierResultReady = false;
+        state.resultCache = getSourceResultCache();
+        delete state.resultCache.common;
+        delete state.resultCache.domain;
+        clearAnalysisView();
+        setAnalysisVisibility();
+    });
 
     document.getElementById('fileInput').addEventListener('change', (event) => {
         const [file] = event.target.files || [];

@@ -1,15 +1,10 @@
 import re
-import json
-import base64
-import requests
 from bs4 import BeautifulSoup
 import cssutils
-from search_id import doi_identifier, cstr_identifier, patent_identifier
+from cstr_resolver import resolve_cstr
+from doi_resolver import resolve_doi
+from get_id import get_typed_identifiers
 
-atob = lambda s: base64.b64decode(s).decode()
-doi_pattern = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
-cstr_pattern = re.compile(r'\d{5}\.\d{2}\.\d{6}\.\d{6}')
-china_patent_pattern = re.compile(r'(?:CN|ZL)\d{9}(?:\.\d)?[A-Z]?')
 
 def merge_nested_tags(html):
     """合并嵌套的相同标签"""
@@ -113,68 +108,22 @@ def process_source_code(source_code):
     return source_code
 
 def identify_and_process(text):
-    dois = doi_pattern.findall(text)
-    cstrs = cstr_pattern.findall(text)
-    china_patents = china_patent_pattern.findall(text)
+    typed_identifiers = get_typed_identifiers(text)
+    dois = [item['id'] for item in typed_identifiers if item['type'] == 'doi']
+    cstrs = [item['id'] for item in typed_identifiers if item['type'] == 'cstr']
     # print("DOIs found:", dois)
     # print("CSTRs found:", cstrs)
-    # print("China Patents found:", china_patents)
     content_list = []
     for doi in dois:
         try:
-            doi_result = doi_identifier(doi)
-            doi_result = json.loads(doi_result)['result']
-            url = atob(doi_result.get('body')).replace('%0D', '').replace('\r', '')
-            # 验证 URL 有效性
-            if not url.startswith(('http://', 'https://')):
-                print(f"[WARNING] Invalid URL from DOI {doi}: {url[:100]}")
-                continue
-            try:
-                content = requests.get(url, timeout=10).text
-                content = process_source_code(content)
-                content_list.append(content)
-            except requests.exceptions.RequestException as e:
-                print(f"[WARNING] Failed to fetch DOI URL {url}: {e}")
-                continue
+            content_list.append(resolve_doi(doi, clean_html=process_source_code)['content'])
         except Exception as e:
             print(f"[WARNING] Error processing DOI {doi}: {e}")
             continue
     for cstr in cstrs:
         try:
-            cstr_result = cstr_identifier(cstr)
-            cstr_result = json.loads(cstr_result)['result']
-            url = atob(cstr_result.get('body')).replace('%0D', '').replace('\r', '')
-            # 验证 URL 有效性
-            if not url.startswith(('http://', 'https://')):
-                print(f"[WARNING] Invalid URL from CSTR {cstr}: {url[:100]}")
-                continue
-            try:
-                content = requests.get(url, timeout=10).text
-                content = process_source_code(content)
-                content_list.append(content)
-            except requests.exceptions.RequestException as e:
-                print(f"[WARNING] Failed to fetch CSTR URL {url}: {e}")
-                continue
+            content_list.append(resolve_cstr(cstr, clean_html=process_source_code)['content'])
         except Exception as e:
             print(f"[WARNING] Error processing CSTR {cstr}: {e}")
-            continue
-    for patent in china_patents:
-        try:
-            patent_result = patent_identifier(patent)
-            patent_result = json.loads(patent_result)['result']
-            url = atob(patent_result.get('body')).replace('%0D', '').replace('\r', '')
-            # 验证 URL 有效性
-            if not url.startswith(('http://', 'https://')):
-                print(f"[WARNING] Invalid URL from Patent {patent}: {url[:100]}")
-                continue
-            try:
-                content = requests.get(url, timeout=10).text
-                content = process_source_code(content)
-                content_list.append(content)
-            except requests.exceptions.RequestException as e:
-                print(f"[WARNING] Failed to fetch Patent URL {url}: {e}")
-                continue
-        except Exception as e:
-            print(f"[WARNING] Error processing Patent {patent}: {e}")
             continue
     return content_list
