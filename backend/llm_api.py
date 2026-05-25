@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from pathlib import Path
 
 from openai import OpenAI
@@ -420,6 +422,162 @@ def _extract_json_from_text(text):
         return None
 
 
+def _normalize_inline_math_text(value):
+    if not isinstance(value, str):
+        return value
+
+    text = value
+    text = unicodedata.normalize('NFC', text)
+    text = re.sub(r'\\"\{([^{}]+)\}', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
+    text = re.sub(r'\\"([A-Za-z])', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
+    text = re.sub(r"\\'\{([^{}]+)\}", lambda match: _to_diacritic(match.group(1), 'acute'), text)
+    text = re.sub(r"\\'([A-Za-z])", lambda match: _to_diacritic(match.group(1), 'acute'), text)
+    text = re.sub(r'\\`\{([^{}]+)\}', lambda match: _to_diacritic(match.group(1), 'grave'), text)
+    text = re.sub(r'\\`([A-Za-z])', lambda match: _to_diacritic(match.group(1), 'grave'), text)
+    text = re.sub(r'\\(?:left|right)\b', '', text)
+    text = re.sub(r'\\(?:mathrm|mathbf|mathit|text|operatorname)\{([^{}]*)\}', r'\1', text)
+    text = re.sub(r'\\frac\{([^{}]*)\}\{([^{}]*)\}', r'\1/\2', text)
+    text = re.sub(r'\\sqrt\{([^{}]*)\}', r'√\1', text)
+    text = re.sub(r'\$\$(.+?)\$\$', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'(?<!\\)\$(.+?)(?<!\\)\$', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\\([A-Za-z]+)(?![A-Za-z])', lambda match: _LATEX_COMMANDS.get(match.group(1), match.group(0)), text)
+    text = re.sub(r'\^\{([^{}]+)\}', lambda match: _to_superscript(match.group(1)), text)
+    text = re.sub(r'_\{([^{}]+)\}', lambda match: _to_subscript(match.group(1)), text)
+    text = re.sub(r'\^([A-Za-z0-9+-])', lambda match: _to_superscript(match.group(1)), text)
+    text = re.sub(r'_([A-Za-z0-9+-])', lambda match: _to_subscript(match.group(1)), text)
+    text = text.replace('\\$', '$')
+    text = text.replace('\\', '\\')
+    return text
+
+
+_LATEX_COMMANDS = {
+    'alpha': 'α',
+    'beta': 'β',
+    'gamma': 'γ',
+    'delta': 'δ',
+    'epsilon': 'ε',
+    'zeta': 'ζ',
+    'eta': 'η',
+    'theta': 'θ',
+    'iota': 'ι',
+    'kappa': 'κ',
+    'lambda': 'λ',
+    'mu': 'μ',
+    'nu': 'ν',
+    'xi': 'ξ',
+    'pi': 'π',
+    'rho': 'ρ',
+    'sigma': 'σ',
+    'tau': 'τ',
+    'phi': 'φ',
+    'chi': 'χ',
+    'psi': 'ψ',
+    'omega': 'ω',
+    'Alpha': 'Α',
+    'Beta': 'Β',
+    'Gamma': 'Γ',
+    'Delta': 'Δ',
+    'Theta': 'Θ',
+    'Lambda': 'Λ',
+    'Xi': 'Ξ',
+    'Pi': 'Π',
+    'Sigma': 'Σ',
+    'Phi': 'Φ',
+    'Psi': 'Ψ',
+    'Omega': 'Ω',
+    'pm': '±',
+    'times': '×',
+    'cdot': '·',
+    'le': '≤',
+    'ge': '≥',
+    'neq': '≠',
+    'approx': '≈',
+    'sim': '∼',
+    'propto': '∝',
+    'infty': '∞',
+    'degree': '°',
+}
+
+
+_SUPERSCRIPTS = str.maketrans({
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '+': '⁺',
+    '-': '⁻',
+    '=': '⁼',
+    '(': '⁽',
+    ')': '⁾',
+    'n': 'ⁿ',
+    'i': 'ⁱ',
+})
+
+
+_SUBSCRIPTS = str.maketrans({
+    '0': '₀',
+    '1': '₁',
+    '2': '₂',
+    '3': '₃',
+    '4': '₄',
+    '5': '₅',
+    '6': '₆',
+    '7': '₇',
+    '8': '₈',
+    '9': '₉',
+    '+': '₊',
+    '-': '₋',
+    '=': '₌',
+    '(': '₍',
+    ')': '₎',
+})
+
+
+def _to_superscript(value):
+    text = str(value)
+    translated = text.translate(_SUPERSCRIPTS)
+    return translated if translated != text else f'^{text}'
+
+
+def _to_subscript(value):
+    text = str(value)
+    translated = text.translate(_SUBSCRIPTS)
+    return translated if translated != text else f'_{text}'
+
+
+_DIACRITIC_MAP = {
+    'diaeresis': {
+        'a': 'ä', 'o': 'ö', 'u': 'ü', 'A': 'Ä', 'O': 'Ö', 'U': 'Ü', 'e': 'ë', 'i': 'ï', 'y': 'ÿ',
+    },
+    'acute': {
+        'a': 'á', 'e': 'é', 'i': 'í', 'o': 'ó', 'u': 'ú', 'y': 'ý', 'A': 'Á', 'E': 'É', 'I': 'Í', 'O': 'Ó', 'U': 'Ú', 'Y': 'Ý',
+    },
+    'grave': {
+        'a': 'à', 'e': 'è', 'i': 'ì', 'o': 'ò', 'u': 'ù', 'A': 'À', 'E': 'È', 'I': 'Ì', 'O': 'Ò', 'U': 'Ù',
+    },
+}
+
+
+def _to_diacritic(value, accent):
+    text = str(value)
+    mapped = ''.join(_DIACRITIC_MAP.get(accent, {}).get(char, char) for char in text)
+    return mapped if mapped != text else text
+
+
+def _normalize_inline_math_tree(value):
+    if isinstance(value, dict):
+        return {key: _normalize_inline_math_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_inline_math_tree(item) for item in value]
+    return _normalize_inline_math_text(value)
+
+
 def _set_core_classification(answer, resource_type, domain, language='zh'):
     if not isinstance(answer, dict):
         return
@@ -451,7 +609,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     if strategy in ('auto', 'rule'):
         website_result = extract_metadata(url=url, title=title, content=rule_content)
         if website_result is not None:
-            return website_result
+            return _normalize_inline_math_tree(website_result)
         if strategy == 'rule':
             return {
                 "error": "rule_not_matched",
@@ -496,6 +654,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
             _set_core_classification(en, type_en, domain_en, 'en')
             parsed['zh'] = zh
             parsed['en'] = en
+            parsed = _normalize_inline_math_tree(parsed)
         return parsed
     except Exception:
         extracted = _extract_json_from_text(raw)
@@ -508,6 +667,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
                 _set_core_classification(en, type_en, domain_en, 'en')
                 extracted['zh'] = zh
                 extracted['en'] = en
+                extracted = _normalize_inline_math_tree(extracted)
             return extracted
 
     return {"error": "invalid_json", "raw": raw}
