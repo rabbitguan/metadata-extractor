@@ -62,8 +62,8 @@ def _fetch_landing_page(doi, clean_html):
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
     response.raise_for_status()
     content = response.text
-    if clean_html is not None:
-        content = clean_html(content)
+    # if clean_html is not None:
+    #     content = clean_html(content)
     if not content:
         raise ValueError('DOI landing page has no readable content')
 

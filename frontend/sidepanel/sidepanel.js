@@ -1218,21 +1218,110 @@ function stripMetadataForDownload(schemaNode, valueNode) {
     return result;
 }
 
-function downloadJsonFile(mode) {
-    const language = state.language;
-    const payloadBundle = state.resultCache[getCacheKey(mode)];
-    const payload = payloadBundle && payloadBundle[language];
-    const schema = state.schemaCache[mode];
-    if (!schema || !payload) {
-        updateStatus(getUIText(language).downloadBlocked, 'error');
-        return;
+function normalizeIdentifierToken(value) {
+    const raw = String(value || '')
+        .trim()
+        .replace(/^doi:\s*/i, '')
+        .replace(/^cstr:\s*/i, '')
+        .replace(/^[<(\[]+/, '')
+        .replace(/[>\])]+$/, '')
+        .replace(/[.,;，；、]+$/, '');
+    const doiMatch = raw.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
+    if (doiMatch) {
+        return doiMatch[0].toLowerCase();
     }
+    const cstrMatch = raw.match(/\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+/i);
+    if (cstrMatch) {
+        return cstrMatch[0].toLowerCase();
+    }
+    return raw.toLowerCase();
+}
 
+function parseIdentifierTokens(input) {
+    if (!input) {
+        return [];
+    }
+    return String(input)
+        .split(/[\s,，;；、]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
+    const payload = payloadBundle && payloadBundle[language];
+    if (!payload) {
+        return null;
+    }
     const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
     const schemaRoot = schema[schemaKey] || schema['核心元数据'];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
     const sectionPayload = getEffectiveSectionPayload(payload, schemaKey);
-    const downloadPayload = stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+    return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+}
+
+async function downloadJsonFile(mode) {
+    const language = state.language;
+    const schema = state.schemaCache[mode] || await loadSchema(mode);
+    if (!schema) {
+        updateStatus(getUIText(language).downloadBlocked, 'error');
+        return;
+    }
+
+    if (state.sourceMode === 'identifier') {
+        const tokens = parseIdentifierTokens(state.identifierInput);
+        const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+        if (tokens.length > 1) {
+            if (items.length === 0) {
+                updateStatus(getUIText(language).downloadBlocked, 'error');
+                return;
+            }
+            const buckets = new Map();
+            items.forEach((item) => {
+                const key = normalizeIdentifierToken(item && item.identifier);
+                if (!key) {
+                    return;
+                }
+                if (!buckets.has(key)) {
+                    buckets.set(key, []);
+                }
+                buckets.get(key).push(item);
+            });
+            const lines = tokens.map((token) => {
+                const key = normalizeIdentifierToken(token);
+                const bucket = key ? buckets.get(key) : null;
+                const item = bucket && bucket.length > 0 ? bucket.shift() : null;
+                if (!item || item.status !== 'ok' || !isObject(item.payload)) {
+                    return '';
+                }
+                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, language);
+                if (!downloadPayload) {
+                    return '';
+                }
+                return JSON.stringify({
+                    identifier: item.identifier ?? null,
+                    type: item.type ?? null,
+                    resolved_url: item.resolved_url ?? null,
+                    source: item.source ?? null,
+                    payload: downloadPayload,
+                    updated_at: item.updated_at ?? null,
+                });
+            });
+            const blob = new Blob([lines.join('\n')], { type: 'application/jsonl;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `identifiers-${mode}-${language}.jsonl`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            return;
+        }
+    }
+
+    const payloadBundle = state.resultCache[getCacheKey(mode)];
+    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, language);
+    if (!downloadPayload) {
+        updateStatus(getUIText(language).downloadBlocked, 'error');
+        return;
+    }
     const blob = new Blob([JSON.stringify(downloadPayload, null, 2)], { type: 'application/json;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -1489,7 +1578,9 @@ function bindEvents() {
     });
 
     document.getElementById('refreshButton').addEventListener('click', refreshCurrentMode);
-    document.getElementById('downloadButton').addEventListener('click', () => downloadJsonFile(state.mode));
+    document.getElementById('downloadButton').addEventListener('click', async () => {
+        await downloadJsonFile(state.mode);
+    });
 
     document.getElementById('uploadButton').addEventListener('click', () => {
         if (state.sourceMode !== 'upload') {

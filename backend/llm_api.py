@@ -449,6 +449,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     
     # 第一步：尝试检测并处理已知网站（不调用大模型）
     if strategy in ('auto', 'rule'):
+        print("DEBUG", url, title, rule_content)
         website_result = extract_metadata(url=url, title=title, content=rule_content)
         if website_result is not None:
             return website_result

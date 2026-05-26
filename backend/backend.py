@@ -307,7 +307,7 @@ def search():
                 print(
                     f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
                 )
-                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='llm')
+                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
                 results.append({
                     'identifier': item.get('identifier'),
                     'type': item.get('type'),
