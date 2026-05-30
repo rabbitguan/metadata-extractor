@@ -1,4 +1,4 @@
-const BACKEND_WEB_URL = 'http://127.0.0.1:4000/info';
+const BACKEND_URL = 'http://127.0.0.1:4000/info';
 
 const LABEL_TRANSLATIONS_EN = {
     资源类型候选列表: 'Resource Type Candidates',
@@ -118,11 +118,9 @@ const UI_TEXT = {
     zh: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: '请选择分析方式：当前网页 / 输入 URL / 上传文件 / 输入 DOI/CSTR',
-        chooseWebLabel: '当前网页',
-        chooseWebHint: '提取当前标签页并整理元数据',
-        chooseUrlLabel: '输入 URL',
-        chooseUrlHint: '输入网页地址后由后端直接抓取分析',
+        startDescription: '请选择分析方式：分析网页 / 上传文件 / 输入 DOI/CSTR',
+        chooseWebLabel: '分析网页',
+        chooseWebHint: '提取当前页面并整理元数据',
         chooseUploadLabel: '上传数据',
         chooseUploadHint: '上传 JSON / TXT 等文本文件',
         chooseIdentifierLabel: '输入 DOI/CSTR',
@@ -132,16 +130,13 @@ const UI_TEXT = {
         uploadButton: '选择文件',
         confirmUploadButton: '确认并分析',
         reselectUploadButton: '重新选择',
-        urlTitle: '输入 URL',
-        urlDescription: '输入一个网页地址，后端会直接抓取并分析',
-        urlPlaceholder: 'https://example.com',
-        confirmUrlButton: '确认并分析',
-        clearUrlButton: '清空',
         identifierTitle: '输入 DOI/CSTR',
         identifierDescription: '支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔',
         identifierPlaceholder: '10.xxxx/example 或 12345.12.123456.123456',
         confirmIdentifierButton: '确认并分析',
         clearIdentifierButton: '清空',
+        identifierSelectLabel: '选择标识符',
+        identifierErrorPrefix: '解析失败: ',
         selectedFileEmpty: '尚未选择文件',
         selectedFilePrefix: '已选择：',
         modeSwitcherLabel: '元数据模式切换',
@@ -160,16 +155,13 @@ const UI_TEXT = {
         languageEn: 'EN',
         errorPrefix: '提取失败: ',
         initErrorPrefix: '初始化失败: ',
-        loadingUrl: '正在抓取 URL 页面...',
     },
     en: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: 'Choose an analysis mode: current page / URL / upload file / DOI/CSTR',
-        chooseWebLabel: 'Current page',
-        chooseWebHint: 'Extract the current tab and organize metadata',
-        chooseUrlLabel: 'Enter URL',
-        chooseUrlHint: 'Submit a web address and let the backend fetch it',
+        startDescription: 'Choose an analysis mode: analyze web page / upload file / enter DOI/CSTR',
+        chooseWebLabel: 'Analyze web page',
+        chooseWebHint: 'Extract the current page and organize metadata',
         chooseUploadLabel: 'Upload data',
         chooseUploadHint: 'Upload JSON / TXT and other text files',
         chooseIdentifierLabel: 'Enter DOI/CSTR',
@@ -179,16 +171,13 @@ const UI_TEXT = {
         uploadButton: 'Choose file',
         confirmUploadButton: 'Confirm and analyze',
         reselectUploadButton: 'Choose again',
-        urlTitle: 'Enter URL',
-        urlDescription: 'Enter a web address and let the backend fetch and analyze it',
-        urlPlaceholder: 'https://example.com',
-        confirmUrlButton: 'Confirm and analyze',
-        clearUrlButton: 'Clear',
         identifierTitle: 'Enter DOI/CSTR',
         identifierDescription: 'Supports one or more DOI / CSTR identifiers separated by new lines, spaces, or commas',
         identifierPlaceholder: '10.xxxx/example or 12345.12.123456.123456',
         confirmIdentifierButton: 'Confirm and analyze',
         clearIdentifierButton: 'Clear',
+        identifierSelectLabel: 'Identifier',
+        identifierErrorPrefix: 'Error: ',
         selectedFileEmpty: 'No file selected yet',
         selectedFilePrefix: 'Selected: ',
         modeSwitcherLabel: 'Metadata mode switcher',
@@ -207,7 +196,6 @@ const UI_TEXT = {
         languageEn: 'EN',
         errorPrefix: 'Extraction failed: ',
         initErrorPrefix: 'Initialization failed: ',
-        loadingUrl: 'Fetching URL page...',
     },
 };
 
@@ -218,7 +206,6 @@ const state = {
     schemaCache: {},
     resultCacheBySource: {
         web: {},
-        url: {},
         upload: {},
         identifier: {},
     },
@@ -231,8 +218,8 @@ const state = {
     uploadResultReady: false,
     identifierInput: '',
     identifierResultReady: false,
-    urlInput: '',
-    urlResultReady: false,
+    identifierResults: [],
+    currentIdentifierIndex: 0,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -242,23 +229,6 @@ function isObject(value) {
 
 function normalizeWhitespace(value) {
     return value.replace(/\s+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function normalizeUrlInput(value) {
-    const text = String(value || '').trim();
-    if (!text) {
-        return '';
-    }
-
-    if (/^https?:\/\//i.test(text)) {
-        return text;
-    }
-
-    if (text.startsWith('//')) {
-        return `https:${text}`;
-    }
-
-    return `https://${text}`;
 }
 
 function getUIText(language = state.language) {
@@ -316,47 +286,36 @@ function setUploadPanelState() {
 function setAnalysisVisibility() {
     const modeSwitcher = document.querySelector('.mode-switcher');
     const analysisContent = document.getElementById('analysisContent');
-    const llmRow = document.querySelector('.llm-row');
     const uploadPanel = document.getElementById('uploadPanel');
     const identifierPanel = document.getElementById('identifierPanel');
-    const urlPanel = document.getElementById('urlPanel');
+    const identifierSelector = document.getElementById('identifierSelector');
 
     if (state.sourceMode === 'upload') {
-        llmRow.hidden = true;
         uploadPanel.hidden = false;
         identifierPanel.hidden = true;
-        urlPanel.hidden = true;
         modeSwitcher.hidden = !state.uploadResultReady;
         analysisContent.hidden = !state.uploadResultReady;
         return;
     }
 
     if (state.sourceMode === 'identifier') {
-        llmRow.hidden = true;
         uploadPanel.hidden = true;
         identifierPanel.hidden = false;
-        urlPanel.hidden = true;
         modeSwitcher.hidden = !state.identifierResultReady;
         analysisContent.hidden = !state.identifierResultReady;
+        if (identifierSelector) {
+            identifierSelector.hidden = !state.identifierResultReady || state.identifierResults.length === 0;
+        }
         return;
     }
 
-    if (state.sourceMode === 'url') {
-        llmRow.hidden = true;
-        uploadPanel.hidden = true;
-        identifierPanel.hidden = true;
-        urlPanel.hidden = false;
-        modeSwitcher.hidden = !state.urlResultReady;
-        analysisContent.hidden = !state.urlResultReady;
-        return;
-    }
-
-    llmRow.hidden = false;
     uploadPanel.hidden = true;
     identifierPanel.hidden = true;
-    urlPanel.hidden = true;
     modeSwitcher.hidden = false;
     analysisContent.hidden = false;
+    if (identifierSelector) {
+        identifierSelector.hidden = true;
+    }
 }
 
 function getTranslatedLabel(label, language = state.language) {
@@ -792,9 +751,14 @@ async function loadModeSchema(mode) {
     return schemaRoot;
 }
 
-async function collectPageTextFromTab(tabId) {
+async function extractPageText() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs.length || !tabs[0].id) {
+        throw new Error('未找到当前活动标签页');
+    }
+
     const [result] = await chrome.scripting.executeScript({
-        target: { tabId },
+        target: { tabId: tabs[0].id },
         func: () => {
             const chunks = [];
             const append = (value) => {
@@ -852,53 +816,6 @@ async function collectPageTextFromTab(tabId) {
     };
 }
 
-async function extractPageText() {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs.length || !tabs[0].id) {
-        throw new Error('未找到当前活动标签页');
-    }
-
-    return collectPageTextFromTab(tabs[0].id);
-}
-
-async function waitForTabComplete(tabId, timeoutMs = 20000) {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-
-        const cleanup = () => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            chrome.tabs.onUpdated.removeListener(listener);
-        };
-
-        const listener = (updatedTabId, changeInfo) => {
-            if (updatedTabId === tabId && changeInfo.status === 'complete') {
-                cleanup();
-                resolve();
-            }
-        };
-
-        const timeoutHandle = setTimeout(() => {
-            cleanup();
-            reject(new Error('URL 页面加载超时'));
-        }, timeoutMs);
-
-        chrome.tabs.onUpdated.addListener(listener);
-
-        chrome.tabs.get(tabId)
-            .then((tab) => {
-                if (tab && tab.status === 'complete') {
-                    cleanup();
-                    resolve();
-                }
-            })
-            .catch(() => {});
-    });
-}
-
 async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto' } = {}) {
     const language = state.language;
     if (!text) {
@@ -906,7 +823,7 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
-    const response = await fetch(BACKEND_WEB_URL, {
+    const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -933,38 +850,6 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     return payload;
 }
 
-async function requestMetadataFromUrl(mode) {
-    const language = state.language;
-    const url = normalizeUrlInput(state.urlInput || '');
-    if (!url) {
-        throw new Error('请输入网页 URL');
-    }
-
-    updateStatus(getUIText(language).loadingUrl, 'loading');
-    const tempTab = await chrome.tabs.create({
-        url,
-        active: false,
-    });
-
-    try {
-        if (!tempTab || !tempTab.id) {
-            throw new Error('无法打开 URL');
-        }
-
-        await waitForTabComplete(tempTab.id);
-        const pageData = await collectPageTextFromTab(tempTab.id);
-        return requestMetadataFromText(mode, pageData.text, {
-            html: pageData.html,
-            url: pageData.url,
-            title: pageData.title,
-        });
-    } finally {
-        if (tempTab && tempTab.id) {
-            chrome.tabs.remove(tempTab.id).catch(() => {});
-        }
-    }
-}
-
 async function requestMetadataFromIdentifiers(mode) {
     const language = state.language;
     const identifiers = normalizeWhitespace(state.identifierInput || '');
@@ -973,7 +858,7 @@ async function requestMetadataFromIdentifiers(mode) {
     }
 
     updateStatus(getUIText(language).loadingIdentifier, 'loading');
-    const response = await fetch(BACKEND_WEB_URL, {
+    const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -991,11 +876,76 @@ async function requestMetadataFromIdentifiers(mode) {
     }
 
     const payload = await response.json();
-    state.resultCache.common = payload;
-    state.resultCache.domain = payload;
-    state.resultCache[getCacheKey(mode)] = payload;
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    state.identifierResults = items;
+    state.currentIdentifierIndex = 0;
+    applyIdentifierItemToCache();
+    renderIdentifierSelector();
     state.lastFetchedAt = new Date();
     return payload;
+}
+
+function getCurrentIdentifierItem() {
+    const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+    return items[state.currentIdentifierIndex] || null;
+}
+
+function applyIdentifierItemToCache() {
+    const item = getCurrentIdentifierItem();
+    if (item && item.status === 'ok' && isObject(item.payload)) {
+        state.resultCache.common = item.payload;
+        state.resultCache.domain = item.payload;
+        state.resultCache[getCacheKey(state.mode)] = item.payload;
+        return;
+    }
+
+    delete state.resultCache.common;
+    delete state.resultCache.domain;
+    delete state.resultCache[getCacheKey(state.mode)];
+}
+
+function renderIdentifierSelector() {
+    const selector = document.getElementById('identifierSelector');
+    const select = document.getElementById('identifierSelect');
+    if (!selector || !select) {
+        return;
+    }
+
+    const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+    const shouldShow = state.sourceMode === 'identifier' && items.length > 0 && state.identifierResultReady;
+    selector.hidden = !shouldShow;
+    if (!shouldShow) {
+        return;
+    }
+
+    select.innerHTML = '';
+    items.forEach((item, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = item && item.identifier ? String(item.identifier) : `#${index + 1}`;
+        select.appendChild(option);
+    });
+    select.value = String(state.currentIdentifierIndex);
+    updateIdentifierError();
+}
+
+function updateIdentifierError() {
+    const error = document.getElementById('identifierError');
+    if (!error) {
+        return;
+    }
+
+    const item = getCurrentIdentifierItem();
+    if (item && item.status !== 'ok') {
+        const prefix = getUIText().identifierErrorPrefix;
+        const message = item.message || getUIText().noContent;
+        error.textContent = `${prefix}${message}`;
+        error.hidden = false;
+        return;
+    }
+
+    error.textContent = '';
+    error.hidden = true;
 }
 
 async function requestMetadataForMode(mode) {
@@ -1200,6 +1150,9 @@ function extractExtensionText(payload, language = state.language) {
 
 function renderMode(mode) {
     const language = state.language;
+    if (state.sourceMode === 'identifier' && state.identifierResults.length > 0) {
+        applyIdentifierItemToCache();
+    }
     const payloadBundle = state.resultCache[getCacheKey(mode)] || {};
     const payload = isObject(payloadBundle[language]) ? payloadBundle[language] : {};
     const schema = state.schemaCache[mode];
@@ -1224,7 +1177,19 @@ function renderMode(mode) {
     extensionInfo.textContent = extensionText || ui.waiting;
     extensionInfo.classList.toggle('empty', !extensionText);
 
-    lastUpdated.textContent = state.lastFetchedAt ? `${ui.updatedAt}${state.lastFetchedAt.toLocaleTimeString('zh-CN', { hour12: false })}` : '';
+    let lastUpdatedValue = state.lastFetchedAt;
+    const currentItem = getCurrentIdentifierItem();
+    if (state.sourceMode === 'identifier' && currentItem && currentItem.updated_at) {
+        const parsed = new Date(currentItem.updated_at);
+        if (!Number.isNaN(parsed.getTime())) {
+            lastUpdatedValue = parsed;
+        }
+    }
+    lastUpdated.textContent = lastUpdatedValue
+        ? `${ui.updatedAt}${lastUpdatedValue.toLocaleTimeString('zh-CN', { hour12: false })}`
+        : '';
+
+    updateIdentifierError();
 
     updateStaticText();
 }
@@ -1253,21 +1218,110 @@ function stripMetadataForDownload(schemaNode, valueNode) {
     return result;
 }
 
-function downloadJsonFile(mode) {
-    const language = state.language;
-    const payloadBundle = state.resultCache[getCacheKey(mode)];
-    const payload = payloadBundle && payloadBundle[language];
-    const schema = state.schemaCache[mode];
-    if (!schema || !payload) {
-        updateStatus(getUIText(language).downloadBlocked, 'error');
-        return;
+function normalizeIdentifierToken(value) {
+    const raw = String(value || '')
+        .trim()
+        .replace(/^doi:\s*/i, '')
+        .replace(/^cstr:\s*/i, '')
+        .replace(/^[<(\[]+/, '')
+        .replace(/[>\])]+$/, '')
+        .replace(/[.,;，；、]+$/, '');
+    const doiMatch = raw.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
+    if (doiMatch) {
+        return doiMatch[0].toLowerCase();
     }
+    const cstrMatch = raw.match(/\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+/i);
+    if (cstrMatch) {
+        return cstrMatch[0].toLowerCase();
+    }
+    return raw.toLowerCase();
+}
 
+function parseIdentifierTokens(input) {
+    if (!input) {
+        return [];
+    }
+    return String(input)
+        .split(/[\s,，;；、]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
+    const payload = payloadBundle && payloadBundle[language];
+    if (!payload) {
+        return null;
+    }
     const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
     const schemaRoot = schema[schemaKey] || schema['核心元数据'];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
     const sectionPayload = getEffectiveSectionPayload(payload, schemaKey);
-    const downloadPayload = stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+    return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+}
+
+async function downloadJsonFile(mode) {
+    const language = state.language;
+    const schema = state.schemaCache[mode] || await loadSchema(mode);
+    if (!schema) {
+        updateStatus(getUIText(language).downloadBlocked, 'error');
+        return;
+    }
+
+    if (state.sourceMode === 'identifier') {
+        const tokens = parseIdentifierTokens(state.identifierInput);
+        const items = Array.isArray(state.identifierResults) ? state.identifierResults : [];
+        if (tokens.length > 1) {
+            if (items.length === 0) {
+                updateStatus(getUIText(language).downloadBlocked, 'error');
+                return;
+            }
+            const buckets = new Map();
+            items.forEach((item) => {
+                const key = normalizeIdentifierToken(item && item.identifier);
+                if (!key) {
+                    return;
+                }
+                if (!buckets.has(key)) {
+                    buckets.set(key, []);
+                }
+                buckets.get(key).push(item);
+            });
+            const lines = tokens.map((token) => {
+                const key = normalizeIdentifierToken(token);
+                const bucket = key ? buckets.get(key) : null;
+                const item = bucket && bucket.length > 0 ? bucket.shift() : null;
+                if (!item || item.status !== 'ok' || !isObject(item.payload)) {
+                    return '';
+                }
+                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, language);
+                if (!downloadPayload) {
+                    return '';
+                }
+                return JSON.stringify({
+                    identifier: item.identifier ?? null,
+                    type: item.type ?? null,
+                    resolved_url: item.resolved_url ?? null,
+                    source: item.source ?? null,
+                    payload: downloadPayload,
+                    updated_at: item.updated_at ?? null,
+                });
+            });
+            const blob = new Blob([lines.join('\n')], { type: 'application/jsonl;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `identifiers-${mode}-${language}.jsonl`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            return;
+        }
+    }
+
+    const payloadBundle = state.resultCache[getCacheKey(mode)];
+    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, language);
+    if (!downloadPayload) {
+        updateStatus(getUIText(language).downloadBlocked, 'error');
+        return;
+    }
     const blob = new Blob([JSON.stringify(downloadPayload, null, 2)], { type: 'application/json;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -1284,8 +1338,6 @@ function updateStaticText() {
     document.getElementById('startDescription').textContent = ui.startDescription;
     document.getElementById('chooseWebLabel').textContent = ui.chooseWebLabel;
     document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
-    document.getElementById('chooseUrlLabel').textContent = ui.chooseUrlLabel;
-    document.getElementById('chooseUrlHint').textContent = ui.chooseUrlHint;
     document.getElementById('chooseUploadLabel').textContent = ui.chooseUploadLabel;
     document.getElementById('chooseUploadHint').textContent = ui.chooseUploadHint;
     document.getElementById('chooseIdentifierLabel').textContent = ui.chooseIdentifierLabel;
@@ -1294,16 +1346,15 @@ function updateStaticText() {
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
     document.getElementById('uploadTitle').textContent = ui.uploadTitle;
     document.getElementById('uploadDescription').textContent = ui.uploadDescription;
-    document.getElementById('urlTitle').textContent = ui.urlTitle;
-    document.getElementById('urlDescription').textContent = ui.urlDescription;
-    document.getElementById('urlInput').setAttribute('placeholder', ui.urlPlaceholder);
-    document.getElementById('confirmUrlButton').textContent = ui.confirmUrlButton;
-    document.getElementById('clearUrlButton').textContent = ui.clearUrlButton;
     document.getElementById('identifierTitle').textContent = ui.identifierTitle;
     document.getElementById('identifierDescription').textContent = ui.identifierDescription;
     document.getElementById('identifierInput').setAttribute('placeholder', ui.identifierPlaceholder);
     document.getElementById('confirmIdentifierButton').textContent = ui.confirmIdentifierButton;
     document.getElementById('clearIdentifierButton').textContent = ui.clearIdentifierButton;
+    const identifierSelectLabel = document.getElementById('identifierSelectLabel');
+    if (identifierSelectLabel) {
+        identifierSelectLabel.textContent = ui.identifierSelectLabel;
+    }
     document.getElementById('homeButton').setAttribute('aria-label', '返回初始页');
     document.getElementById('homeButton').setAttribute('title', '返回初始页');
     document.getElementById('refreshButton').setAttribute('aria-label', ui.refreshTitle);
@@ -1323,11 +1374,10 @@ function updateStaticText() {
     uploadPanel.hidden = state.sourceMode !== 'upload';
     const identifierPanel = document.getElementById('identifierPanel');
     identifierPanel.hidden = state.sourceMode !== 'identifier';
-    const urlPanel = document.getElementById('urlPanel');
-    urlPanel.hidden = state.sourceMode !== 'url';
 
     setUploadPanelState();
     setAnalysisVisibility();
+    renderIdentifierSelector();
 
     const commonButton = document.querySelector('.mode-button[data-mode="common"]');
     const domainButton = document.querySelector('.mode-button[data-mode="domain"]');
@@ -1361,9 +1411,6 @@ async function refreshCurrentMode() {
         } else if (state.sourceMode === 'identifier') {
             await requestMetadataFromIdentifiers(mode);
             state.identifierResultReady = true;
-        } else if (state.sourceMode === 'url') {
-            await requestMetadataFromUrl(mode);
-            state.urlResultReady = true;
         } else {
             updateStatus(getUIText(language).loadingExtract, 'loading');
             await requestMetadataForMode(mode);
@@ -1412,10 +1459,11 @@ function selectSourceMode(sourceMode) {
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
     state.identifierResultReady = false;
-    state.urlResultReady = false;
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     setActiveView(true);
     updateStaticText();
     clearAnalysisView();
@@ -1434,7 +1482,7 @@ function selectSourceMode(sourceMode) {
 function resetToStartScreen() {
     state.sourceMode = null;
     state.resultCache = {};
-    state.resultCacheBySource = { web: {}, url: {}, upload: {}, identifier: {} };
+    state.resultCacheBySource = { web: {}, upload: {}, identifier: {} };
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
@@ -1442,10 +1490,9 @@ function resetToStartScreen() {
     state.uploadResultReady = false;
     state.identifierInput = '';
     state.identifierResultReady = false;
-    state.urlInput = '';
-    state.urlResultReady = false;
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     document.getElementById('identifierInput').value = '';
-    document.getElementById('urlInput').value = '';
     setActiveView(false);
     clearAnalysisView();
     updateStatus('', 'idle');
@@ -1462,26 +1509,6 @@ function handleUploadSelection(file) {
     state.uploadStage = 'selected';
     state.uploadResultReady = false;
     updateStaticText();
-}
-
-function clearUrlInput() {
-    state.urlInput = '';
-    state.urlResultReady = false;
-    state.resultCache = getSourceResultCache();
-    delete state.resultCache.common;
-    delete state.resultCache.domain;
-    document.getElementById('urlInput').value = '';
-    clearAnalysisView();
-    updateStaticText();
-    updateStatus('', 'idle');
-}
-
-async function confirmUrlAndAnalyze() {
-    const urlInput = document.getElementById('urlInput');
-    state.urlInput = urlInput.value.trim();
-    state.urlResultReady = false;
-    updateStaticText();
-    await refreshCurrentMode();
 }
 
 async function confirmUploadAndAnalyze() {
@@ -1505,6 +1532,8 @@ async function confirmIdentifierAndAnalyze() {
 function clearIdentifierInput() {
     state.identifierInput = '';
     state.identifierResultReady = false;
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
     state.resultCache = getSourceResultCache();
     delete state.resultCache.common;
     delete state.resultCache.domain;
@@ -1537,7 +1566,6 @@ function setLanguage(language) {
 function bindEvents() {
     document.getElementById('homeButton').addEventListener('click', resetToStartScreen);
     document.getElementById('chooseWebButton').addEventListener('click', () => selectSourceMode('web'));
-    document.getElementById('chooseUrlButton').addEventListener('click', () => selectSourceMode('url'));
     document.getElementById('chooseUploadButton').addEventListener('click', () => selectSourceMode('upload'));
     document.getElementById('chooseIdentifierButton').addEventListener('click', () => selectSourceMode('identifier'));
 
@@ -1550,7 +1578,9 @@ function bindEvents() {
     });
 
     document.getElementById('refreshButton').addEventListener('click', refreshCurrentMode);
-    document.getElementById('downloadButton').addEventListener('click', () => downloadJsonFile(state.mode));
+    document.getElementById('downloadButton').addEventListener('click', async () => {
+        await downloadJsonFile(state.mode);
+    });
 
     document.getElementById('uploadButton').addEventListener('click', () => {
         if (state.sourceMode !== 'upload') {
@@ -1561,27 +1591,25 @@ function bindEvents() {
 
     document.getElementById('confirmUploadButton').addEventListener('click', confirmUploadAndAnalyze);
     document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
-    document.getElementById('confirmUrlButton').addEventListener('click', confirmUrlAndAnalyze);
-    document.getElementById('clearUrlButton').addEventListener('click', clearUrlInput);
     document.getElementById('confirmIdentifierButton').addEventListener('click', confirmIdentifierAndAnalyze);
     document.getElementById('clearIdentifierButton').addEventListener('click', clearIdentifierInput);
-    document.getElementById('urlInput').addEventListener('input', (event) => {
-        state.urlInput = event.target.value;
-        state.urlResultReady = false;
-        state.resultCache = getSourceResultCache();
-        delete state.resultCache.common;
-        delete state.resultCache.domain;
-        clearAnalysisView();
-        setAnalysisVisibility();
+    document.getElementById('identifierSelect').addEventListener('change', (event) => {
+        const nextIndex = Number(event.target.value);
+        state.currentIdentifierIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
+        applyIdentifierItemToCache();
+        renderMode(state.mode);
     });
     document.getElementById('identifierInput').addEventListener('input', (event) => {
         state.identifierInput = event.target.value;
         state.identifierResultReady = false;
+        state.identifierResults = [];
+        state.currentIdentifierIndex = 0;
         state.resultCache = getSourceResultCache();
         delete state.resultCache.common;
         delete state.resultCache.domain;
         clearAnalysisView();
         setAnalysisVisibility();
+        renderIdentifierSelector();
     });
 
     document.getElementById('fileInput').addEventListener('change', (event) => {
