@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from datetime import datetime
 import json
 
 from cstr_resolver import resolve_cstr
@@ -188,45 +189,14 @@ def _resource_type_from_domain(domain_value, language='zh'):
     }.get(domain, '其他')
 
 
-@app.route('/info', methods=['POST'])
-def search():
-    print("Received request")
-    data = request.get_json() or {}
-    source = data.get('source', 'text')
-    mode = data.get('mode', 'common')
-    strategy = data.get('strategy', 'auto')
-    if source == 'identifier':
-        resolved_payload, error_payload = resolve_identifier_content(data)
-        if error_payload:
-            return jsonify({"status": "error", **error_payload}), 400
-        text = resolved_payload['text']
-        url = resolved_payload['url']
-        title = resolved_payload['title']
-        html = ''
-        strategy = 'llm' # 通过 arxiv api 抓出来的网页跟现在的提取逻辑不一样，现在先使用 LLM
-    else:
-        text = data.get('text', '')
-        html = data.get('html', '')
-        url = data.get('url', '')
-        title = data.get('title', '')
-    print("Asking LLM to process text")
-    print(
-        f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
+def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto'):
+    llm_answer = normalize_llm_answer(
+        qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
     )
-
-    try:
-        llm_answer = normalize_llm_answer(
-            qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
-        )
-        zh_answer = llm_answer.get('zh')
-        en_answer = llm_answer.get('en')
-        if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
-            raise ValueError('LLM response must contain zh and en objects')
-    except (json.JSONDecodeError, ValueError, TypeError) as error:
-        print(f"LLM Error: {error}")
-        return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
-
-    print("LLM processing complete")
+    zh_answer = llm_answer.get('zh')
+    en_answer = llm_answer.get('en')
+    if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
+        raise ValueError('LLM response must contain zh and en objects')
 
     # 如果 LLM 在英文对象中使用了中文键名，则尝试把这些键名映射为英文
     en_answer = _map_keys_recursive(en_answer, LABEL_TRANSLATIONS_EN)
@@ -238,8 +208,36 @@ def search():
     core_zh = _pick_fields(zh_answer, CORE_FIELD_ALIASES_ZH)
     core_en = _pick_fields(en_answer, CORE_FIELD_ALIASES_EN)
 
-    domain_fields_zh = {'数据论文内容信息', '数据论文出版信息', '数据论文服务信息', '数据集基本信息', '数据集出版信息', '数据集服务信息', '标准文献信息', '标准文献内容信息', '标准文献出版信息', '标准文献服务信息', '生态科学数据基本信息', '生态科学数据出版信息', '生态科学数据服务信息'}
-    domain_fields_en = {'Data Paper Content Information', 'Data Paper Publication Information', 'Data Paper Service Information', 'Dataset Basic Information', 'Dataset Publication Information', 'Dataset Service Information', 'Standard Literature Information', 'Standard Literature Content Information', 'Standard Literature Publication Information', 'Standard Literature Service Information', 'Ecological Science Data Basic Information', 'Ecological Science Data Publication Information', 'Ecological Science Data Service Information'}
+    domain_fields_zh = {
+        '数据论文内容信息',
+        '数据论文出版信息',
+        '数据论文服务信息',
+        '数据集基本信息',
+        '数据集出版信息',
+        '数据集服务信息',
+        '标准文献信息',
+        '标准文献内容信息',
+        '标准文献出版信息',
+        '标准文献服务信息',
+        '生态科学数据基本信息',
+        '生态科学数据出版信息',
+        '生态科学数据服务信息',
+    }
+    domain_fields_en = {
+        'Data Paper Content Information',
+        'Data Paper Publication Information',
+        'Data Paper Service Information',
+        'Dataset Basic Information',
+        'Dataset Publication Information',
+        'Dataset Service Information',
+        'Standard Literature Information',
+        'Standard Literature Content Information',
+        'Standard Literature Publication Information',
+        'Standard Literature Service Information',
+        'Ecological Science Data Basic Information',
+        'Ecological Science Data Publication Information',
+        'Ecological Science Data Service Information',
+    }
 
     domain_zh = {k: v for k, v in zh_answer.items() if k in domain_fields_zh}
     domain_en = {k: v for k, v in en_answer.items() if k in domain_fields_en}
@@ -281,6 +279,74 @@ def search():
     merged_answer['zh'] = apply_requirement_filter(merged_answer['zh'], empty_placeholder='未提取到')
     merged_answer['en'] = apply_requirement_filter(merged_answer['en'], empty_placeholder='Not extracted')
 
+    return merged_answer
+
+
+@app.route('/info', methods=['POST'])
+def search():
+    print("Received request")
+    data = request.get_json() or {}
+    source = data.get('source', 'text')
+    mode = data.get('mode', 'common')
+    strategy = data.get('strategy', 'auto')
+    if source == 'identifier':
+        items, error_payload = resolve_identifier_content(data)
+        if error_payload:
+            return jsonify({"status": "error", **error_payload}), 400
+
+        results = []
+        for item in items:
+            if item.get('status') != 'ok':
+                results.append(item)
+                continue
+            text = item.get('content', '')
+            url = item.get('resolved_url', '')
+            title = item.get('title', '')
+            try:
+                print("Asking LLM to process identifier content")
+                print(
+                    f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
+                )
+                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+                results.append({
+                    'identifier': item.get('identifier'),
+                    'type': item.get('type'),
+                    'resolved_url': url,
+                    'source': item.get('source'),
+                    'status': 'ok',
+                    'payload': payload,
+                    'updated_at': datetime.utcnow().isoformat() + 'Z',
+                })
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                print(f"LLM Error: {error}")
+                results.append({
+                    'identifier': item.get('identifier'),
+                    'type': item.get('type'),
+                    'resolved_url': url,
+                    'source': item.get('source'),
+                    'status': 'error',
+                    'message': 'Invalid bilingual JSON format from LLM',
+                    'updated_at': datetime.utcnow().isoformat() + 'Z',
+                })
+
+        return jsonify({'items': results})
+
+    text = data.get('text', '')
+    html = data.get('html', '')
+    url = data.get('url', '')
+    title = data.get('title', '')
+    print("Asking LLM to process text")
+    print(
+        f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
+    )
+
+    try:
+        merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy)
+    except (json.JSONDecodeError, ValueError, TypeError) as error:
+        print(f"LLM Error: {error}")
+        return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
+
+    print("LLM processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return merged_answer
 
@@ -317,49 +383,50 @@ def resolve_identifier_content(data):
     if not identifiers:
         return None, {'message': 'No DOI or CSTR identifier found'}
 
-    content_sections = []
-    resolved_urls = []
-    errors = []
-
+    items = []
     for item in identifiers:
         identifier_type = item['type']
         identifier = item['id']
         try:
             resolved = resolve_identifier_item(identifier_type, identifier)
-            content = resolved['content']
-            resolved_url = resolved['url']
+            content = resolved.get('content')
+            resolved_url = resolved.get('url')
             source = resolved.get('source', identifier_type)
             if not content:
                 raise ValueError('Resolved page has no readable content')
 
-            resolved_urls.append(resolved_url)
-            content_sections.append(
-                '\n'.join([
-                    f'Identifier Type: {identifier_type.upper()}',
-                    f'Identifier: {identifier}',
-                    f'Resolved URL: {resolved_url}',
-                    f'Resolver Source: {source}',
-                    'Resolved Page Content:',
-                    content,
-                ])
-            )
+            items.append({
+                'identifier': identifier,
+                'type': identifier_type,
+                'resolved_url': resolved_url,
+                'source': source,
+                'content': content,
+                'status': 'ok',
+            })
         except Exception as error:
-            errors.append({'identifier': identifier, 'type': identifier_type, 'message': str(error)})
             print(f"[WARNING] Failed to resolve {identifier_type.upper()} {identifier}: {error}")
+            items.append({
+                'identifier': identifier,
+                'type': identifier_type,
+                'status': 'error',
+                'message': str(error),
+            })
 
-    if not content_sections:
+    if all(item.get('status') != 'ok' for item in items):
         return None, {
             'message': 'Failed to resolve any DOI or CSTR identifier',
-            'errors': errors,
+            'errors': [
+                {
+                    'identifier': item.get('identifier'),
+                    'type': item.get('type'),
+                    'message': item.get('message'),
+                }
+                for item in items
+                if item.get('status') != 'ok'
+            ],
         }
 
-    identifier_list = ', '.join(item['id'] for item in identifiers)
-    return {
-        'text': '\n\n--- DOI/CSTR RESOLVED RESOURCE ---\n\n'.join(content_sections),
-        'title': data.get('title') or f'DOI/CSTR identifiers: {identifier_list}',
-        'url': '\n'.join(resolved_urls),
-        'errors': errors,
-    }, None
+    return items, None
 
 
 if __name__ == '__main__':
