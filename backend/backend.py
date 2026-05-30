@@ -409,7 +409,7 @@ def resolve_identifier_content(data):
                 'identifier': identifier,
                 'type': identifier_type,
                 'status': 'error',
-                'message': str(error),
+                'message': 'Failed to resolve identifier content',
             })
 
     if all(item.get('status') != 'ok' for item in items):
