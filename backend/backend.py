@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
 import json
+import re
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
@@ -9,10 +10,19 @@ from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
 from field_filter import apply_requirement_filter
 from get_id import get_typed_identifiers
 from identifier import process_source_code
+from metadata_store import initialize_metadata_store, list_analysis_history, save_analysis_history
 
 
 app = Flask(__name__)
 CORS(app)
+
+initialize_metadata_store()
+
+
+FETCH_HEADERS = {
+    'User-Agent': 'metadata-extractor/1.0 (+https://localhost)',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7',
+}
 
 
 def normalize_llm_answer(raw_answer):
@@ -93,7 +103,6 @@ def _merge_missing_values(primary, fallback):
         return primary if primary else fallback
 
     return primary
-
 
 CORE_FIELD_ALIASES_ZH = {
     '标题': ['资源名称', 'Title', 'Resource Name'],
@@ -279,6 +288,20 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     merged_answer['zh'] = apply_requirement_filter(merged_answer['zh'], empty_placeholder='未提取到')
     merged_answer['en'] = apply_requirement_filter(merged_answer['en'], empty_placeholder='Not extracted')
 
+    if url and html:
+        try:
+            record_id = save_analysis_history(
+                requested_url=url,
+                page_title=title,
+                page_html=html,
+                mode=mode,
+                strategy=strategy,
+                result_payload=merged_answer,
+            )
+            print(f"[DB] Saved analysis history record #{record_id}")
+        except Exception as error:
+            print(f"[DB WARNING] Failed to save analysis history: {error}")
+
     return merged_answer
 
 
@@ -349,6 +372,27 @@ def search():
     print("LLM processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return merged_answer
+
+@app.route('/history', methods=['GET'])
+def history():
+    limit = request.args.get('limit', 20)
+    offset = request.args.get('offset', 0)
+    try:
+        records = list_analysis_history(limit=limit, offset=offset)
+    except Exception as error:
+        return jsonify({'status': 'error', 'message': f'Failed to load history: {error}'}), 500
+
+    try:
+        parsed_limit = int(limit or 20)
+    except Exception:
+        parsed_limit = 20
+
+    try:
+        parsed_offset = int(offset or 0)
+    except Exception:
+        parsed_offset = 0
+
+    return jsonify({'records': records, 'limit': parsed_limit, 'offset': parsed_offset})
 
 
 def collect_identifier_text(data):

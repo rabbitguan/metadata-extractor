@@ -15,8 +15,12 @@
             </div>
             <div class="start-actions">
                 <button id="chooseWebButton" class="start-button primary" type="button">
-                    <span id="chooseWebLabel">分析网页</span>
-                    <small id="chooseWebHint">提取当前页面并整理元数据</small>
+                    <span id="chooseWebLabel">当前网页</span>
+                    <small id="chooseWebHint">提取当前标签页并整理元数据</small>
+                </button>
+                <button id="chooseUrlButton" class="start-button secondary" type="button">
+                    <span id="chooseUrlLabel">输入 URL</span>
+                    <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
                 </button>
                 <button id="chooseUploadButton" class="start-button secondary" type="button">
                     <span id="chooseUploadLabel">上传数据</span>
@@ -97,6 +101,18 @@
                 <div class="upload-actions">
                     <button id="confirmIdentifierButton" class="upload-button primary-action" type="button">确认并分析</button>
                     <button id="clearIdentifierButton" class="upload-button secondary-action" type="button">清空</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="urlPanel" class="upload-panel" hidden>
+            <div class="upload-state">
+                <h2 id="urlTitle">输入 URL</h2>
+                <p id="urlDescription">输入一个网页地址，后端会直接抓取并分析</p>
+                <textarea id="urlInput" class="identifier-input" rows="4" placeholder="https://example.com"></textarea>
+                <div class="upload-actions">
+                    <button id="confirmUrlButton" class="upload-button primary-action" type="button">确认并分析</button>
+                    <button id="clearUrlButton" class="upload-button secondary-action" type="button">清空</button>
                 </div>
             </div>
         </section>

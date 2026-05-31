@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://127.0.0.1:4000/info';
+const BACKEND_WEB_URL = 'http://127.0.0.1:4000/info';
 
 const LABEL_TRANSLATIONS_EN = {
     资源类型候选列表: 'Resource Type Candidates',
@@ -118,9 +118,11 @@ const UI_TEXT = {
     zh: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: '请选择分析方式：分析网页 / 上传文件 / 输入 DOI/CSTR',
-        chooseWebLabel: '分析网页',
-        chooseWebHint: '提取当前页面并整理元数据',
+        startDescription: '请选择分析方式：当前网页 / 输入 URL / 上传文件 / 输入 DOI/CSTR',
+        chooseWebLabel: '当前网页',
+        chooseWebHint: '提取当前标签页并整理元数据',
+        chooseUrlLabel: '输入 URL',
+        chooseUrlHint: '输入网页地址后由后端直接抓取分析',
         chooseUploadLabel: '上传数据',
         chooseUploadHint: '上传 JSON / TXT 等文本文件',
         chooseIdentifierLabel: '输入 DOI/CSTR',
@@ -130,6 +132,11 @@ const UI_TEXT = {
         uploadButton: '选择文件',
         confirmUploadButton: '确认并分析',
         reselectUploadButton: '重新选择',
+        urlTitle: '输入 URL',
+        urlDescription: '输入一个网页地址，后端会直接抓取并分析',
+        urlPlaceholder: 'https://example.com',
+        confirmUrlButton: '确认并分析',
+        clearUrlButton: '清空',
         identifierTitle: '输入 DOI/CSTR',
         identifierDescription: '支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔',
         identifierPlaceholder: '10.xxxx/example 或 12345.12.123456.123456',
@@ -155,13 +162,16 @@ const UI_TEXT = {
         languageEn: 'EN',
         errorPrefix: '提取失败: ',
         initErrorPrefix: '初始化失败: ',
+        loadingUrl: '正在抓取 URL 页面...',
     },
     en: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: 'Choose an analysis mode: analyze web page / upload file / enter DOI/CSTR',
-        chooseWebLabel: 'Analyze web page',
-        chooseWebHint: 'Extract the current page and organize metadata',
+        startDescription: 'Choose an analysis mode: current page / URL / upload file / DOI/CSTR',
+        chooseWebLabel: 'Current page',
+        chooseWebHint: 'Extract the current tab and organize metadata',
+        chooseUrlLabel: 'Enter URL',
+        chooseUrlHint: 'Submit a web address and let the backend fetch it',
         chooseUploadLabel: 'Upload data',
         chooseUploadHint: 'Upload JSON / TXT and other text files',
         chooseIdentifierLabel: 'Enter DOI/CSTR',
@@ -171,6 +181,11 @@ const UI_TEXT = {
         uploadButton: 'Choose file',
         confirmUploadButton: 'Confirm and analyze',
         reselectUploadButton: 'Choose again',
+        urlTitle: 'Enter URL',
+        urlDescription: 'Enter a web address and let the backend fetch and analyze it',
+        urlPlaceholder: 'https://example.com',
+        confirmUrlButton: 'Confirm and analyze',
+        clearUrlButton: 'Clear',
         identifierTitle: 'Enter DOI/CSTR',
         identifierDescription: 'Supports one or more DOI / CSTR identifiers separated by new lines, spaces, or commas',
         identifierPlaceholder: '10.xxxx/example or 12345.12.123456.123456',
@@ -196,6 +211,7 @@ const UI_TEXT = {
         languageEn: 'EN',
         errorPrefix: 'Extraction failed: ',
         initErrorPrefix: 'Initialization failed: ',
+        loadingUrl: 'Fetching URL page...',
     },
 };
 
@@ -206,6 +222,7 @@ const state = {
     schemaCache: {},
     resultCacheBySource: {
         web: {},
+        url: {},
         upload: {},
         identifier: {},
     },
@@ -220,6 +237,8 @@ const state = {
     identifierResultReady: false,
     identifierResults: [],
     currentIdentifierIndex: 0,
+    urlInput: '',
+    urlResultReady: false,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -229,6 +248,23 @@ function isObject(value) {
 
 function normalizeWhitespace(value) {
     return value.replace(/\s+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function normalizeUrlInput(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+        return '';
+    }
+
+    if (/^https?:\/\//i.test(text)) {
+        return text;
+    }
+
+    if (text.startsWith('//')) {
+        return `https:${text}`;
+    }
+
+    return `https://${text}`;
 }
 
 function getUIText(language = state.language) {
@@ -286,21 +322,27 @@ function setUploadPanelState() {
 function setAnalysisVisibility() {
     const modeSwitcher = document.querySelector('.mode-switcher');
     const analysisContent = document.getElementById('analysisContent');
+    const llmRow = document.querySelector('.llm-row');
     const uploadPanel = document.getElementById('uploadPanel');
     const identifierPanel = document.getElementById('identifierPanel');
     const identifierSelector = document.getElementById('identifierSelector');
+    const urlPanel = document.getElementById('urlPanel');
 
     if (state.sourceMode === 'upload') {
+        llmRow.hidden = true;
         uploadPanel.hidden = false;
         identifierPanel.hidden = true;
+        urlPanel.hidden = true;
         modeSwitcher.hidden = !state.uploadResultReady;
         analysisContent.hidden = !state.uploadResultReady;
         return;
     }
 
     if (state.sourceMode === 'identifier') {
+        llmRow.hidden = true;
         uploadPanel.hidden = true;
         identifierPanel.hidden = false;
+        urlPanel.hidden = true;
         modeSwitcher.hidden = !state.identifierResultReady;
         analysisContent.hidden = !state.identifierResultReady;
         if (identifierSelector) {
@@ -309,8 +351,20 @@ function setAnalysisVisibility() {
         return;
     }
 
+    if (state.sourceMode === 'url') {
+        llmRow.hidden = true;
+        uploadPanel.hidden = true;
+        identifierPanel.hidden = true;
+        urlPanel.hidden = false;
+        modeSwitcher.hidden = !state.urlResultReady;
+        analysisContent.hidden = !state.urlResultReady;
+        return;
+    }
+
+    llmRow.hidden = false;
     uploadPanel.hidden = true;
     identifierPanel.hidden = true;
+    urlPanel.hidden = true;
     modeSwitcher.hidden = false;
     analysisContent.hidden = false;
     if (identifierSelector) {
@@ -751,14 +805,9 @@ async function loadModeSchema(mode) {
     return schemaRoot;
 }
 
-async function extractPageText() {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs.length || !tabs[0].id) {
-        throw new Error('未找到当前活动标签页');
-    }
-
+async function collectPageTextFromTab(tabId) {
     const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
+        target: { tabId },
         func: () => {
             const chunks = [];
             const append = (value) => {
@@ -816,6 +865,53 @@ async function extractPageText() {
     };
 }
 
+async function extractPageText() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs.length || !tabs[0].id) {
+        throw new Error('未找到当前活动标签页');
+    }
+
+    return collectPageTextFromTab(tabs[0].id);
+}
+
+async function waitForTabComplete(tabId, timeoutMs = 20000) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const cleanup = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            chrome.tabs.onUpdated.removeListener(listener);
+        };
+
+        const listener = (updatedTabId, changeInfo) => {
+            if (updatedTabId === tabId && changeInfo.status === 'complete') {
+                cleanup();
+                resolve();
+            }
+        };
+
+        const timeoutHandle = setTimeout(() => {
+            cleanup();
+            reject(new Error('URL 页面加载超时'));
+        }, timeoutMs);
+
+        chrome.tabs.onUpdated.addListener(listener);
+
+        chrome.tabs.get(tabId)
+            .then((tab) => {
+                if (tab && tab.status === 'complete') {
+                    cleanup();
+                    resolve();
+                }
+            })
+            .catch(() => {});
+    });
+}
+
 async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto' } = {}) {
     const language = state.language;
     if (!text) {
@@ -823,7 +919,7 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
-    const response = await fetch(BACKEND_URL, {
+    const response = await fetch(BACKEND_WEB_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -850,6 +946,38 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     return payload;
 }
 
+async function requestMetadataFromUrl(mode) {
+    const language = state.language;
+    const url = normalizeUrlInput(state.urlInput || '');
+    if (!url) {
+        throw new Error('请输入网页 URL');
+    }
+
+    updateStatus(getUIText(language).loadingUrl, 'loading');
+    const tempTab = await chrome.tabs.create({
+        url,
+        active: false,
+    });
+
+    try {
+        if (!tempTab || !tempTab.id) {
+            throw new Error('无法打开 URL');
+        }
+
+        await waitForTabComplete(tempTab.id);
+        const pageData = await collectPageTextFromTab(tempTab.id);
+        return requestMetadataFromText(mode, pageData.text, {
+            html: pageData.html,
+            url: pageData.url,
+            title: pageData.title,
+        });
+    } finally {
+        if (tempTab && tempTab.id) {
+            chrome.tabs.remove(tempTab.id).catch(() => {});
+        }
+    }
+}
+
 async function requestMetadataFromIdentifiers(mode) {
     const language = state.language;
     const identifiers = normalizeWhitespace(state.identifierInput || '');
@@ -858,7 +986,7 @@ async function requestMetadataFromIdentifiers(mode) {
     }
 
     updateStatus(getUIText(language).loadingIdentifier, 'loading');
-    const response = await fetch(BACKEND_URL, {
+    const response = await fetch(BACKEND_WEB_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1338,6 +1466,8 @@ function updateStaticText() {
     document.getElementById('startDescription').textContent = ui.startDescription;
     document.getElementById('chooseWebLabel').textContent = ui.chooseWebLabel;
     document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
+    document.getElementById('chooseUrlLabel').textContent = ui.chooseUrlLabel;
+    document.getElementById('chooseUrlHint').textContent = ui.chooseUrlHint;
     document.getElementById('chooseUploadLabel').textContent = ui.chooseUploadLabel;
     document.getElementById('chooseUploadHint').textContent = ui.chooseUploadHint;
     document.getElementById('chooseIdentifierLabel').textContent = ui.chooseIdentifierLabel;
@@ -1346,6 +1476,11 @@ function updateStaticText() {
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
     document.getElementById('uploadTitle').textContent = ui.uploadTitle;
     document.getElementById('uploadDescription').textContent = ui.uploadDescription;
+    document.getElementById('urlTitle').textContent = ui.urlTitle;
+    document.getElementById('urlDescription').textContent = ui.urlDescription;
+    document.getElementById('urlInput').setAttribute('placeholder', ui.urlPlaceholder);
+    document.getElementById('confirmUrlButton').textContent = ui.confirmUrlButton;
+    document.getElementById('clearUrlButton').textContent = ui.clearUrlButton;
     document.getElementById('identifierTitle').textContent = ui.identifierTitle;
     document.getElementById('identifierDescription').textContent = ui.identifierDescription;
     document.getElementById('identifierInput').setAttribute('placeholder', ui.identifierPlaceholder);
@@ -1374,6 +1509,8 @@ function updateStaticText() {
     uploadPanel.hidden = state.sourceMode !== 'upload';
     const identifierPanel = document.getElementById('identifierPanel');
     identifierPanel.hidden = state.sourceMode !== 'identifier';
+    const urlPanel = document.getElementById('urlPanel');
+    urlPanel.hidden = state.sourceMode !== 'url';
 
     setUploadPanelState();
     setAnalysisVisibility();
@@ -1411,6 +1548,9 @@ async function refreshCurrentMode() {
         } else if (state.sourceMode === 'identifier') {
             await requestMetadataFromIdentifiers(mode);
             state.identifierResultReady = true;
+        } else if (state.sourceMode === 'url') {
+            await requestMetadataFromUrl(mode);
+            state.urlResultReady = true;
         } else {
             updateStatus(getUIText(language).loadingExtract, 'loading');
             await requestMetadataForMode(mode);
@@ -1459,11 +1599,12 @@ function selectSourceMode(sourceMode) {
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
     state.identifierResultReady = false;
+    state.identifierResults = [];
+    state.currentIdentifierIndex = 0;
+    state.urlResultReady = false;
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
-    state.identifierResults = [];
-    state.currentIdentifierIndex = 0;
     setActiveView(true);
     updateStaticText();
     clearAnalysisView();
@@ -1482,7 +1623,7 @@ function selectSourceMode(sourceMode) {
 function resetToStartScreen() {
     state.sourceMode = null;
     state.resultCache = {};
-    state.resultCacheBySource = { web: {}, upload: {}, identifier: {} };
+    state.resultCacheBySource = { web: {}, url: {}, upload: {}, identifier: {} };
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
@@ -1492,7 +1633,10 @@ function resetToStartScreen() {
     state.identifierResultReady = false;
     state.identifierResults = [];
     state.currentIdentifierIndex = 0;
+    state.urlInput = '';
+    state.urlResultReady = false;
     document.getElementById('identifierInput').value = '';
+    document.getElementById('urlInput').value = '';
     setActiveView(false);
     clearAnalysisView();
     updateStatus('', 'idle');
@@ -1509,6 +1653,26 @@ function handleUploadSelection(file) {
     state.uploadStage = 'selected';
     state.uploadResultReady = false;
     updateStaticText();
+}
+
+function clearUrlInput() {
+    state.urlInput = '';
+    state.urlResultReady = false;
+    state.resultCache = getSourceResultCache();
+    delete state.resultCache.common;
+    delete state.resultCache.domain;
+    document.getElementById('urlInput').value = '';
+    clearAnalysisView();
+    updateStaticText();
+    updateStatus('', 'idle');
+}
+
+async function confirmUrlAndAnalyze() {
+    const urlInput = document.getElementById('urlInput');
+    state.urlInput = urlInput.value.trim();
+    state.urlResultReady = false;
+    updateStaticText();
+    await refreshCurrentMode();
 }
 
 async function confirmUploadAndAnalyze() {
@@ -1566,6 +1730,7 @@ function setLanguage(language) {
 function bindEvents() {
     document.getElementById('homeButton').addEventListener('click', resetToStartScreen);
     document.getElementById('chooseWebButton').addEventListener('click', () => selectSourceMode('web'));
+    document.getElementById('chooseUrlButton').addEventListener('click', () => selectSourceMode('url'));
     document.getElementById('chooseUploadButton').addEventListener('click', () => selectSourceMode('upload'));
     document.getElementById('chooseIdentifierButton').addEventListener('click', () => selectSourceMode('identifier'));
 
@@ -1591,6 +1756,8 @@ function bindEvents() {
 
     document.getElementById('confirmUploadButton').addEventListener('click', confirmUploadAndAnalyze);
     document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
+    document.getElementById('confirmUrlButton').addEventListener('click', confirmUrlAndAnalyze);
+    document.getElementById('clearUrlButton').addEventListener('click', clearUrlInput);
     document.getElementById('confirmIdentifierButton').addEventListener('click', confirmIdentifierAndAnalyze);
     document.getElementById('clearIdentifierButton').addEventListener('click', clearIdentifierInput);
     document.getElementById('identifierSelect').addEventListener('change', (event) => {
@@ -1598,6 +1765,15 @@ function bindEvents() {
         state.currentIdentifierIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
         applyIdentifierItemToCache();
         renderMode(state.mode);
+    });
+    document.getElementById('urlInput').addEventListener('input', (event) => {
+        state.urlInput = event.target.value;
+        state.urlResultReady = false;
+        state.resultCache = getSourceResultCache();
+        delete state.resultCache.common;
+        delete state.resultCache.domain;
+        clearAnalysisView();
+        setAnalysisVisibility();
     });
     document.getElementById('identifierInput').addEventListener('input', (event) => {
         state.identifierInput = event.target.value;
@@ -1652,13 +1828,13 @@ async function reextractWithLLM() {
     if (!state.currentPageData) {
         return;
     }
-    
+
     const language = state.language;
     const mode = state.mode;
-    
+
     try {
         updateStatus(getUIText(language).loadingSend, 'loading');
-        
+
         // Force LLM extraction with strategy='llm'
         await requestMetadataFromText(mode, state.currentPageData.text, {
             html: state.currentPageData.html,
@@ -1666,10 +1842,10 @@ async function reextractWithLLM() {
             title: state.currentPageData.title,
             strategy: 'llm',  // Force LLM extraction
         });
-        
+
         renderMode(mode);
         updateStatus('', 'idle');
-        
+
         // extraction completed; UI update handled by caller (if any)
     } catch (error) {
         console.error(error);
