@@ -3,6 +3,7 @@ from flask_cors import CORS
 from datetime import datetime
 import json
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
@@ -10,7 +11,12 @@ from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
 from field_filter import apply_requirement_filter
 from get_id import get_typed_identifiers
 from identifier import process_source_code
-from metadata_store import initialize_metadata_store, list_analysis_history, save_analysis_history
+from metadata_store import (
+    get_latest_analysis_history_by_url,
+    initialize_metadata_store,
+    list_analysis_history,
+    save_analysis_history,
+)
 
 
 app = Flask(__name__)
@@ -23,6 +29,81 @@ FETCH_HEADERS = {
     'User-Agent': 'metadata-extractor/1.0 (+https://localhost)',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7',
 }
+
+URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
+
+
+def _normalize_url_candidate(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+
+    text = text.rstrip('.,;，；、')
+    parsed = urlsplit(text)
+    if not parsed.scheme or not parsed.netloc:
+        return text
+
+    path = parsed.path or ''
+    if path not in ('', '/') and path.endswith('/'):
+        path = path.rstrip('/')
+
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, parsed.query, ''))
+
+
+def _lookup_history_payload(*, source='', url='', text=''):
+    if source == 'identifier':
+        return None
+
+    candidates = []
+    seen = set()
+
+    def add_candidate(candidate):
+        normalized = _normalize_url_candidate(candidate)
+        if normalized and normalized not in seen:
+            candidates.append(normalized)
+            seen.add(normalized)
+
+    add_candidate(url)
+    if source == 'upload' or not url:
+        for match in URL_PATTERN.finditer(text or ''):
+            add_candidate(match.group(0))
+
+    if source == 'upload' and not candidates:
+        return None
+
+    if not candidates:
+        return None
+
+    history_record = get_latest_analysis_history_by_url(requested_url=candidates[0], text='')
+    if not history_record and len(candidates) > 1:
+        history_record = get_latest_analysis_history_by_url(requested_url='', text='\n'.join(candidates[1:]))
+
+    if not history_record:
+        return None
+
+    try:
+        result_payload = json.loads(history_record['result_json'])
+    except Exception:
+        return None
+
+    if not isinstance(result_payload, dict):
+        return None
+
+    response_payload = dict(result_payload)
+    response_payload['from_history'] = True
+    response_payload['history_record_id'] = history_record.get('id')
+    response_payload['history_requested_url'] = history_record.get('requested_url')
+    response_payload['history_page_title'] = history_record.get('page_title')
+    response_payload['history_created_at'] = history_record.get('created_at')
+    return response_payload
+
+
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
 
 
 def normalize_llm_answer(raw_answer):
@@ -312,6 +393,7 @@ def search():
     source = data.get('source', 'text')
     mode = data.get('mode', 'common')
     strategy = data.get('strategy', 'auto')
+    force_reanalyze = _parse_bool(data.get('force_reanalyze', False))
     if source == 'identifier':
         items, error_payload = resolve_identifier_content(data)
         if error_payload:
@@ -354,6 +436,15 @@ def search():
 
         return jsonify({'items': results})
 
+    if not force_reanalyze:
+        history_payload = _lookup_history_payload(
+            source=source,
+            url=data.get('url', ''),
+            text=data.get('text', ''),
+        )
+        if history_payload:
+            return jsonify(history_payload)
+
     text = data.get('text', '')
     html = data.get('html', '')
     url = data.get('url', '')
@@ -372,6 +463,17 @@ def search():
     print("LLM processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return merged_answer
+
+
+@app.route('/history/lookup', methods=['GET'])
+def history_lookup():
+    url = request.args.get('url', '')
+    text = request.args.get('text', '')
+    history_payload = _lookup_history_payload(source='url', url=url, text=text)
+    if not history_payload:
+        return jsonify({'found': False})
+
+    return jsonify({'found': True, **history_payload})
 
 @app.route('/history', methods=['GET'])
 def history():
