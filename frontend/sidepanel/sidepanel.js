@@ -1,4 +1,5 @@
 const BACKEND_WEB_URL = 'http://127.0.0.1:4000/info';
+const HISTORY_LOOKUP_URL = 'http://127.0.0.1:4000/history/lookup';
 
 const LABEL_TRANSLATIONS_EN = {
     资源类型候选列表: 'Resource Type Candidates',
@@ -137,6 +138,9 @@ const UI_TEXT = {
         urlPlaceholder: 'https://example.com',
         confirmUrlButton: '确认并分析',
         clearUrlButton: '清空',
+        reanalyzeUrlButton: '重新分析',
+        urlHistoryNote: '本结果来自历史查询数据库。若需基于当前页面重新分析，请点击“重新分析”。',
+        uploadHistoryNote: '本结果基于上传文件中的 URL 从历史库加载。如需把上传内容发送给模型并重新分析，请点击“重新分析”。',
         identifierTitle: '输入 DOI/CSTR',
         identifierDescription: '支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔',
         identifierPlaceholder: '10.xxxx/example 或 12345.12.123456.123456',
@@ -186,6 +190,9 @@ const UI_TEXT = {
         urlPlaceholder: 'https://example.com',
         confirmUrlButton: 'Confirm and analyze',
         clearUrlButton: 'Clear',
+        reanalyzeUrlButton: 'Reanalyze',
+        urlHistoryNote: 'This result was loaded from history. Click "Reanalyze" to run a fresh analysis on the actual page.',
+        uploadHistoryNote: 'This result was loaded from history based on a URL found inside the uploaded file. Click "Reanalyze" to send the uploaded content to the model for a fresh analysis.',
         identifierTitle: 'Enter DOI/CSTR',
         identifierDescription: 'Supports one or more DOI / CSTR identifiers separated by new lines, spaces, or commas',
         identifierPlaceholder: '10.xxxx/example or 12345.12.123456.123456',
@@ -233,12 +240,14 @@ const state = {
     uploadedTitle: '',
     uploadStage: 'idle',
     uploadResultReady: false,
+    uploadHistoryUsed: false,
     identifierInput: '',
     identifierResultReady: false,
     identifierResults: [],
     currentIdentifierIndex: 0,
     urlInput: '',
     urlResultReady: false,
+    urlHistoryUsed: false,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -317,6 +326,15 @@ function setUploadPanelState() {
         reselectUploadButton.hidden = !hasSelectedFile;
         reselectUploadButton.textContent = ui.reselectUploadButton;
     }
+    const reanalyzeUploadButton = document.getElementById('reanalyzeUploadButton');
+    const uploadHistoryNote = document.getElementById('uploadHistoryNote');
+    if (reanalyzeUploadButton) {
+        reanalyzeUploadButton.hidden = true;
+        reanalyzeUploadButton.textContent = ui.reanalyzeUploadButton || ui.reanalyzeUrlButton;
+    }
+    if (uploadHistoryNote) {
+        uploadHistoryNote.hidden = true;
+    }
 }
 
 function setAnalysisVisibility() {
@@ -327,6 +345,7 @@ function setAnalysisVisibility() {
     const identifierPanel = document.getElementById('identifierPanel');
     const identifierSelector = document.getElementById('identifierSelector');
     const urlPanel = document.getElementById('urlPanel');
+    const reanalyzeUrlButton = document.getElementById('reanalyzeUrlButton');
 
     if (state.sourceMode === 'upload') {
         llmRow.hidden = true;
@@ -358,6 +377,9 @@ function setAnalysisVisibility() {
         urlPanel.hidden = false;
         modeSwitcher.hidden = !state.urlResultReady;
         analysisContent.hidden = !state.urlResultReady;
+        if (reanalyzeUrlButton) {
+            reanalyzeUrlButton.hidden = true;
+        }
         return;
     }
 
@@ -365,11 +387,43 @@ function setAnalysisVisibility() {
     uploadPanel.hidden = true;
     identifierPanel.hidden = true;
     urlPanel.hidden = true;
+    if (reanalyzeUrlButton) {
+        reanalyzeUrlButton.hidden = true;
+    }
     modeSwitcher.hidden = false;
     analysisContent.hidden = false;
     if (identifierSelector) {
         identifierSelector.hidden = true;
     }
+}
+
+function setUrlReanalyzeButtonVisibility() {
+    const button = document.getElementById('reanalyzeUrlButton');
+    if (!button) {
+        return;
+    }
+    const note = document.getElementById('urlHistoryNote');
+    const shouldShow = state.sourceMode === 'url' && state.urlResultReady && state.urlHistoryUsed;
+    button.hidden = !shouldShow;
+    if (note) {
+        const ui = getUIText();
+        note.textContent = shouldShow ? ui.urlHistoryNote : '';
+        note.hidden = !shouldShow;
+    }
+}
+
+function setUploadReanalyzeButtonVisibility() {
+    const button = document.getElementById('reanalyzeUploadButton');
+    const note = document.getElementById('uploadHistoryNote');
+    if (!button || !note) {
+        return;
+    }
+
+    const shouldShow = state.sourceMode === 'upload' && state.uploadResultReady && state.uploadHistoryUsed;
+    button.hidden = !shouldShow;
+    const ui = getUIText();
+    note.textContent = shouldShow ? ui.uploadHistoryNote : '';
+    note.hidden = !shouldShow;
 }
 
 function getTranslatedLabel(label, language = state.language) {
@@ -912,7 +966,7 @@ async function waitForTabComplete(tabId, timeoutMs = 20000) {
     });
 }
 
-async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto' } = {}) {
+async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto', source = 'text', forceReanalyze = false } = {}) {
     const language = state.language;
     if (!text) {
         throw new Error('没有可发送给大模型的内容');
@@ -929,8 +983,10 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
             html,
             url,
             title,
+            source,
             mode,
             strategy,
+            force_reanalyze: forceReanalyze,
         }),
     });
 
@@ -939,14 +995,46 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     }
 
     const payload = await response.json();
-    state.resultCache.common = payload;
-    state.resultCache.domain = payload;
-    state.resultCache[getCacheKey(mode)] = payload;
-    state.lastFetchedAt = new Date();
+    applyMetadataResponse(payload, mode);
     return payload;
 }
 
-async function requestMetadataFromUrl(mode) {
+function applyMetadataResponse(payload, mode) {
+    const nextPayload = isObject(payload) ? payload : {};
+    state.resultCache.common = nextPayload;
+    state.resultCache.domain = nextPayload;
+    state.resultCache[getCacheKey(mode)] = nextPayload;
+    state.lastFetchedAt = new Date();
+    // mark both URL and upload history flags depending on payload origin
+    const fromHistory = Boolean(nextPayload.from_history);
+    state.urlHistoryUsed = fromHistory;
+    state.uploadHistoryUsed = fromHistory;
+    // ensure upload reanalyze button visibility updates when payload origin changes
+    try {
+        setUploadReanalyzeButtonVisibility();
+    } catch (e) {}
+    return nextPayload;
+}
+
+async function lookupHistoryByUrl(url, text = '') {
+    const lookupUrl = new URL(HISTORY_LOOKUP_URL);
+    lookupUrl.searchParams.set('url', url || '');
+    if (text) {
+        lookupUrl.searchParams.set('text', text);
+    }
+
+    const response = await fetch(lookupUrl.toString(), {
+        method: 'GET',
+    });
+
+    if (!response.ok) {
+        throw new Error(`历史查询失败: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+async function requestMetadataFromUrl(mode, { forceReanalyze = false } = {}) {
     const language = state.language;
     const url = normalizeUrlInput(state.urlInput || '');
     if (!url) {
@@ -954,6 +1042,17 @@ async function requestMetadataFromUrl(mode) {
     }
 
     updateStatus(getUIText(language).loadingUrl, 'loading');
+    const cachedResult = forceReanalyze ? null : await lookupHistoryByUrl(url);
+    if (cachedResult && cachedResult.found) {
+        state.urlResultReady = true;
+        applyMetadataResponse(cachedResult, mode);
+        setAnalysisVisibility();
+        setUrlReanalyzeButtonVisibility();
+        renderMode(mode);
+        updateStatus('', 'idle');
+        return cachedResult;
+    }
+
     const tempTab = await chrome.tabs.create({
         url,
         active: false,
@@ -970,6 +1069,8 @@ async function requestMetadataFromUrl(mode) {
             html: pageData.html,
             url: pageData.url,
             title: pageData.title,
+            source: 'url',
+            forceReanalyze,
         });
     } finally {
         if (tempTab && tempTab.id) {
@@ -1093,6 +1194,7 @@ async function requestMetadataForMode(mode) {
         html: pageData.html,
         url: pageData.url,
         title: pageData.title,
+        source: 'web',
     });
 }
 
@@ -1114,6 +1216,7 @@ async function requestMetadataForUploadedFile(mode) {
     return requestMetadataFromText(mode, normalizedText, {
         title: file.name,
         url: '',
+        source: 'upload',
     });
 }
 
@@ -1320,6 +1423,8 @@ function renderMode(mode) {
     updateIdentifierError();
 
     updateStaticText();
+    setUrlReanalyzeButtonVisibility();
+    setUploadReanalyzeButtonVisibility();
 }
 
 function stripMetadataForDownload(schemaNode, valueNode) {
@@ -1515,6 +1620,7 @@ function updateStaticText() {
     setUploadPanelState();
     setAnalysisVisibility();
     renderIdentifierSelector();
+    setUploadReanalyzeButtonVisibility();
 
     const commonButton = document.querySelector('.mode-button[data-mode="common"]');
     const domainButton = document.querySelector('.mode-button[data-mode="domain"]');
@@ -1602,12 +1708,14 @@ function selectSourceMode(sourceMode) {
     state.identifierResults = [];
     state.currentIdentifierIndex = 0;
     state.urlResultReady = false;
+    state.urlHistoryUsed = false;
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
     setActiveView(true);
     updateStaticText();
     clearAnalysisView();
+    setUrlReanalyzeButtonVisibility();
 
     if (sourceMode === 'web') {
         refreshCurrentMode();
@@ -1635,11 +1743,13 @@ function resetToStartScreen() {
     state.currentIdentifierIndex = 0;
     state.urlInput = '';
     state.urlResultReady = false;
+    state.urlHistoryUsed = false;
     document.getElementById('identifierInput').value = '';
     document.getElementById('urlInput').value = '';
     setActiveView(false);
     clearAnalysisView();
     updateStatus('', 'idle');
+    setUrlReanalyzeButtonVisibility();
 }
 
 function handleUploadSelection(file) {
@@ -1658,6 +1768,7 @@ function handleUploadSelection(file) {
 function clearUrlInput() {
     state.urlInput = '';
     state.urlResultReady = false;
+    state.urlHistoryUsed = false;
     state.resultCache = getSourceResultCache();
     delete state.resultCache.common;
     delete state.resultCache.domain;
@@ -1665,13 +1776,16 @@ function clearUrlInput() {
     clearAnalysisView();
     updateStaticText();
     updateStatus('', 'idle');
+    setUrlReanalyzeButtonVisibility();
 }
 
 async function confirmUrlAndAnalyze() {
     const urlInput = document.getElementById('urlInput');
     state.urlInput = urlInput.value.trim();
     state.urlResultReady = false;
+    state.urlHistoryUsed = false;
     updateStaticText();
+    setUrlReanalyzeButtonVisibility();
     await refreshCurrentMode();
 }
 
@@ -1681,6 +1795,7 @@ async function confirmUploadAndAnalyze() {
     }
 
     state.uploadStage = 'confirmed';
+    state.uploadHistoryUsed = false;
     updateStaticText();
     await refreshCurrentMode();
 }
@@ -1758,6 +1873,55 @@ function bindEvents() {
     document.getElementById('reselectUploadButton').addEventListener('click', reselectUploadFile);
     document.getElementById('confirmUrlButton').addEventListener('click', confirmUrlAndAnalyze);
     document.getElementById('clearUrlButton').addEventListener('click', clearUrlInput);
+    document.getElementById('reanalyzeUrlButton').addEventListener('click', async () => {
+        const button = document.getElementById('reanalyzeUrlButton');
+        if (!button) {
+            return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = originalText;
+        try {
+            await requestMetadataFromUrl(state.mode, { forceReanalyze: true });
+            state.urlResultReady = true;
+            setAnalysisVisibility();
+            renderMode(state.mode);
+            updateStatus('', 'idle');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    });
+    document.getElementById('reanalyzeUploadButton').addEventListener('click', async () => {
+        const button = document.getElementById('reanalyzeUploadButton');
+        if (!button) {
+            return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        try {
+            console.log('[UI] Reanalyze (upload) clicked — sending force_reanalyze to backend');
+            // send the uploaded text back to backend and force reanalysis
+            await requestMetadataFromText(state.mode, state.uploadedText || '', {
+                title: state.uploadedTitle || '',
+                url: '',
+                source: 'upload',
+                forceReanalyze: true,
+            });
+            state.uploadResultReady = true;
+            setAnalysisVisibility();
+            renderMode(state.mode);
+            updateStatus('', 'idle');
+        } catch (err) {
+            console.error('[UI] Reanalyze (upload) failed', err);
+            updateStatus(`${getUIText().errorPrefix}${err.message || err}`, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    });
     document.getElementById('confirmIdentifierButton').addEventListener('click', confirmIdentifierAndAnalyze);
     document.getElementById('clearIdentifierButton').addEventListener('click', clearIdentifierInput);
     document.getElementById('identifierSelect').addEventListener('change', (event) => {
@@ -1841,6 +2005,8 @@ async function reextractWithLLM() {
             url: state.currentPageData.url,
             title: state.currentPageData.title,
             strategy: 'llm',  // Force LLM extraction
+            source: 'web',
+            forceReanalyze: true,
         });
 
         renderMode(mode);

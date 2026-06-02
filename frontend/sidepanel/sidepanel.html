@@ -88,6 +88,8 @@
                 <div class="upload-actions">
                     <button id="confirmUploadButton" class="upload-button primary-action" type="button">确认并分析</button>
                     <button id="reselectUploadButton" class="upload-button secondary-action" type="button">重新选择</button>
+                        <button id="reanalyzeUploadButton" class="upload-button secondary-action" type="button" hidden>重新分析</button>
+                        <div id="uploadHistoryNote" class="history-note" hidden></div>
                 </div>
                 <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
             </div>
@@ -113,6 +115,8 @@
                 <div class="upload-actions">
                     <button id="confirmUrlButton" class="upload-button primary-action" type="button">确认并分析</button>
                     <button id="clearUrlButton" class="upload-button secondary-action" type="button">清空</button>
+                    <button id="reanalyzeUrlButton" class="upload-button secondary-action" type="button" hidden>重新分析</button>
+                    <div id="urlHistoryNote" class="history-note" hidden></div>
                 </div>
             </div>
         </section>

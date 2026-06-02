@@ -1,7 +1,9 @@
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any, Dict, List, Optional
 
 
@@ -44,6 +46,35 @@ def initialize_metadata_store():
 
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+
+
+def _normalize_url_candidate(value: Any) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+
+    text = text.rstrip('.,;，；、')
+    parsed = urlsplit(text)
+    if not parsed.scheme or not parsed.netloc:
+        return text
+
+    path = parsed.path or ''
+    if path not in ('', '/') and path.endswith('/'):
+        path = path.rstrip('/')
+
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, parsed.query, ''))
+
+
+def _collect_url_candidates(*values: Any) -> List[str]:
+    candidates: List[str] = []
+    seen = set()
+    for value in values:
+        candidate = _normalize_url_candidate(value)
+        if candidate and candidate not in seen:
+            candidates.append(candidate)
+            seen.add(candidate)
+
+    return candidates
 
 
 def _extract_section_bundle(result_payload: Dict[str, Any], language_key: str, core_key: str) -> Dict[str, Any]:
@@ -165,3 +196,52 @@ def list_analysis_history(limit: int = 20, offset: int = 0) -> List[Dict[str, An
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def get_latest_analysis_history_by_url(*, requested_url: str = '', text: str = '') -> Optional[Dict[str, Any]]:
+    candidates = _collect_url_candidates(requested_url)
+
+    if text:
+        for match in re.finditer(r'https?://[^\s<>"\'\)\]\}]+', text, re.IGNORECASE):
+            candidates.extend(_collect_url_candidates(match.group(0)))
+
+    # Preserve order while removing duplicates.
+    deduplicated_candidates = []
+    seen = set()
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            deduplicated_candidates.append(candidate)
+            seen.add(candidate)
+
+    if not deduplicated_candidates:
+        return None
+
+    placeholders = ','.join('?' for _ in deduplicated_candidates)
+    with _connect() as connection:
+        row = connection.execute(
+            f'''
+            SELECT
+                id,
+                requested_url,
+                page_title,
+                page_html,
+                html_sha256,
+                mode,
+                strategy,
+                resource_type_zh,
+                resource_type_en,
+                domain_classification_zh,
+                domain_classification_en,
+                core_metadata_json,
+                domain_metadata_json,
+                result_json,
+                created_at
+            FROM analysis_history
+            WHERE requested_url IN ({placeholders})
+            ORDER BY id DESC
+            LIMIT 1
+            ''',
+            deduplicated_candidates,
+        ).fetchone()
+
+    return dict(row) if row else None
