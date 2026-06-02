@@ -3,6 +3,8 @@ from flask_cors import CORS
 from datetime import datetime
 import json
 import re
+import requests
+from bs4 import BeautifulSoup
 from urllib.parse import urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
@@ -184,6 +186,46 @@ def _merge_missing_values(primary, fallback):
         return primary if primary else fallback
 
     return primary
+
+
+def _normalize_whitespace(value):
+    return re.sub(r'\s+', ' ', str(value or '')).strip()
+
+
+def _extract_text_from_html(html):
+    if not html:
+        return '', ''
+
+    soup = BeautifulSoup(html, 'html.parser')
+    title = ''
+    if soup.title and soup.title.string:
+        title = _normalize_whitespace(soup.title.string)
+
+    meta_description = ''
+    meta_tag = soup.find('meta', attrs={'name': 'description'})
+    if meta_tag and meta_tag.get('content'):
+        meta_description = _normalize_whitespace(meta_tag.get('content'))
+    if not meta_description:
+        og_tag = soup.find('meta', attrs={'property': 'og:description'})
+        if og_tag and og_tag.get('content'):
+            meta_description = _normalize_whitespace(og_tag.get('content'))
+
+    body_text = _normalize_whitespace(soup.get_text(' ', strip=True))
+    chunks = [chunk for chunk in [title, meta_description, body_text] if chunk]
+    return '\n'.join(chunks), title
+
+
+def fetch_url_content(url):
+    response = requests.get(url, headers=FETCH_HEADERS, timeout=15)
+    response.raise_for_status()
+    response.encoding = response.apparent_encoding or response.encoding
+    html = response.text or ''
+    text, title = _extract_text_from_html(html)
+    return {
+        'html': html,
+        'text': text,
+        'title': title,
+    }
 
 CORE_FIELD_ALIASES_ZH = {
     '标题': ['资源名称', 'Title', 'Resource Name'],
@@ -436,6 +478,16 @@ def search():
 
         return jsonify({'items': results})
 
+    if source == 'url':
+        url = str(data.get('url') or '').strip()
+        if not url:
+            return jsonify({"status": "error", "message": "Missing URL"}), 400
+        try:
+            data = fetch_url_content(url)
+            data['url'] = url
+        except Exception as error:
+            print(f"URL Fetch Error: {error}")
+            return jsonify({"status": "error", "message": f"Failed to fetch URL: {error}"}), 400
     if not force_reanalyze:
         history_payload = _lookup_history_payload(
             source=source,
@@ -449,6 +501,8 @@ def search():
     html = data.get('html', '')
     url = data.get('url', '')
     title = data.get('title', '')
+    if not str(text or '').strip() and source == 'text':
+        return jsonify({"status": "error", "message": "Missing text"}), 400
     print("Asking LLM to process text")
     print(
         f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
@@ -459,10 +513,13 @@ def search():
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
         return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
+    except Exception as error:
+        print(f"Processing Error: {error}")
+        return jsonify({"status": "error", "message": f"Failed to process text: {error}"}), 500
 
     print("LLM processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
-    return merged_answer
+    return jsonify(merged_answer)
 
 
 @app.route('/history/lookup', methods=['GET'])

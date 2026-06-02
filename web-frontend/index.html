@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadata Organizer Web</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="top-nav">
+        <div class="container nav-inner">
+            <div class="brand">Metadata Organizer</div>
+            <div class="lang-toggle" role="group" aria-label="Language switcher">
+                <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
+                <button id="langEnButton" class="lang-button" type="button" data-language="en">EN</button>
+            </div>
+        </div>
+    </header>
+
+    <section class="page-hero">
+        <div class="container hero-inner">
+            <h1 id="startTitle">Metadata Organizer</h1>
+            <p id="startDescription">请选择分析方式：输入 URL / 上传文件 / 输入 DOI/CSTR</p>
+        </div>
+    </section>
+
+    <main class="container page-main">
+        <section id="startScreen" class="start-screen">
+            <div class="start-actions">
+                <button id="chooseUrlButton" class="start-button primary" type="button">
+                    <span id="chooseUrlLabel">输入 URL</span>
+                    <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
+                </button>
+                <button id="chooseUploadButton" class="start-button secondary" type="button">
+                    <span id="chooseUploadLabel">上传数据</span>
+                    <small id="chooseUploadHint">上传 JSON / TXT 等文本文件</small>
+                </button>
+                <button id="chooseIdentifierButton" class="start-button secondary" type="button">
+                    <span id="chooseIdentifierLabel">输入 DOI/CSTR</span>
+                    <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
+                </button>
+            </div>
+        </section>
+
+        <section id="analysisWorkspace">
+            <div class="toolbar">
+                <div class="tool-actions">
+                    <button id="refreshButton" class="btn secondary" type="button">刷新</button>
+                    <button id="downloadButton" class="btn primary" type="button">下载</button>
+                </div>
+            </div>
+
+            <section id="urlPanel" class="input-panel" hidden>
+                <h2 id="urlTitle">输入 URL</h2>
+                <p id="urlDescription">输入一个网页地址，后端会直接抓取并分析</p>
+                <textarea id="urlInput" class="form-textarea" rows="4" placeholder="https://example.com"></textarea>
+                <div class="input-actions">
+                    <button id="confirmUrlButton" class="btn primary" type="button">确认并分析</button>
+                    <button id="clearUrlButton" class="btn secondary" type="button">清空</button>
+                </div>
+            </section>
+
+            <section id="uploadPanel" class="input-panel" hidden>
+                <div id="uploadIdleState" class="upload-state">
+                    <h2 id="uploadTitle">上传数据文件</h2>
+                    <p id="uploadDescription">支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG</p>
+                    <button id="uploadButton" class="btn primary" type="button">选择文件</button>
+                </div>
+                <div id="uploadSelectedState" class="upload-state" hidden>
+                    <div id="selectedFileName" class="selected-file-name">尚未选择文件</div>
+                    <div class="input-actions">
+                        <button id="confirmUploadButton" class="btn primary" type="button">确认并分析</button>
+                        <button id="reselectUploadButton" class="btn secondary" type="button">重新选择</button>
+                    </div>
+                </div>
+                <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
+            </section>
+
+            <section id="identifierPanel" class="input-panel" hidden>
+                <h2 id="identifierTitle">输入 DOI/CSTR</h2>
+                <p id="identifierDescription">支持单个或多个 DOI / CSTR，多个编号可用换行、空格或逗号分隔</p>
+                <textarea id="identifierInput" class="form-textarea" rows="5" placeholder="10.xxxx/example 或 12345.12.123456.123456"></textarea>
+                <div class="input-actions">
+                    <button id="confirmIdentifierButton" class="btn primary" type="button">确认并分析</button>
+                    <button id="clearIdentifierButton" class="btn secondary" type="button">清空</button>
+                </div>
+            </section>
+
+            <section class="mode-switcher" aria-label="元数据模式切换">
+                <button class="mode-button active" data-mode="common" type="button">通用元数据项目表</button>
+                <button class="mode-button" data-mode="domain" type="button">领域专用元数据项目表</button>
+            </section>
+
+            <section id="identifierSelector" class="identifier-selector" hidden>
+                <label id="identifierSelectLabel" for="identifierSelect">选择标识符</label>
+                <select id="identifierSelect" class="identifier-select"></select>
+                <div id="identifierError" class="status-tag error" hidden></div>
+            </section>
+
+            <div id="status" class="status-tag info" hidden></div>
+
+            <section id="analysisContent" class="analysis-grid">
+                <article class="result-card">
+                    <div class="card-head">
+                        <h2 id="modeTitle">通用元数据项目表</h2>
+                        <span id="lastUpdated" class="panel-meta"></span>
+                    </div>
+                    <div id="metadataRoot" class="metadata-root"></div>
+                </article>
+
+                <article class="result-card">
+                    <div class="card-head">
+                        <h2 id="extensionTitle">扩展信息</h2>
+                    </div>
+                    <pre id="extensionInfo" class="extension-info empty">等待提取结果</pre>
+                </article>
+            </section>
+        </section>
+    </main>
+
+    <footer class="page-footer">
+        <div class="container footer-inner">
+            <span>Metadata Organizer Web Frontend</span>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
