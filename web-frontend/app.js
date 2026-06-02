@@ -446,7 +446,8 @@ const state = {
     identifierResults: [],
     currentIdentifierIndex: 0,
     urlInput: "",
-    urlResultReady: false
+    urlResultReady: false,
+    isRefreshing: false
 };
 
 function isObject(value) {
@@ -1080,6 +1081,10 @@ function clearAnalysisView() {
 }
 
 async function refreshCurrentMode() {
+    if (state.isRefreshing) {
+        return;
+    }
+    state.isRefreshing = true;
     const mode = state.mode;
     try {
         await loadModeSchema(mode);
@@ -1102,6 +1107,8 @@ async function refreshCurrentMode() {
     } catch (error) {
         console.error(error);
         updateStatus(`${getUIText().errorPrefix}${error.message}`, "error");
+    } finally {
+        state.isRefreshing = false;
     }
 }
 
@@ -1159,8 +1166,10 @@ function clearUrlInput() {
 
 async function confirmUrlAndAnalyze() {
     state.urlInput = document.getElementById("urlInput").value.trim();
+    state.resultCache = getSourceResultCache();
+    delete state.resultCache.common;
+    delete state.resultCache.domain;
     state.urlResultReady = false;
-    updateStaticText();
     await refreshCurrentMode();
 }
 
@@ -1239,11 +1248,6 @@ function bindEvents() {
     document.getElementById("urlInput").addEventListener("input", (event) => {
         state.urlInput = event.target.value;
         state.urlResultReady = false;
-        state.resultCache = getSourceResultCache();
-        delete state.resultCache.common;
-        delete state.resultCache.domain;
-        clearAnalysisView();
-        setAnalysisVisibility();
     });
     document.getElementById("identifierInput").addEventListener("input", (event) => {
         state.identifierInput = event.target.value;
