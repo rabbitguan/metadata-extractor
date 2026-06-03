@@ -1,4 +1,5 @@
-const BACKEND_WEB_URL = 'http://127.0.0.1:4000/info';
+const BACKEND_QUERY_URL = 'http://127.0.0.1:4000/query';
+const BACKEND_REGISTER_URL = 'http://127.0.0.1:4000/register';
 const HISTORY_LOOKUP_URL = 'http://127.0.0.1:4000/history/lookup';
 
 const LABEL_TRANSLATIONS_EN = {
@@ -973,7 +974,7 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
-    const response = await fetch(BACKEND_WEB_URL, {
+    const response = await fetch(BACKEND_REGISTER_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1087,7 +1088,7 @@ async function requestMetadataFromIdentifiers(mode) {
     }
 
     updateStatus(getUIText(language).loadingIdentifier, 'loading');
-    const response = await fetch(BACKEND_WEB_URL, {
+    const response = await fetch(BACKEND_QUERY_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
