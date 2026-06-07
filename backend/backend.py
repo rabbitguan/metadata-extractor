@@ -428,55 +428,55 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
-@app.route('/info', methods=['POST'])
-def search():
-    print("Received request")
-    data = request.get_json() or {}
+def handle_identifier_request(data):
+    mode = data.get('mode', 'common')
+    items, error_payload = resolve_identifier_content(data)
+    if error_payload:
+        return jsonify({"status": "error", **error_payload}), 400
+
+    results = []
+    for item in items:
+        if item.get('status') != 'ok':
+            results.append(item)
+            continue
+        text = item.get('content', '')
+        url = item.get('resolved_url', '')
+        title = item.get('title', '')
+        try:
+            print("Asking LLM to process identifier content")
+            print(
+                f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
+            )
+            payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+            results.append({
+                'identifier': item.get('identifier'),
+                'type': item.get('type'),
+                'resolved_url': url,
+                'source': item.get('source'),
+                'status': 'ok',
+                'payload': payload,
+                'updated_at': datetime.utcnow().isoformat() + 'Z',
+            })
+        except (json.JSONDecodeError, ValueError, TypeError) as error:
+            print(f"LLM Error: {error}")
+            results.append({
+                'identifier': item.get('identifier'),
+                'type': item.get('type'),
+                'resolved_url': url,
+                'source': item.get('source'),
+                'status': 'error',
+                'message': 'Invalid bilingual JSON format from LLM',
+                'updated_at': datetime.utcnow().isoformat() + 'Z',
+            })
+
+    return jsonify({'items': results})
+
+
+def handle_register_request(data):
     source = data.get('source', 'text')
     mode = data.get('mode', 'common')
     strategy = data.get('strategy', 'auto')
     force_reanalyze = _parse_bool(data.get('force_reanalyze', False))
-    if source == 'identifier':
-        items, error_payload = resolve_identifier_content(data)
-        if error_payload:
-            return jsonify({"status": "error", **error_payload}), 400
-
-        results = []
-        for item in items:
-            if item.get('status') != 'ok':
-                results.append(item)
-                continue
-            text = item.get('content', '')
-            url = item.get('resolved_url', '')
-            title = item.get('title', '')
-            try:
-                print("Asking LLM to process identifier content")
-                print(
-                    f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
-                )
-                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
-                results.append({
-                    'identifier': item.get('identifier'),
-                    'type': item.get('type'),
-                    'resolved_url': url,
-                    'source': item.get('source'),
-                    'status': 'ok',
-                    'payload': payload,
-                    'updated_at': datetime.utcnow().isoformat() + 'Z',
-                })
-            except (json.JSONDecodeError, ValueError, TypeError) as error:
-                print(f"LLM Error: {error}")
-                results.append({
-                    'identifier': item.get('identifier'),
-                    'type': item.get('type'),
-                    'resolved_url': url,
-                    'source': item.get('source'),
-                    'status': 'error',
-                    'message': 'Invalid bilingual JSON format from LLM',
-                    'updated_at': datetime.utcnow().isoformat() + 'Z',
-                })
-
-        return jsonify({'items': results})
 
     if source == 'url':
         url = str(data.get('url') or '').strip()
@@ -488,6 +488,7 @@ def search():
         except Exception as error:
             print(f"URL Fetch Error: {error}")
             return jsonify({"status": "error", "message": f"Failed to fetch URL: {error}"}), 400
+
     if not force_reanalyze:
         history_payload = _lookup_history_payload(
             source=source,
@@ -501,7 +502,7 @@ def search():
     html = data.get('html', '')
     url = data.get('url', '')
     title = data.get('title', '')
-    if not str(text or '').strip() and source == 'text':
+    if not str(text or '').strip() and source in {'text', 'web'}:
         return jsonify({"status": "error", "message": "Missing text"}), 400
     print("Asking LLM to process text")
     print(
@@ -520,6 +521,20 @@ def search():
     print("LLM processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return jsonify(merged_answer)
+
+
+@app.route('/query', methods=['POST'])
+def query():
+    print("Received query request")
+    data = request.get_json() or {}
+    return handle_identifier_request(data)
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    print("Received register request")
+    data = request.get_json() or {}
+    return handle_register_request(data)
 
 
 @app.route('/history/lookup', methods=['GET'])

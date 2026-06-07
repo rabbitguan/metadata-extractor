@@ -1,4 +1,5 @@
-const BACKEND_WEB_URL = "http://127.0.0.1:4000/info";
+const BACKEND_QUERY_URL = "http://127.0.0.1:4000/query";
+const BACKEND_REGISTER_URL = "http://127.0.0.1:4000/register";
 
 const STANDARD_SCHEMA = JSON.parse(`{
     "资源类型候选列表": [
@@ -636,9 +637,9 @@ async function loadModeSchema(mode) {
     return schemaRoot;
 }
 
-async function requestInfo(payload, loadingText) {
+async function requestBackend(url, payload, loadingText) {
     updateStatus(loadingText, "loading");
-    const response = await fetch(BACKEND_WEB_URL, {
+    const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -652,7 +653,7 @@ async function requestInfo(payload, loadingText) {
 
 async function requestMetadataFromText(mode, text, { title = "", url = "", html = "", strategy = "auto" } = {}) {
     if (!text) throw new Error(state.language === "zh" ? "没有可发送给大模型的内容" : "No text to analyze");
-    const payload = await requestInfo({
+    const payload = await requestBackend(BACKEND_REGISTER_URL, {
         source: "text",
         text,
         html,
@@ -673,7 +674,7 @@ async function requestMetadataFromUrl(mode) {
     const url = normalizeUrlInput(state.urlInput || "");
     if (!url) throw new Error(state.language === "zh" ? "请输入网页 URL" : "Please enter a URL");
 
-    const payload = await requestInfo({
+    const payload = await requestBackend(BACKEND_REGISTER_URL, {
         source: "url",
         url,
         mode
@@ -690,7 +691,7 @@ async function requestMetadataFromIdentifiers(mode) {
     const identifiers = normalizeWhitespace(state.identifierInput || "");
     if (!identifiers) throw new Error(state.language === "zh" ? "请输入 DOI 或 CSTR 编号" : "Please input DOI or CSTR");
 
-    const payload = await requestInfo({
+    const payload = await requestBackend(BACKEND_QUERY_URL, {
         source: "identifier",
         identifiers,
         mode
