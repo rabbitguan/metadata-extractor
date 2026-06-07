@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
-from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
+from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN, LLMUnavailableError, is_llm_enabled
 from field_filter import apply_requirement_filter
 from get_id import get_typed_identifiers
 from identifier import process_source_code
@@ -325,6 +325,9 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     llm_answer = normalize_llm_answer(
         qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
     )
+    if llm_answer.get('error') in {'llm_disabled', 'rule_not_matched'}:
+        raise LLMUnavailableError(llm_answer.get('message', '尚未支持该格式或内容结构'))
+
     zh_answer = llm_answer.get('zh')
     en_answer = llm_answer.get('en')
     if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
@@ -428,6 +431,16 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
+def _unsupported_extraction_message(source='text'):
+    if source in {'url', 'web'}:
+        return '尚未支持该网页或资源格式'
+    if source == 'upload':
+        return '尚未支持该文件格式或内容结构'
+    if source == 'identifier':
+        return '尚未支持该标识符解析后的资源格式'
+    return '尚未支持该格式或内容结构'
+
+
 def handle_identifier_request(data):
     mode = data.get('mode', 'common')
     items, error_payload = resolve_identifier_content(data)
@@ -443,7 +456,7 @@ def handle_identifier_request(data):
         url = item.get('resolved_url', '')
         title = item.get('title', '')
         try:
-            print("Asking LLM to process identifier content")
+            print("Processing identifier content")
             print(
                 f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
             )
@@ -455,6 +468,17 @@ def handle_identifier_request(data):
                 'source': item.get('source'),
                 'status': 'ok',
                 'payload': payload,
+                'updated_at': datetime.utcnow().isoformat() + 'Z',
+            })
+        except LLMUnavailableError as error:
+            print(f"Fallback extraction unavailable: {error}")
+            results.append({
+                'identifier': item.get('identifier'),
+                'type': item.get('type'),
+                'resolved_url': url,
+                'source': item.get('source'),
+                'status': 'error',
+                'message': _unsupported_extraction_message('identifier'),
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
             })
         except (json.JSONDecodeError, ValueError, TypeError) as error:
@@ -504,13 +528,16 @@ def handle_register_request(data):
     title = data.get('title', '')
     if not str(text or '').strip() and source in {'text', 'web'}:
         return jsonify({"status": "error", "message": "Missing text"}), 400
-    print("Asking LLM to process text")
+    print("Processing metadata request")
     print(
         f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
     )
 
     try:
         merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy)
+    except LLMUnavailableError as error:
+        print(f"Fallback extraction unavailable: {error}")
+        return jsonify({"status": "error", "message": _unsupported_extraction_message(source)}), 422
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
         return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
@@ -518,7 +545,7 @@ def handle_register_request(data):
         print(f"Processing Error: {error}")
         return jsonify({"status": "error", "message": f"Failed to process text: {error}"}), 500
 
-    print("LLM processing complete")
+    print("Metadata processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return jsonify(merged_answer)
 
@@ -535,6 +562,11 @@ def register():
     print("Received register request")
     data = request.get_json() or {}
     return handle_register_request(data)
+
+
+@app.route('/features', methods=['GET'])
+def features():
+    return jsonify({'llm_enabled': is_llm_enabled()})
 
 
 @app.route('/history/lookup', methods=['GET'])

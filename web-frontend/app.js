@@ -652,7 +652,7 @@ async function requestBackend(url, payload, loadingText) {
 }
 
 async function requestMetadataFromText(mode, text, { title = "", url = "", html = "", strategy = "auto" } = {}) {
-    if (!text) throw new Error(state.language === "zh" ? "没有可发送给大模型的内容" : "No text to analyze");
+    if (!text) throw new Error(state.language === "zh" ? "没有可分析的内容" : "No text to analyze");
     const payload = await requestBackend(BACKEND_REGISTER_URL, {
         source: "text",
         text,

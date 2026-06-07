@@ -1,18 +1,65 @@
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
 
-from openai import OpenAI
 from extractors.manager import extract_metadata, list_extractors
-
-client = OpenAI(
-    api_key="sk-48c71abcf3a34104ad4870cd2c382b7a",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
 
 BASE_DIR = Path(__file__).resolve().parent
 STANDARD_PATH = BASE_DIR / 'standard.json'
+LLM_CONFIG_PATH = BASE_DIR / 'llm_config.json'
+LLM_UNSUPPORTED_MESSAGE = '尚未支持该格式或内容结构'
+DEFAULT_LLM_CONFIG = {
+    'enabled': False,
+    'model': 'qwen3-8b',
+    'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'api_key': '',
+}
+_client = None
+
+
+class LLMUnavailableError(RuntimeError):
+    pass
+
+
+def load_llm_config():
+    config = dict(DEFAULT_LLM_CONFIG)
+    if LLM_CONFIG_PATH.exists():
+        with LLM_CONFIG_PATH.open('r', encoding='utf-8') as file:
+            loaded = json.load(file)
+        if isinstance(loaded, dict):
+            config.update({key: loaded.get(key, value) for key, value in DEFAULT_LLM_CONFIG.items()})
+    return config
+
+
+def _parse_enabled(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
+
+def is_llm_enabled():
+    return _parse_enabled(load_llm_config().get('enabled'))
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        from openai import OpenAI
+
+        config = load_llm_config()
+        api_key = config.get('api_key') or os.getenv('DASHSCOPE_API_KEY')
+        if not api_key:
+            raise LLMUnavailableError('模型服务配置缺少 api_key')
+
+        _client = OpenAI(
+            api_key=api_key,
+            base_url=config.get('base_url') or DEFAULT_LLM_CONFIG['base_url'],
+        )
+    return _client
 
 DOMAIN_CANDIDATES_ZH = ['核心元数据', '数据集元数据', '数据论文元数据']
 DOMAIN_CANDIDATES_EN = ['Core Metadata', 'Dataset Metadata', 'Data Paper Metadata']
@@ -619,12 +666,20 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
             }
     
     # 第二步：如果未检测到已知网站，则调用大模型
+    if not is_llm_enabled():
+        return {
+            "error": "llm_disabled",
+            "message": LLM_UNSUPPORTED_MESSAGE,
+            "available_extractors": list_extractors(),
+        }
+
     print("[LLM Processing] 使用大模型处理...")
     pre_type_zh = classify_resource_type(content, url=url, title=title)
     prompt = _build_prompt(content, standard, url=url, title=title, preclassified_type=pre_type_zh)
+    config = load_llm_config()
 
-    completion = client.chat.completions.create(
-        model="qwen3-8b",
+    completion = _get_client().chat.completions.create(
+        model=config.get('model') or DEFAULT_LLM_CONFIG['model'],
         messages=[
             {"role": "system", "content": "You are a strict JSON-output assistant. Only output the requested JSON."},
             {"role": "user", "content": prompt},
