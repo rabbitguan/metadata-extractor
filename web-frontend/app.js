@@ -308,7 +308,7 @@ const MODE_LABELS = {
 
 const UI_TEXT = {
     zh: {
-        startTitle: "Metadata Organizer",
+        startTitle: "元数据整理工具",
         startDescription: "请选择分析方式：输入 URL / 上传文件 / 输入 DOI/CSTR",
         chooseUrlLabel: "输入 URL",
         chooseUrlHint: "输入网页地址后由后端直接抓取分析",
