@@ -1,0 +1,33 @@
+  417  mv metadata-extractor/metadata-backend.tar metadata-backend.tar
+  420  docker load -i /opt/metadata-backend.tar 
+  421  mkdir -p /opt/metadata-extractor-data
+  422  touch /opt/metadata-extractor-data/metadata_history.sqlite3
+  423  docker run -d   --name metadata-backend   --restart unless-stopped   -p 127.0.0.1:4000:4000   -v /opt/metadata-extractor-data/metadata_history.sqlite3:/app/metadata_history.sqlite3   metadata-backend:latest
+  427  curl -X POST http://127.0.0.1:4000/query   -H "Content-Type: application/json"   -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'
+  429  vim /etc/nginx/sites-available/metadata-backend
+  430  ln -s /etc/nginx/sites-available/metadata-backend /etc/nginx/sites-enabled/metadata-backend
+  436  nginx -t
+  444  docker ps | grep ':80' # 有 docker 在占用
+
+  # 取消 nginx default 的 80 占用
+  445  ls -l /etc/nginx/sites-enabled/default
+  446  mkdir -p /opt/metadata-nginx-backup
+  447  ls -l /etc/nginx/sites-enabled/ | tee /opt/metadata-nginx-backup/sites-enabled-list-before.txt
+  448  readlink -f /etc/nginx/sites-enabled/default | tee /opt/metadata-nginx-backup/default-link-target.txt
+  449  cp /etc/nginx/sites-available/default /opt/metadata-nginx-backup/default.conf.bak
+  450  unlink /etc/nginx/sites-enabled/default
+  
+  451  ln -s /etc/nginx/sites-available/metadata-backend /etc/nginx/sites-enabled/metadata-backend
+  452  grep -R "listen .*80" /etc/nginx/sites-enabled /etc/nginx/conf.d /etc/nginx/nginx.conf
+  453  nginx -t
+  454  systemctl start nginx
+  455  systemctl status nginx
+  458  ss -lntp | grep ':21097'
+  459  docker ps | grep metadata-backend
+  460  curl -X POST http://127.0.0.1:21097/query   -H "Content-Type: application/json"   -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'
+  461  history
+
+  远程测试：
+  
+   4334  curl -X POST http://8.130.186.178:21097/query \\n  -H "Content-Type: application/json" \\n  -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'\n
+   4336  curl -X POST http://8.130.186.178:21097/register \\n  -H "Content-Type: application/json" \\n  -d '{\n    "source": "url",\n    "url": "https://arxiv.org/abs/2303.14524",\n    "mode": "common",\n    "strategy": "auto"\n  }'\n

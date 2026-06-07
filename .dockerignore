@@ -1,0 +1,17 @@
+.git
+.pytest_cache
+__pycache__
+*.pyc
+.venv
+venv
+env
+.env
+*.log
+*.tmp
+*.bak
+.DS_Store
+backend/__pycache__
+backend/metadata_history.sqlite3
+frontend
+web-frontend
+temp.txt
