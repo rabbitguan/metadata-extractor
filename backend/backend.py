@@ -188,6 +188,54 @@ def _merge_missing_values(primary, fallback):
     return primary
 
 
+def _iter_url_values(value):
+    if _is_missing_value(value):
+        return
+
+    if isinstance(value, str):
+        for match in URL_PATTERN.finditer(value):
+            yield match.group(0)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_url_values(item)
+        return
+
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_url_values(item)
+
+
+def _extract_core_resource_urls(payload, current_url=''):
+    if not isinstance(payload, dict):
+        return []
+
+    candidates = []
+    seen = set()
+    current_normalized = _normalize_url_candidate(current_url)
+
+    def add_url(candidate):
+        normalized = _normalize_url_candidate(candidate)
+        if not normalized or normalized == current_normalized or normalized in seen:
+            return
+        candidates.append(normalized)
+        seen.add(normalized)
+
+    zh_core = ((payload.get('zh') or {}).get('核心元数据') or {})
+    en_core = ((payload.get('en') or {}).get('Core Metadata') or {})
+
+    if isinstance(zh_core, dict):
+        for url in _iter_url_values(zh_core.get('资源链接')):
+            add_url(url)
+
+    if isinstance(en_core, dict):
+        for url in _iter_url_values(en_core.get('Resource URL')):
+            add_url(url)
+
+    return candidates
+
+
 def _normalize_whitespace(value):
     return re.sub(r'\s+', ' ', str(value or '')).strip()
 
@@ -431,6 +479,30 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
+def build_url_metadata_payload(url, mode, strategy='auto'):
+    data = fetch_url_content(url)
+    return build_metadata_payload(
+        data.get('text', ''),
+        mode,
+        url=url,
+        title=data.get('title', ''),
+        html=data.get('html', ''),
+        strategy=strategy,
+    )
+
+
+def supplement_payload_from_resource_url(payload, mode, current_url=''):
+    for url in _extract_core_resource_urls(payload, current_url=current_url)[:1]:
+        try:
+            fallback_payload = build_url_metadata_payload(url, mode, strategy='auto')
+            return _merge_missing_values(payload, fallback_payload)
+        except Exception as error:
+            print(f"[WARNING] Failed to supplement metadata from resource URL {url}: {error}")
+            return payload
+
+    return payload
+
+
 def _unsupported_extraction_message(source='text'):
     if source in {'url', 'web'}:
         return '尚未支持该网页或资源格式'
@@ -461,6 +533,7 @@ def handle_identifier_request(data):
                 f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
             )
             payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+            payload = supplement_payload_from_resource_url(payload, mode, current_url=url)
             results.append({
                 'identifier': item.get('identifier'),
                 'type': item.get('type'),
