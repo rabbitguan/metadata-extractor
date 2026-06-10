@@ -29,5 +29,7 @@
 
   远程测试：
   
-   4334  curl -X POST http://8.130.186.178:21097/query \\n  -H "Content-Type: application/json" \\n  -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'\n
-   4336  curl -X POST http://8.130.186.178:21097/register \\n  -H "Content-Type: application/json" \\n  -d '{\n    "source": "url",\n    "url": "https://arxiv.org/abs/2303.14524",\n    "mode": "common",\n    "strategy": "auto"\n  }'\n
+   4334  curl -X POST http://8.130.186.178:21097/query   -H "Content-Type: application/json"   -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'
+   4336  curl -X POST http://8.130.186.178:21097/register   -H "Content-Type: application/json"   -d '{    "source": "url",    "url": "https://arxiv.org/abs/2303.14524",    "mode": "common",    "strategy": "auto"  }'
+
+   curl -X POST http://8.130.186.178:21097/query   -H "Content-Type: application/json"   -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'

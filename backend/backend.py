@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
-from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
+from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN, LLMUnavailableError, is_llm_enabled
 from field_filter import apply_requirement_filter
 from get_id import get_typed_identifiers
 from identifier import process_source_code
@@ -188,6 +188,54 @@ def _merge_missing_values(primary, fallback):
     return primary
 
 
+def _iter_url_values(value):
+    if _is_missing_value(value):
+        return
+
+    if isinstance(value, str):
+        for match in URL_PATTERN.finditer(value):
+            yield match.group(0)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_url_values(item)
+        return
+
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_url_values(item)
+
+
+def _extract_core_resource_urls(payload, current_url=''):
+    if not isinstance(payload, dict):
+        return []
+
+    candidates = []
+    seen = set()
+    current_normalized = _normalize_url_candidate(current_url)
+
+    def add_url(candidate):
+        normalized = _normalize_url_candidate(candidate)
+        if not normalized or normalized == current_normalized or normalized in seen:
+            return
+        candidates.append(normalized)
+        seen.add(normalized)
+
+    zh_core = ((payload.get('zh') or {}).get('核心元数据') or {})
+    en_core = ((payload.get('en') or {}).get('Core Metadata') or {})
+
+    if isinstance(zh_core, dict):
+        for url in _iter_url_values(zh_core.get('资源链接')):
+            add_url(url)
+
+    if isinstance(en_core, dict):
+        for url in _iter_url_values(en_core.get('Resource URL')):
+            add_url(url)
+
+    return candidates
+
+
 def _normalize_whitespace(value):
     return re.sub(r'\s+', ' ', str(value or '')).strip()
 
@@ -325,6 +373,9 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     llm_answer = normalize_llm_answer(
         qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
     )
+    if llm_answer.get('error') in {'llm_disabled', 'rule_not_matched'}:
+        raise LLMUnavailableError(llm_answer.get('message', '尚未支持该格式或内容结构'))
+
     zh_answer = llm_answer.get('zh')
     en_answer = llm_answer.get('en')
     if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
@@ -428,6 +479,40 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
+def build_url_metadata_payload(url, mode, strategy='auto'):
+    data = fetch_url_content(url)
+    return build_metadata_payload(
+        data.get('text', ''),
+        mode,
+        url=url,
+        title=data.get('title', ''),
+        html=data.get('html', ''),
+        strategy=strategy,
+    )
+
+
+def supplement_payload_from_resource_url(payload, mode, current_url=''):
+    for url in _extract_core_resource_urls(payload, current_url=current_url)[:1]:
+        try:
+            fallback_payload = build_url_metadata_payload(url, mode, strategy='auto')
+            return _merge_missing_values(payload, fallback_payload)
+        except Exception as error:
+            print(f"[WARNING] Failed to supplement metadata from resource URL {url}: {error}")
+            return payload
+
+    return payload
+
+
+def _unsupported_extraction_message(source='text'):
+    if source in {'url', 'web'}:
+        return '尚未支持该网页或资源格式'
+    if source == 'upload':
+        return '尚未支持该文件格式或内容结构'
+    if source == 'identifier':
+        return '尚未支持该标识符解析后的资源格式'
+    return '尚未支持该格式或内容结构'
+
+
 def handle_identifier_request(data):
     mode = data.get('mode', 'common')
     items, error_payload = resolve_identifier_content(data)
@@ -443,11 +528,12 @@ def handle_identifier_request(data):
         url = item.get('resolved_url', '')
         title = item.get('title', '')
         try:
-            print("Asking LLM to process identifier content")
+            print("Processing identifier content")
             print(
                 f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
             )
             payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+            payload = supplement_payload_from_resource_url(payload, mode, current_url=url)
             results.append({
                 'identifier': item.get('identifier'),
                 'type': item.get('type'),
@@ -455,6 +541,17 @@ def handle_identifier_request(data):
                 'source': item.get('source'),
                 'status': 'ok',
                 'payload': payload,
+                'updated_at': datetime.utcnow().isoformat() + 'Z',
+            })
+        except LLMUnavailableError as error:
+            print(f"Fallback extraction unavailable: {error}")
+            results.append({
+                'identifier': item.get('identifier'),
+                'type': item.get('type'),
+                'resolved_url': url,
+                'source': item.get('source'),
+                'status': 'error',
+                'message': _unsupported_extraction_message('identifier'),
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
             })
         except (json.JSONDecodeError, ValueError, TypeError) as error:
@@ -504,13 +601,16 @@ def handle_register_request(data):
     title = data.get('title', '')
     if not str(text or '').strip() and source in {'text', 'web'}:
         return jsonify({"status": "error", "message": "Missing text"}), 400
-    print("Asking LLM to process text")
+    print("Processing metadata request")
     print(
         f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
     )
 
     try:
         merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy)
+    except LLMUnavailableError as error:
+        print(f"Fallback extraction unavailable: {error}")
+        return jsonify({"status": "error", "message": _unsupported_extraction_message(source)}), 422
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
         return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
@@ -518,7 +618,7 @@ def handle_register_request(data):
         print(f"Processing Error: {error}")
         return jsonify({"status": "error", "message": f"Failed to process text: {error}"}), 500
 
-    print("LLM processing complete")
+    print("Metadata processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return jsonify(merged_answer)
 
@@ -535,6 +635,11 @@ def register():
     print("Received register request")
     data = request.get_json() or {}
     return handle_register_request(data)
+
+
+@app.route('/features', methods=['GET'])
+def features():
+    return jsonify({'llm_enabled': is_llm_enabled()})
 
 
 @app.route('/history/lookup', methods=['GET'])

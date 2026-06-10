@@ -32,6 +32,73 @@ def _split_authors_from_meta(val: Optional[str]) -> list:
     return parts
 
 
+def _value(value):
+    return {'value': value}
+
+
+def _first_available(*values):
+    for value in values:
+        if value:
+            return value
+    return None
+
+
+def _canonical_url(soup: BeautifulSoup, fallback: str = '') -> Optional[str]:
+    link = soup.find('link', {'rel': 'canonical'})
+    if link and link.get('href'):
+        return link.get('href').strip() or None
+    return _first_available(
+        _get_meta(soup, 'citation_abstract_html_url'),
+        _get_meta(soup, 'og:url'),
+        fallback or None,
+    )
+
+
+def _citation_text(*, authors, title_text, journal, year, volume, issue, pages, doi, pmid):
+    chunks = []
+    if authors:
+        chunks.append(', '.join(authors) if isinstance(authors, list) else str(authors))
+    if title_text:
+        chunks.append(str(title_text))
+    journal_parts = []
+    if journal:
+        journal_parts.append(str(journal))
+    if year:
+        journal_parts.append(str(year))
+    if volume:
+        volume_text = str(volume)
+        if issue:
+            volume_text = f"{volume_text}({issue})"
+        journal_parts.append(volume_text)
+    if pages:
+        journal_parts.append(str(pages))
+    if journal_parts:
+        chunks.append('. '.join(journal_parts))
+    if doi:
+        chunks.append(f"doi: {doi}")
+    if pmid:
+        chunks.append(f"PMID: {pmid}")
+    return '. '.join(chunks) if chunks else None
+
+
+def _extension_info(*, journal, volume, issue, pages, doi, pmid, affiliations):
+    parts = []
+    for label, value in (
+        ('Journal', journal),
+        ('Volume', volume),
+        ('Issue', issue),
+        ('Pages', pages),
+        ('DOI', doi),
+        ('PMID', pmid),
+    ):
+        if value:
+            parts.append(f"{label}: {value}")
+    if affiliations:
+        aff_text = '; '.join(affiliations) if isinstance(affiliations, list) else str(affiliations)
+        parts.append(f"Affiliations: {aff_text}")
+    return '; '.join(parts) if parts else None
+
+
 def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, Any]]:
     """Extract basic metadata from a PubMed article page HTML.
 
@@ -142,39 +209,113 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     if mesh == []:
         mesh = None
 
+    alternative_identifiers = []
+    if doi:
+        alternative_identifiers.append(doi)
+    if pmid:
+        alternative_identifiers.append(f"PMID:{pmid}")
+
+    resource_url = _canonical_url(soup, url)
+    citation = _citation_text(
+        authors=authors,
+        title_text=title_text,
+        journal=journal,
+        year=year,
+        volume=volume,
+        issue=issue,
+        pages=pages,
+        doi=doi,
+        pmid=pmid,
+    )
+    extension_info = _extension_info(
+        journal=journal,
+        volume=volume,
+        issue=issue,
+        pages=pages,
+        doi=doi,
+        pmid=pmid,
+        affiliations=affs,
+    )
+
     payload = {
         'zh': {
-            '核心元数据': {
-                '标题': {'value': title_text},
-                '作者': {'value': authors},
-                '机构': {'value': affs},
-                '摘要': {'value': abstract},
-                '期刊': {'value': journal},
-                '年份': {'value': year},
-                '卷': {'value': volume},
-                '期': {'value': issue},
-                '页码': {'value': pages},
-                'DOI': {'value': doi},
-                'PMID': {'value': pmid},
-                'MeSH': {'value': mesh},
-            }
+            '标题': _value(title_text),
+            '创建者': _value(authors),
+            '发布机构': _value(journal),
+            '发布日期': _value(year),
+            '描述': _value(abstract),
+            '关键词': _value(mesh),
+            '语言': _value('en'),
+            '替代标识符': _value(alternative_identifiers or None),
+            '资源链接': _value(resource_url),
+            '资源类型判定': '数据论文',
+            '领域判定': '数据论文元数据',
+            '扩展信息': _value(extension_info),
+            '数据论文内容信息': {
+                '标识符': _value(doi or (f"PMID:{pmid}" if pmid else None)),
+                '标题': _value(title_text),
+                '摘要': _value(abstract),
+                '关键词': _value(mesh),
+                '数据论文作者': {
+                    '作者姓名': _value(authors),
+                    '工作单位': _value(affs),
+                },
+            },
+            '数据论文出版信息': {
+                '出版日期': _value(year),
+                '版本信息': _value(None),
+                '出版期刊': _value(journal),
+                '卷': _value(volume),
+                '期': _value(issue),
+                '页码': _value(pages),
+                'PMID': _value(pmid),
+                'DOI': _value(doi),
+            },
+            '数据论文服务信息': {
+                '数据论文引用格式': _value(citation),
+                '数据论文下载地址': _value(resource_url),
+                '数据论文共享许可协议': _value(None),
+            },
         },
         'en': {
-            '核心元数据': {
-                'Title': {'value': title_text},
-                'Authors': {'value': authors},
-                'Affiliations': {'value': affs},
-                'Abstract': {'value': abstract},
-                'Journal': {'value': journal},
-                'Year': {'value': year},
-                'Volume': {'value': volume},
-                'Issue': {'value': issue},
-                'Pages': {'value': pages},
-                'DOI': {'value': doi},
-                'PMID': {'value': pmid},
-                'MeSH': {'value': mesh},
-            }
-        }
+            'Title': _value(title_text),
+            'Creators': _value(authors),
+            'Publisher': _value(journal),
+            'Publication Date': _value(year),
+            'Description': _value(abstract),
+            'Keywords': _value(mesh),
+            'Language': _value('en'),
+            'Alternative Identifiers': _value(alternative_identifiers or None),
+            'Resource URL': _value(resource_url),
+            'Resource Type Classification': 'Data Paper',
+            'Domain Classification': 'Data Paper Metadata',
+            'Extension Info': _value(extension_info),
+            'Data Paper Content Information': {
+                'Identifier': _value(doi or (f"PMID:{pmid}" if pmid else None)),
+                'Title': _value(title_text),
+                'Abstract': _value(abstract),
+                'Keywords': _value(mesh),
+                'Data Paper Authors': {
+                    'Author Name': _value(authors),
+                    'Affiliation': _value(affs),
+                },
+            },
+            'Data Paper Publication Information': {
+                'Publication Date': _value(year),
+                'Version Information': _value(None),
+                'Journal': _value(journal),
+                'Volume': _value(volume),
+                'Issue': _value(issue),
+                'Pages': _value(pages),
+                'PMID': _value(pmid),
+                'DOI': _value(doi),
+            },
+            'Data Paper Service Information': {
+                'Data Paper Citation Format': _value(citation),
+                'Data Paper Download URL': _value(resource_url),
+                'Data Paper Sharing License': _value(None),
+            },
+        },
     }
 
     return payload

@@ -1,5 +1,6 @@
 const BACKEND_QUERY_URL = 'http://127.0.0.1:4000/query';
 const BACKEND_REGISTER_URL = 'http://127.0.0.1:4000/register';
+const BACKEND_FEATURES_URL = 'http://127.0.0.1:4000/features';
 const HISTORY_LOOKUP_URL = 'http://127.0.0.1:4000/history/lookup';
 
 const LABEL_TRANSLATIONS_EN = {
@@ -105,6 +106,103 @@ const LABEL_TRANSLATIONS_EN = {
     数据集访问地址: 'Dataset Access URL',
 };
 
+Object.assign(LABEL_TRANSLATIONS_EN, {
+    出版日期: 'Publication Date',
+    数据论文引用格式: 'Data Paper Citation',
+    记录状态: 'Record Status',
+    记录识别符: 'Record Identifier',
+    记录日期: 'Record Date',
+    标准号: 'Standard Number',
+    标准状态: 'Standard Status',
+    实施或试行日期: 'Effective or Trial Date',
+    确认日期: 'Confirmation Date',
+    被代替标准: 'Replaced Standard',
+    修改件: 'Amendment',
+    补充件: 'Supplement',
+    第二标准号: 'Secondary Standard Number',
+    批准单位: 'Approving Organization',
+    中文标准名称: 'Chinese Standard Name',
+    原文标准名称: 'Original Standard Name',
+    英文标准名称: 'English Standard Name',
+    发布机构代码: 'Publishing Organization Code',
+    中国标准分类号: 'Chinese Standard Classification Number',
+    国际标准分类号: 'International Classification for Standards Number',
+    有效区域: 'Applicable Region',
+    废止日期: 'Abolition Date',
+    原分类号: 'Original Classification Number',
+    起草单位: 'Drafting Organization',
+    截止日期: 'Expiration Date',
+    正文语种: 'Text Language',
+    出版单位: 'Publisher',
+    稽核项: 'Physical Description',
+    译文: 'Translation',
+    价格: 'Price',
+    其他载体: 'Other Carrier',
+    中文文摘: 'Chinese Abstract',
+    英文文摘: 'English Abstract',
+    英文主题词: 'English Subject Terms',
+    附注: 'Notes',
+    文献出处: 'Source',
+    代替标准: 'Replacing Standard',
+    引用文件: 'Referenced Documents',
+    相关法律: 'Related Laws',
+    一致性程度: 'Consistency Degree',
+    被修改件: 'Modified By Amendment',
+    被补充件: 'Supplemented By',
+    中文主题词: 'Chinese Subject Terms',
+    中文自由词: 'Chinese Free Terms',
+    原文主题词: 'Original Subject Terms',
+    索取号: 'Call Number',
+    馆藏标志: 'Collection Flag',
+    排序码: 'Sort Code',
+    标准类型: 'Standard Type',
+    文献类型: 'Document Type',
+    卷期号: 'Volume and Issue',
+    文献代号: 'Document Code',
+    出版周期: 'Publication Frequency',
+    出版地: 'Place of Publication',
+    密级: 'Security Classification',
+    提出单位: 'Proposing Organization',
+    归口单位: 'Technical Committee',
+    国别: 'Country or Region',
+    标引依据: 'Indexing Basis',
+    更新批号: 'Update Batch Number',
+    标准历史: 'Standard History',
+    参建单位: 'Participating Organization',
+    电子文件名称: 'Electronic File Name',
+    标识信息: 'Identification Information',
+    资源标识符: 'Resource Identifier',
+    数据集创建者: 'Dataset Creator',
+    创建日期: 'Creation Date',
+    最近修改日期: 'Last Modified Date',
+    使用限制: 'Use Constraints',
+    数据内容信息: 'Data Content Information',
+    数据实体: 'Data Entity',
+    实体名称: 'Entity Name',
+    实体描述: 'Entity Description',
+    实体类型: 'Entity Type',
+    数据质量与方法: 'Data Quality and Methods',
+    数据质量描述: 'Data Quality Description',
+    数据产生方法: 'Data Production Method',
+    质量控制说明: 'Quality Control Statement',
+    数据源: 'Data Source',
+    空间与时间覆盖范围: 'Spatial and Temporal Coverage',
+    地理范围描述: 'Geographic Coverage Description',
+    西部边界经度: 'Western Boundary Longitude',
+    东部边界经度: 'Eastern Boundary Longitude',
+    南部边界纬度: 'Southern Boundary Latitude',
+    北部边界纬度: 'Northern Boundary Latitude',
+    起始时间: 'Start Time',
+    结束时间: 'End Time',
+    项目与资助信息: 'Project and Funding Information',
+    项目名称: 'Project Name',
+    项目代码: 'Project Code',
+    资金来源: 'Funding Source',
+    分发与引用信息: 'Distribution and Citation Information',
+    数据集的引用格式: 'Dataset Citation Format',
+    数据集访问或下载地址: 'Dataset Access or Download URL',
+});
+
 const MODE_LABELS = {
     common: {
         zh: '通用元数据项目表',
@@ -163,6 +261,7 @@ const UI_TEXT = {
         downloadBlocked: '当前语言尚未完成提取，无法下载。',
         refreshTitle: '重新加载',
         downloadTitle: '下载',
+        homeTitle: '返回初始页',
         languageZh: '中',
         languageEn: 'EN',
         errorPrefix: '提取失败: ',
@@ -211,10 +310,11 @@ const UI_TEXT = {
         loadingExtract: 'Extracting page text...',
         loadingFile: 'Reading file content...',
         loadingIdentifier: 'Resolving DOI/CSTR...',
-        loadingSend: 'Sending to the model...',
+        loadingSend: 'Analyzing...',
         downloadBlocked: 'Nothing is ready to download yet.',
         refreshTitle: 'Reload',
         downloadTitle: 'Download',
+        homeTitle: 'Back to start',
         languageZh: '中',
         languageEn: 'EN',
         errorPrefix: 'Extraction failed: ',
@@ -249,6 +349,7 @@ const state = {
     urlInput: '',
     urlResultReady: false,
     urlHistoryUsed: false,
+    llmEnabled: false,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -384,7 +485,7 @@ function setAnalysisVisibility() {
         return;
     }
 
-    llmRow.hidden = false;
+    llmRow.hidden = !state.llmEnabled;
     uploadPanel.hidden = true;
     identifierPanel.hidden = true;
     urlPanel.hidden = true;
@@ -970,7 +1071,7 @@ async function waitForTabComplete(tabId, timeoutMs = 20000) {
 async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto', source = 'text', forceReanalyze = false } = {}) {
     const language = state.language;
     if (!text) {
-        throw new Error('没有可发送给大模型的内容');
+        throw new Error('没有可分析的内容');
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
@@ -991,11 +1092,14 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
         }),
     });
 
+    const payload = await response.json();
     if (!response.ok) {
-        throw new Error(`HTTP 错误: ${response.status}`);
+        throw new Error(payload.message || `HTTP 错误: ${response.status}`);
+    }
+    if (payload && payload.status === 'error') {
+        throw new Error(payload.message || '提取失败');
     }
 
-    const payload = await response.json();
     applyMetadataResponse(payload, mode);
     return payload;
 }
@@ -1187,7 +1291,7 @@ async function requestMetadataForMode(mode) {
         throw new Error('当前页面没有可提取的文本');
     }
 
-    // Save page data for potential re-extraction with LLM
+    // Save page data for optional re-analysis.
     state.currentPageData = pageData;
     showReextractButton();
 
@@ -1596,8 +1700,8 @@ function updateStaticText() {
     if (identifierSelectLabel) {
         identifierSelectLabel.textContent = ui.identifierSelectLabel;
     }
-    document.getElementById('homeButton').setAttribute('aria-label', '返回初始页');
-    document.getElementById('homeButton').setAttribute('title', '返回初始页');
+    document.getElementById('homeButton').setAttribute('aria-label', ui.homeTitle);
+    document.getElementById('homeButton').setAttribute('title', ui.homeTitle);
     document.getElementById('refreshButton').setAttribute('aria-label', ui.refreshTitle);
     document.getElementById('refreshButton').setAttribute('title', ui.refreshTitle);
     document.getElementById('downloadButton').setAttribute('aria-label', ui.downloadTitle);
@@ -1984,7 +2088,7 @@ function bindEvents() {
 
 function showReextractButton() {
     const button = document.getElementById('reextractButton');
-    if (button && state.currentPageData) {
+    if (button && state.currentPageData && state.llmEnabled) {
         button.hidden = false;
     }
 }
@@ -2000,12 +2104,11 @@ async function reextractWithLLM() {
     try {
         updateStatus(getUIText(language).loadingSend, 'loading');
 
-        // Force LLM extraction with strategy='llm'
         await requestMetadataFromText(mode, state.currentPageData.text, {
             html: state.currentPageData.html,
             url: state.currentPageData.url,
             title: state.currentPageData.title,
-            strategy: 'llm',  // Force LLM extraction
+            strategy: 'llm',
             source: 'web',
             forceReanalyze: true,
         });
@@ -2020,10 +2123,24 @@ async function reextractWithLLM() {
     }
 }
 
+async function loadBackendFeatures() {
+    try {
+        const response = await fetch(BACKEND_FEATURES_URL, { method: 'GET' });
+        if (!response.ok) {
+            return;
+        }
+        const features = await response.json();
+        state.llmEnabled = Boolean(features && features.llm_enabled);
+    } catch (error) {
+        state.llmEnabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     bindEvents();
     updateStaticText();
     try {
+        await loadBackendFeatures();
         await loadModeSchema('common');
         await loadModeSchema('domain');
         setActiveView(false);
