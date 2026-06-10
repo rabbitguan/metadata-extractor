@@ -301,6 +301,142 @@ const LABEL_TRANSLATIONS_EN = {
     "扩展信息": "Extension Info"
 };
 
+Object.assign(LABEL_TRANSLATIONS_EN, {
+    "标识符": "Identifier",
+    "摘要": "Abstract",
+    "范围": "Scope",
+    "时间范围": "Time Range",
+    "空间范围": "Spatial Range",
+    "语种": "Language",
+    "文件内容": "File Content",
+    "基金项目": "Funding Project",
+    "数据量": "Data Volume",
+    "数据格式": "Data Format",
+    "数据集作者": "Dataset Authors",
+    "作者姓名": "Author Name",
+    "工作单位": "Affiliation",
+    "电子邮箱": "Email",
+    "工作贡献": "Contribution",
+    "作者简介": "Biography",
+    "出版期刊": "Journal",
+    "版本信息": "Version Information",
+    "数据集引用格式": "Dataset Citation",
+    "数据集共享许可协议": "Dataset License",
+    "数据集使用声明": "Dataset Usage Statement",
+    "数据集下载地址": "Dataset Download URL",
+    "数据论文访问地址": "Dataset Paper URL",
+    "引言": "Introduction",
+    "数据采集和处理方法": "Data Collection and Processing Methods",
+    "数据样本描述": "Data Sample Description",
+    "数据质量控制和评估": "Data Quality Control and Evaluation",
+    "数据使用方法和建议": "Data Use Methods and Recommendations",
+    "参考文献": "References",
+    "致谢": "Acknowledgements",
+    "数据论文作者": "Data Paper Authors",
+    "收稿日期": "Received Date",
+    "同评日期": "Review Date",
+    "录用日期": "Accepted Date",
+    "出版日期": "Publication Date",
+    "数据论文引用格式": "Data Paper Citation",
+    "数据论文下载地址": "Data Paper Download URL",
+    "数据论文共享许可协议": "Data Paper License",
+    "数据集访问地址": "Dataset Access URL",
+    "记录状态": "Record Status",
+    "记录识别符": "Record Identifier",
+    "记录日期": "Record Date",
+    "标准号": "Standard Number",
+    "标准状态": "Standard Status",
+    "实施或试行日期": "Effective or Trial Date",
+    "确认日期": "Confirmation Date",
+    "被代替标准": "Replaced Standard",
+    "修改件": "Amendment",
+    "补充件": "Supplement",
+    "第二标准号": "Secondary Standard Number",
+    "批准单位": "Approving Organization",
+    "中文标准名称": "Chinese Standard Name",
+    "原文标准名称": "Original Standard Name",
+    "英文标准名称": "English Standard Name",
+    "发布机构代码": "Publishing Organization Code",
+    "中国标准分类号": "Chinese Standard Classification Number",
+    "国际标准分类号": "International Classification for Standards Number",
+    "有效区域": "Applicable Region",
+    "废止日期": "Abolition Date",
+    "原分类号": "Original Classification Number",
+    "起草单位": "Drafting Organization",
+    "截止日期": "Expiration Date",
+    "正文语种": "Text Language",
+    "出版单位": "Publisher",
+    "稽核项": "Physical Description",
+    "译文": "Translation",
+    "价格": "Price",
+    "其他载体": "Other Carrier",
+    "中文文摘": "Chinese Abstract",
+    "英文文摘": "English Abstract",
+    "英文主题词": "English Subject Terms",
+    "附注": "Notes",
+    "文献出处": "Source",
+    "代替标准": "Replacing Standard",
+    "引用文件": "Referenced Documents",
+    "相关法律": "Related Laws",
+    "一致性程度": "Consistency Degree",
+    "被修改件": "Modified By Amendment",
+    "被补充件": "Supplemented By",
+    "中文主题词": "Chinese Subject Terms",
+    "中文自由词": "Chinese Free Terms",
+    "原文主题词": "Original Subject Terms",
+    "索取号": "Call Number",
+    "馆藏标志": "Collection Flag",
+    "排序码": "Sort Code",
+    "标准类型": "Standard Type",
+    "文献类型": "Document Type",
+    "卷期号": "Volume and Issue",
+    "文献代号": "Document Code",
+    "出版周期": "Publication Frequency",
+    "出版地": "Place of Publication",
+    "密级": "Security Classification",
+    "提出单位": "Proposing Organization",
+    "归口单位": "Technical Committee",
+    "国别": "Country or Region",
+    "标引依据": "Indexing Basis",
+    "更新批号": "Update Batch Number",
+    "标准历史": "Standard History",
+    "参建单位": "Participating Organization",
+    "电子文件名称": "Electronic File Name",
+    "标识信息": "Identification Information",
+    "资源名称": "Resource Name",
+    "资源标识符": "Resource Identifier",
+    "学科分类": "Discipline Classification",
+    "数据集创建者": "Dataset Creator",
+    "创建日期": "Creation Date",
+    "最近修改日期": "Last Modified Date",
+    "使用限制": "Use Constraints",
+    "数据内容信息": "Data Content Information",
+    "数据实体": "Data Entity",
+    "实体名称": "Entity Name",
+    "实体描述": "Entity Description",
+    "实体类型": "Entity Type",
+    "数据质量与方法": "Data Quality and Methods",
+    "数据质量描述": "Data Quality Description",
+    "数据产生方法": "Data Production Method",
+    "质量控制说明": "Quality Control Statement",
+    "数据源": "Data Source",
+    "空间与时间覆盖范围": "Spatial and Temporal Coverage",
+    "地理范围描述": "Geographic Coverage Description",
+    "西部边界经度": "Western Boundary Longitude",
+    "东部边界经度": "Eastern Boundary Longitude",
+    "南部边界纬度": "Southern Boundary Latitude",
+    "北部边界纬度": "Northern Boundary Latitude",
+    "起始时间": "Start Time",
+    "结束时间": "End Time",
+    "项目与资助信息": "Project and Funding Information",
+    "项目名称": "Project Name",
+    "项目代码": "Project Code",
+    "资金来源": "Funding Source",
+    "分发与引用信息": "Distribution and Citation Information",
+    "数据集的引用格式": "Dataset Citation Format",
+    "数据集访问或下载地址": "Dataset Access or Download URL"
+});
+
 const MODE_LABELS = {
     common: { zh: "通用元数据项目表", en: "General Metadata" },
     domain: { zh: "领域专用元数据项目表", en: "Domain Metadata" }
@@ -784,7 +920,7 @@ function createFieldRow(label, data) {
     return row;
 }
 
-function renderSchemaNode(container, schemaNode, valueNode) {
+function renderSchemaNode(container, schemaNode, valueNode, language = state.language) {
     Object.entries(schemaNode).forEach(([key, description]) => {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
         if (typeof currentValue === "undefined") {
@@ -803,7 +939,7 @@ function renderSchemaNode(container, schemaNode, valueNode) {
             title.appendChild(titleText);
             const fieldList = document.createElement("div");
             fieldList.className = "field-list";
-            renderSchemaNode(fieldList, description, currentValue || {});
+            renderSchemaNode(fieldList, description, currentValue || {}, language);
             group.appendChild(title);
             group.appendChild(fieldList);
             container.appendChild(group);
@@ -892,7 +1028,7 @@ function renderMode(mode) {
 
     modeTitle.textContent = mode === "domain" ? getTranslatedLabel(schemaKey, language) : MODE_LABELS.common[language];
     metadataRoot.innerHTML = "";
-    if (schemaRoot) renderSchemaNode(metadataRoot, schemaRoot, sectionPayload);
+    if (schemaRoot) renderSchemaNode(metadataRoot, schemaRoot, sectionPayload, language);
 
     const extensionText = extractExtensionText(payload, language);
     extensionInfo.textContent = extensionText || ui.waiting;
