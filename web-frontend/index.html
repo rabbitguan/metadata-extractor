@@ -20,25 +20,35 @@
     <section class="page-hero">
         <div class="container hero-inner">
             <h1 id="startTitle">Metadata Organizer</h1>
-            <p id="startDescription">请选择分析方式：输入 URL / 上传文件 / 输入 DOI/CSTR</p>
+            <p id="startDescription">请选择转换方向与分析方式</p>
         </div>
     </section>
 
     <main class="container page-main">
         <section id="startScreen" class="start-screen">
-            <div class="start-actions">
-                <button id="chooseUrlButton" class="start-button primary" type="button">
-                    <span id="chooseUrlLabel">输入 URL</span>
-                    <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
-                </button>
-                <button id="chooseUploadButton" class="start-button secondary" type="button">
-                    <span id="chooseUploadLabel">上传数据</span>
-                    <small id="chooseUploadHint">上传 JSON / TXT 等文本文件</small>
-                </button>
-                <button id="chooseIdentifierButton" class="start-button secondary" type="button">
-                    <span id="chooseIdentifierLabel">输入 DOI/CSTR</span>
-                    <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
-                </button>
+            <div class="start-menu">
+                <section class="start-group">
+                    <h2 id="domainToCoreTitle">领域元数据到核心元数据</h2>
+                    <div class="start-actions">
+                        <button id="chooseUrlButton" class="start-button primary" type="button">
+                            <span id="chooseUrlLabel">输入 URL</span>
+                            <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
+                        </button>
+                        <button id="chooseUploadButton" class="start-button secondary" type="button">
+                            <span id="chooseUploadLabel">上传元数据</span>
+                            <small id="chooseUploadHint">仅支持 JSON / XML 文件</small>
+                        </button>
+                    </div>
+                </section>
+                <section class="start-group">
+                    <h2 id="coreToDomainTitle">核心元数据到领域元数据</h2>
+                    <div class="start-actions single">
+                        <button id="chooseIdentifierButton" class="start-button secondary" type="button">
+                            <span id="chooseIdentifierLabel">输入 DOI/CSTR 副查询</span>
+                            <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
+                        </button>
+                    </div>
+                </section>
             </div>
         </section>
 
@@ -63,7 +73,7 @@
             <section id="uploadPanel" class="input-panel" hidden>
                 <div id="uploadIdleState" class="upload-state">
                     <h2 id="uploadTitle">上传数据文件</h2>
-                    <p id="uploadDescription">支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG</p>
+                    <p id="uploadDescription">仅支持 JSON / XML；JSON 至少需要包含“核心元数据”字段。</p>
                     <button id="uploadButton" class="btn primary" type="button">选择文件</button>
                 </div>
                 <div id="uploadSelectedState" class="upload-state" hidden>
@@ -73,7 +83,7 @@
                         <button id="reselectUploadButton" class="btn secondary" type="button">重新选择</button>
                     </div>
                 </div>
-                <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
+                <input id="fileInput" type="file" accept=".json,.xml,application/json,text/xml,application/xml" hidden>
             </section>
 
             <section id="identifierPanel" class="input-panel" hidden>
@@ -87,7 +97,7 @@
             </section>
 
             <section class="mode-switcher" aria-label="元数据模式切换">
-                <button class="mode-button active" data-mode="common" type="button">通用元数据项目表</button>
+                <button class="mode-button active" data-mode="common" type="button">核心元数据项目表</button>
                 <button class="mode-button" data-mode="domain" type="button">领域专用元数据项目表</button>
             </section>
 
@@ -102,7 +112,7 @@
             <section id="analysisContent" class="analysis-grid">
                 <article class="result-card">
                     <div class="card-head">
-                        <h2 id="modeTitle">通用元数据项目表</h2>
+                        <h2 id="modeTitle">核心元数据项目表</h2>
                         <span id="lastUpdated" class="panel-meta"></span>
                     </div>
                     <div id="metadataRoot" class="metadata-root"></div>
@@ -113,6 +123,13 @@
                         <h2 id="extensionTitle">扩展信息</h2>
                     </div>
                     <pre id="extensionInfo" class="extension-info empty">等待提取结果</pre>
+                </article>
+
+                <article id="mappingCard" class="result-card" hidden>
+                    <div class="card-head">
+                        <h2 id="mappingTitle">字段对应过程</h2>
+                    </div>
+                    <div id="mappingRoot" class="metadata-root"></div>
                 </article>
             </section>
         </section>

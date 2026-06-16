@@ -107,8 +107,8 @@ const LABEL_TRANSLATIONS_EN = {
 
 const MODE_LABELS = {
     common: {
-        zh: '通用元数据项目表',
-        en: 'General Metadata',
+        zh: '核心元数据项目表',
+        en: 'Core Metadata',
     },
     domain: {
         zh: '领域专用元数据项目表',
@@ -120,17 +120,19 @@ const UI_TEXT = {
     zh: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: '请选择分析方式：当前网页 / 输入 URL / 上传文件 / 输入 DOI/CSTR',
+        startDescription: '请选择转换方向与分析方式',
+        domainToCoreTitle: '领域元数据到核心元数据',
+        coreToDomainTitle: '核心元数据到领域元数据',
         chooseWebLabel: '当前网页',
         chooseWebHint: '提取当前标签页并整理元数据',
         chooseUrlLabel: '输入 URL',
         chooseUrlHint: '输入网页地址后由后端直接抓取分析',
-        chooseUploadLabel: '上传数据',
-        chooseUploadHint: '上传 JSON / TXT 等文本文件',
-        chooseIdentifierLabel: '输入 DOI/CSTR',
+        chooseUploadLabel: '上传元数据',
+        chooseUploadHint: '仅支持 JSON / XML 文件',
+        chooseIdentifierLabel: '输入 DOI/CSTR 副查询',
         chooseIdentifierHint: '通过编号解析资源并整理元数据',
         uploadTitle: '上传数据文件',
-        uploadDescription: '支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadDescription: '仅支持 JSON / XML；JSON 至少需要包含“核心元数据”字段。',
         uploadButton: '选择文件',
         confirmUploadButton: '确认并分析',
         reselectUploadButton: '重新选择',
@@ -168,21 +170,30 @@ const UI_TEXT = {
         errorPrefix: '提取失败: ',
         initErrorPrefix: '初始化失败: ',
         loadingUrl: '正在抓取 URL 页面...',
+        unsupportedUploadType: '仅支持 JSON / XML 文件',
+        jsonCoreRequired: 'JSON 文件至少需要包含“核心元数据”字段',
+        invalidJson: 'JSON 文件格式无效',
+        invalidXml: 'XML 文件格式无效',
+        mappingTitle: '字段对应过程',
+        mappingEmpty: '暂无可展示的字段对应过程',
+        mappingUnmatched: '未匹配到上传字段',
     },
     en: {
         appTitle: 'Metadata Organizer',
         startTitle: 'Metadata Organizer',
-        startDescription: 'Choose an analysis mode: current page / URL / upload file / DOI/CSTR',
+        startDescription: 'Choose a conversion direction and analysis mode',
+        domainToCoreTitle: 'Domain Metadata to Core Metadata',
+        coreToDomainTitle: 'Core Metadata to Domain Metadata',
         chooseWebLabel: 'Current page',
         chooseWebHint: 'Extract the current tab and organize metadata',
         chooseUrlLabel: 'Enter URL',
         chooseUrlHint: 'Submit a web address and let the backend fetch it',
-        chooseUploadLabel: 'Upload data',
-        chooseUploadHint: 'Upload JSON / TXT and other text files',
-        chooseIdentifierLabel: 'Enter DOI/CSTR',
+        chooseUploadLabel: 'Upload metadata',
+        chooseUploadHint: 'JSON / XML files only',
+        chooseIdentifierLabel: 'Enter DOI/CSTR sub-query',
         chooseIdentifierHint: 'Resolve identifiers and organize metadata',
         uploadTitle: 'Upload data file',
-        uploadDescription: 'Supported file formats: JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadDescription: 'JSON / XML only. JSON must include at least Core Metadata.',
         uploadButton: 'Choose file',
         confirmUploadButton: 'Confirm and analyze',
         reselectUploadButton: 'Choose again',
@@ -220,6 +231,13 @@ const UI_TEXT = {
         errorPrefix: 'Extraction failed: ',
         initErrorPrefix: 'Initialization failed: ',
         loadingUrl: 'Fetching URL page...',
+        unsupportedUploadType: 'Only JSON / XML files are supported',
+        jsonCoreRequired: 'JSON must include at least Core Metadata',
+        invalidJson: 'Invalid JSON file',
+        invalidXml: 'Invalid XML file',
+        mappingTitle: 'Field Mapping Process',
+        mappingEmpty: 'No field mapping process to display yet',
+        mappingUnmatched: 'No uploaded field matched',
     },
 };
 
@@ -239,6 +257,7 @@ const state = {
     uploadedFile: null,
     uploadedText: '',
     uploadedTitle: '',
+    uploadedFieldEntries: [],
     uploadStage: 'idle',
     uploadResultReady: false,
     uploadHistoryUsed: false,
@@ -625,24 +644,103 @@ function flattenStructuredValue(value, prefix = '', lines = []) {
     return lines;
 }
 
+function flattenFieldEntries(value, path = '', entries = []) {
+    if (value === null || typeof value === 'undefined') {
+        return entries;
+    }
+
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => flattenFieldEntries(item, `${path}[${index}]`, entries));
+        return entries;
+    }
+
+    if (isObject(value)) {
+        Object.entries(value).forEach(([key, nestedValue]) => {
+            const nextPath = path ? `${path}.${key}` : key;
+            flattenFieldEntries(nestedValue, nextPath, entries);
+        });
+        return entries;
+    }
+
+    const text = String(value).replace(/\s+/g, ' ').trim();
+    if (path && text) {
+        entries.push({
+            path,
+            label: path.split('.').pop().replace(/\[\d+\]$/g, ''),
+            value: text,
+        });
+    }
+    return entries;
+}
+
+function parseXmlFieldEntries(rawText) {
+    const parser = new DOMParser();
+    const documentRoot = parser.parseFromString(rawText, 'application/xml');
+    if (documentRoot.querySelector('parsererror')) {
+        throw new Error(getUIText().invalidXml);
+    }
+
+    const entries = [];
+    const walk = (node, path) => {
+        Array.from(node.children).forEach((child) => {
+            const childPath = path ? `${path}.${child.tagName}` : child.tagName;
+            if (child.children.length > 0) {
+                walk(child, childPath);
+                return;
+            }
+            const text = child.textContent.replace(/\s+/g, ' ').trim();
+            if (text) {
+                entries.push({
+                    path: childPath,
+                    label: child.tagName,
+                    value: text,
+                });
+            }
+        });
+    };
+    walk(documentRoot.documentElement, documentRoot.documentElement.tagName);
+    return entries;
+}
+
+function validateJsonHasCoreMetadata(parsed) {
+    return isObject(parsed)
+        && (
+            Object.prototype.hasOwnProperty.call(parsed, '核心元数据')
+            || Object.prototype.hasOwnProperty.call(parsed, 'Core Metadata')
+        );
+}
+
 async function readFileAsText(file) {
     const rawText = await file.text();
     const trimmedText = rawText.trim();
+    const lowerName = String(file.name || '').toLowerCase();
 
     if (!trimmedText) {
         return '';
     }
 
-    if (file.name.toLowerCase().endsWith('.json') || trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+    if (!lowerName.endsWith('.json') && !lowerName.endsWith('.xml')) {
+        throw new Error(getUIText().unsupportedUploadType);
+    }
+
+    if (lowerName.endsWith('.json')) {
         try {
             const parsed = JSON.parse(rawText);
+            if (!validateJsonHasCoreMetadata(parsed)) {
+                throw new Error(getUIText().jsonCoreRequired);
+            }
+            state.uploadedFieldEntries = flattenFieldEntries(parsed);
             const flattenedText = flattenStructuredValue(parsed).join('\n').trim();
             return flattenedText || normalizeWhitespace(rawText);
         } catch (error) {
-            console.warn('Failed to parse JSON upload, falling back to raw text.', error);
+            if (error.message === getUIText().jsonCoreRequired) {
+                throw error;
+            }
+            throw new Error(getUIText().invalidJson);
         }
     }
 
+    state.uploadedFieldEntries = parseXmlFieldEntries(rawText);
     return normalizeWhitespace(rawText);
 }
 
@@ -1326,6 +1424,60 @@ function renderSchemaNode(container, schemaNode, valueNode, language = state.lan
     });
 }
 
+function normalizeMappingToken(value) {
+    return String(value || '').toLowerCase().replace(/[\s_\-:：.()[\]（）]/g, '');
+}
+
+function collectSchemaLeaves(schemaNode, leaves = []) {
+    Object.entries(schemaNode || {}).forEach(([key, description]) => {
+        if (isObject(description)) {
+            collectSchemaLeaves(description, leaves);
+            return;
+        }
+        leaves.push(key);
+    });
+    return leaves;
+}
+
+function findUploadFieldMatch(label) {
+    const entries = state.uploadedFieldEntries || [];
+    const candidates = getFieldLookupKeys(label).map(normalizeMappingToken);
+    return entries.find((entry) => {
+        const pathToken = normalizeMappingToken(entry.path);
+        const labelToken = normalizeMappingToken(entry.label);
+        return candidates.some((candidate) => candidate && (labelToken === candidate || pathToken.includes(candidate)));
+    });
+}
+
+function renderFieldMapping(schemaRoot) {
+    const card = document.getElementById('mappingCard');
+    const root = document.getElementById('mappingRoot');
+    const title = document.getElementById('mappingTitle');
+    if (!card || !root || !title) {
+        return;
+    }
+
+    const ui = getUIText();
+    title.textContent = ui.mappingTitle;
+    card.hidden = !(state.sourceMode === 'upload' && state.uploadResultReady);
+    if (card.hidden) {
+        return;
+    }
+
+    root.innerHTML = '';
+    const leaves = collectSchemaLeaves(schemaRoot);
+    if (!leaves.length) {
+        root.appendChild(createFieldRow(ui.mappingTitle, ui.mappingEmpty));
+        return;
+    }
+
+    leaves.forEach((label) => {
+        const matched = findUploadFieldMatch(label);
+        const value = matched ? `${matched.path}: ${matched.value}` : ui.mappingUnmatched;
+        root.appendChild(createFieldRow(label, value));
+    });
+}
+
 function renderPayloadSections(container, payload, schema, language = state.language) {
     container.innerHTML = '';
 
@@ -1404,6 +1556,7 @@ function renderMode(mode) {
     if (schemaRoot) {
         renderSchemaNode(metadataRoot, schemaRoot, sectionPayload, language);
     }
+    renderFieldMapping(schemaRoot || {});
 
     const extensionText = extractExtensionText(payload, language);
     extensionInfo.textContent = extensionText || ui.waiting;
@@ -1570,6 +1723,8 @@ function updateStaticText() {
 
     document.getElementById('startTitle').textContent = ui.startTitle;
     document.getElementById('startDescription').textContent = ui.startDescription;
+    document.getElementById('domainToCoreTitle').textContent = ui.domainToCoreTitle;
+    document.getElementById('coreToDomainTitle').textContent = ui.coreToDomainTitle;
     document.getElementById('chooseWebLabel').textContent = ui.chooseWebLabel;
     document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
     document.getElementById('chooseUrlLabel').textContent = ui.chooseUrlLabel;
@@ -1580,6 +1735,7 @@ function updateStaticText() {
     document.getElementById('chooseIdentifierHint').textContent = ui.chooseIdentifierHint;
     document.getElementById('appTitle').textContent = ui.appTitle;
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
+    document.getElementById('mappingTitle').textContent = ui.mappingTitle;
     document.getElementById('uploadTitle').textContent = ui.uploadTitle;
     document.getElementById('uploadDescription').textContent = ui.uploadDescription;
     document.getElementById('urlTitle').textContent = ui.urlTitle;
@@ -1695,6 +1851,14 @@ function clearAnalysisView() {
     const lastUpdated = document.getElementById('lastUpdated');
 
     metadataRoot.innerHTML = '';
+    const mappingRoot = document.getElementById('mappingRoot');
+    const mappingCard = document.getElementById('mappingCard');
+    if (mappingRoot) {
+        mappingRoot.innerHTML = '';
+    }
+    if (mappingCard) {
+        mappingCard.hidden = true;
+    }
     extensionInfo.textContent = getUIText().waiting;
     extensionInfo.classList.add('empty');
     modeTitle.textContent = MODE_LABELS.common[state.language];
@@ -1713,6 +1877,7 @@ function selectSourceMode(sourceMode) {
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
+    state.uploadedFieldEntries = [];
     setActiveView(true);
     updateStaticText();
     clearAnalysisView();
@@ -1736,6 +1901,7 @@ function resetToStartScreen() {
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
+    state.uploadedFieldEntries = [];
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
     state.identifierInput = '';
@@ -1745,6 +1911,7 @@ function resetToStartScreen() {
     state.urlInput = '';
     state.urlResultReady = false;
     state.urlHistoryUsed = false;
+    state.uploadHistoryUsed = false;
     document.getElementById('identifierInput').value = '';
     document.getElementById('urlInput').value = '';
     setActiveView(false);
@@ -1758,9 +1925,16 @@ function handleUploadSelection(file) {
         return;
     }
 
+    const lowerName = String(file.name || '').toLowerCase();
+    if (!lowerName.endsWith('.json') && !lowerName.endsWith('.xml')) {
+        updateStatus(getUIText().unsupportedUploadType, 'error');
+        return;
+    }
+
     state.uploadedFile = file;
     state.uploadedText = '';
     state.uploadedTitle = file.name;
+    state.uploadedFieldEntries = [];
     state.uploadStage = 'selected';
     state.uploadResultReady = false;
     updateStaticText();
@@ -1827,6 +2001,7 @@ function reselectUploadFile() {
     state.uploadedFile = null;
     state.uploadedText = '';
     state.uploadedTitle = '';
+    state.uploadedFieldEntries = [];
     state.uploadStage = 'idle';
     state.uploadResultReady = false;
     updateStaticText();

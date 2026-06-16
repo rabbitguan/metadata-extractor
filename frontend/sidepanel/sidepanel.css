@@ -82,11 +82,32 @@ body {
     line-height: 1.6;
 }
 
+.start-menu {
+    display: grid;
+    gap: 16px;
+}
+
+.start-group {
+    display: grid;
+    gap: 12px;
+}
+
+.start-group h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 17px;
+    line-height: 1.35;
+}
+
 .start-actions {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 14px;
     margin-top: 8px;
+}
+
+.start-actions.single {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .start-button,
