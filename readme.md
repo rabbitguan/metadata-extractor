@@ -24,7 +24,8 @@ Chrome插件 + Flask后端，自动提取网页中的科技资源元数据，支
     # 安装依赖
     pip install -r requirements.txt
 
-    # 配置API Key（编辑 llm_api.py，填入你的API Key）
+    # 可选：编辑 llm_config.json 配置高级提取服务
+    # enabled=false 时仅使用规则提取；未命中规则时会返回“尚未支持该格式”
 
     # 启动服务
     python backend.py

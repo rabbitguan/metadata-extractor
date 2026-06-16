@@ -1,5 +1,6 @@
 const BACKEND_QUERY_URL = 'http://127.0.0.1:4000/query';
 const BACKEND_REGISTER_URL = 'http://127.0.0.1:4000/register';
+const BACKEND_FEATURES_URL = 'http://127.0.0.1:4000/features';
 const HISTORY_LOOKUP_URL = 'http://127.0.0.1:4000/history/lookup';
 
 const LABEL_TRANSLATIONS_EN = {
@@ -211,7 +212,7 @@ const UI_TEXT = {
         loadingExtract: 'Extracting page text...',
         loadingFile: 'Reading file content...',
         loadingIdentifier: 'Resolving DOI/CSTR...',
-        loadingSend: 'Sending to the model...',
+        loadingSend: 'Analyzing...',
         downloadBlocked: 'Nothing is ready to download yet.',
         refreshTitle: 'Reload',
         downloadTitle: 'Download',
@@ -249,6 +250,7 @@ const state = {
     urlInput: '',
     urlResultReady: false,
     urlHistoryUsed: false,
+    llmEnabled: false,
     currentPageData: null,  // 存储当前提取的页面数据
 };
 
@@ -384,7 +386,7 @@ function setAnalysisVisibility() {
         return;
     }
 
-    llmRow.hidden = false;
+    llmRow.hidden = !state.llmEnabled;
     uploadPanel.hidden = true;
     identifierPanel.hidden = true;
     urlPanel.hidden = true;
@@ -970,7 +972,7 @@ async function waitForTabComplete(tabId, timeoutMs = 20000) {
 async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto', source = 'text', forceReanalyze = false } = {}) {
     const language = state.language;
     if (!text) {
-        throw new Error('没有可发送给大模型的内容');
+        throw new Error('没有可分析的内容');
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
@@ -991,11 +993,14 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
         }),
     });
 
+    const payload = await response.json();
     if (!response.ok) {
-        throw new Error(`HTTP 错误: ${response.status}`);
+        throw new Error(payload.message || `HTTP 错误: ${response.status}`);
+    }
+    if (payload && payload.status === 'error') {
+        throw new Error(payload.message || '提取失败');
     }
 
-    const payload = await response.json();
     applyMetadataResponse(payload, mode);
     return payload;
 }
@@ -1187,7 +1192,7 @@ async function requestMetadataForMode(mode) {
         throw new Error('当前页面没有可提取的文本');
     }
 
-    // Save page data for potential re-extraction with LLM
+    // Save page data for optional re-analysis.
     state.currentPageData = pageData;
     showReextractButton();
 
@@ -1984,7 +1989,7 @@ function bindEvents() {
 
 function showReextractButton() {
     const button = document.getElementById('reextractButton');
-    if (button && state.currentPageData) {
+    if (button && state.currentPageData && state.llmEnabled) {
         button.hidden = false;
     }
 }
@@ -2000,12 +2005,11 @@ async function reextractWithLLM() {
     try {
         updateStatus(getUIText(language).loadingSend, 'loading');
 
-        // Force LLM extraction with strategy='llm'
         await requestMetadataFromText(mode, state.currentPageData.text, {
             html: state.currentPageData.html,
             url: state.currentPageData.url,
             title: state.currentPageData.title,
-            strategy: 'llm',  // Force LLM extraction
+            strategy: 'llm',
             source: 'web',
             forceReanalyze: true,
         });
@@ -2020,10 +2024,24 @@ async function reextractWithLLM() {
     }
 }
 
+async function loadBackendFeatures() {
+    try {
+        const response = await fetch(BACKEND_FEATURES_URL, { method: 'GET' });
+        if (!response.ok) {
+            return;
+        }
+        const features = await response.json();
+        state.llmEnabled = Boolean(features && features.llm_enabled);
+    } catch (error) {
+        state.llmEnabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     bindEvents();
     updateStaticText();
     try {
+        await loadBackendFeatures();
         await loadModeSchema('common');
         await loadModeSchema('domain');
         setActiveView(false);
