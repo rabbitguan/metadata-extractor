@@ -3,33 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metadata Organizer</title>
+    <title>元数据双向映射工具</title>
     <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
     <div class="app-shell">
         <section id="startScreen" class="start-screen">
             <div class="start-hero">
-                <h1 id="startTitle"><span>Meta</span><span>Extractor</span></h1>
-                <p id="startDescription" class="start-description">请选择分析方式：分析网页 / 上传文件</p>
+                <h1 id="startTitle">元数据双向映射工具</h1>
+                <p id="startDescription" class="start-description">请选择分析方式：领域到核心 / 核心到领域</p>
+                <button id="openLogsStartButton" class="log-link-button" type="button">转换日志</button>
             </div>
             <div class="start-actions">
-                <button id="chooseWebButton" class="start-button primary" type="button">
-                    <span id="chooseWebLabel">当前网页</span>
-                    <small id="chooseWebHint">提取当前标签页并整理元数据</small>
-                </button>
-                <button id="chooseUrlButton" class="start-button secondary" type="button">
-                    <span id="chooseUrlLabel">输入 URL</span>
-                    <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
-                </button>
+                <section class="start-menu">
+                    <div class="start-menu-head">
+                        <h2 id="domainToCoreTitle">领域到核心</h2>
+                        <p id="domainToCoreHint">从网页内容抽取并映射为核心元数据</p>
+                    </div>
+                    <div class="start-menu-actions">
+                        <button id="chooseWebButton" class="start-button primary" type="button">
+                            <span id="chooseWebLabel">当前网页</span>
+                            <small id="chooseWebHint">提取当前标签页并整理元数据</small>
+                        </button>
+                        <button id="chooseUrlButton" class="start-button secondary" type="button">
+                            <span id="chooseUrlLabel">输入 URL</span>
+                            <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
+                        </button>
+                    </div>
+                </section>
                 <button id="chooseUploadButton" class="start-button secondary" type="button">
                     <span id="chooseUploadLabel">上传数据</span>
-                    <small id="chooseUploadHint">上传 JSON / TXT 等文本文件</small>
+                    <small id="chooseUploadHint">上传符合格式要求的 JSON / XML 文件</small>
                 </button>
-                <button id="chooseIdentifierButton" class="start-button secondary" type="button">
-                    <span id="chooseIdentifierLabel">输入 DOI/CSTR</span>
-                    <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
-                </button>
+                <section class="start-menu">
+                    <div class="start-menu-head">
+                        <h2 id="coreToDomainTitle">核心到领域</h2>
+                        <p id="coreToDomainHint">通过标识符解析资源并补全领域元数据</p>
+                    </div>
+                    <div class="start-menu-actions">
+                        <button id="chooseIdentifierButton" class="start-button secondary" type="button">
+                            <span id="chooseIdentifierLabel">输入 DOI/CSTR</span>
+                            <small id="chooseIdentifierHint">通过编号解析资源并整理元数据</small>
+                        </button>
+                    </div>
+                </section>
             </div>
         </section>
 
@@ -41,7 +58,7 @@
         </button>
         <header class="hero">
             <div class="hero-copy">
-                <h1 id="appTitle"><span>Meta</span><span>Extractor</span></h1>
+                <h1 id="appTitle">元数据双向映射工具</h1>
             </div>
             <div class="hero-actions">
                 <div class="lang-toggle" role="group" aria-label="Language switcher">
@@ -59,6 +76,11 @@
                         <path d="M5 20h14v-2H5v2Zm7-18v10.17l3.59-3.58L17 10l-5 5-5-5 1.41-1.41L11 12.17V2h1Z"/>
                     </svg>
                 </button>
+                <button id="openLogsButton" class="icon-button" type="button" aria-label="转换日志" title="转换日志">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 3h14v2H5V3Zm0 4h14v2H5V7Zm0 4h9v2H5v-2Zm0 4h9v2H5v-2Zm11.8-1.2 1.4 1.4L15.4 18l2.8 2.8-1.4 1.4-4.2-4.2 4.2-4.2Z"/>
+                    </svg>
+                </button>
             </div>
         </header>
 
@@ -67,7 +89,7 @@
         </div>
 
         <section class="mode-switcher" aria-label="元数据模式切换">
-            <button class="mode-button active" data-mode="common" type="button">通用元数据项目表</button>
+            <button class="mode-button active" data-mode="common" type="button">核心元数据项目表</button>
             <button class="mode-button" data-mode="domain" type="button">领域专用元数据项目表</button>
         </section>
 
@@ -80,7 +102,8 @@
         <section id="uploadPanel" class="upload-panel" hidden>
             <div id="uploadIdleState" class="upload-state">
                 <h2 id="uploadTitle">上传数据文件</h2>
-                <p id="uploadDescription">支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG</p>
+                <button id="uploadExampleButton" class="upload-button secondary-action" type="button">查看 JSON 示例格式</button>
+                <pre id="uploadExampleJson" class="upload-example" hidden></pre>
                 <button id="uploadButton" class="upload-button" type="button">选择文件</button>
             </div>
             <div id="uploadSelectedState" class="upload-state" hidden>
@@ -91,7 +114,7 @@
                         <button id="reanalyzeUploadButton" class="upload-button secondary-action" type="button" hidden>重新分析</button>
                         <div id="uploadHistoryNote" class="history-note" hidden></div>
                 </div>
-                <input id="fileInput" type="file" accept=".json,.txt,.md,.csv,.xml,.html,.log,application/json,text/plain,text/csv,text/xml,text/html" hidden>
+                <input id="fileInput" type="file" accept=".json,.xml,application/json,text/xml,application/xml" hidden>
             </div>
         </section>
 
@@ -127,7 +150,7 @@
             <section class="panel">
                 <div class="panel-head">
                     <div>
-                        <h2 id="modeTitle">通用元数据项目表</h2>
+                        <h2 id="modeTitle">核心元数据项目表</h2>
                     </div>
                     <span id="lastUpdated" class="panel-meta"></span>
                 </div>
@@ -144,6 +167,29 @@
             </section>
         </main>
         </div>
+        <section id="logWorkspace" class="log-workspace" hidden>
+            <header class="log-header">
+                <button id="closeLogsButton" class="icon-button" type="button" aria-label="返回" title="返回">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.42-1.41L7.83 13H20v-2Z"/>
+                    </svg>
+                </button>
+                <div>
+                    <h1 id="logTitle">转换日志</h1>
+                    <p id="logSubtitle">查看最近的转换任务和完整结果</p>
+                </div>
+                <button id="clearLogsButton" class="upload-button secondary-action" type="button">清空</button>
+            </header>
+            <div class="log-layout">
+                <section class="log-list-panel">
+                    <div id="logList" class="log-list"></div>
+                </section>
+                <section class="log-detail-panel">
+                    <h2 id="logDetailTitle">转换详情</h2>
+                    <div id="logDetail" class="log-detail empty">请选择一条转换日志</div>
+                </section>
+            </div>
+        </section>
     </div>
     <script src="sidepanel.js"></script>
 </body>

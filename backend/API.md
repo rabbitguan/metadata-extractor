@@ -49,6 +49,42 @@
 - `auto`：先走站点规则提取器（`extractors/*`），未命中再走 LLM
 - `llm`：直接走 LLM
 - `rule`：只走规则提取器；若未命中规则，当前实现会返回 400（表现为模型输出格式错误）
+- `upload_rule`：上传 JSON/XML 专用规则解析；当 `source=upload` 时后端会强制使用该策略，不调用 LLM。
+
+#### 上传文件模式（`source=upload`）
+
+上传仅支持 JSON/XML 原始结构化内容，不支持 TXT 等非结构化文本。推荐 JSON 结构：
+
+```json
+{
+  "resource_type": "dataset",
+  "core": {
+    "title": "Example Dataset",
+    "cstr_identifier": "31253.11.CSTR.2026.000001",
+    "creators": ["Alice"],
+    "publisher": "Example Lab",
+    "publication_date": "2026-06-20",
+    "description": "A short description.",
+    "keywords": ["metadata"],
+    "subjects": ["Computer Science"],
+    "language": "en",
+    "alternative_identifiers": ["10.1234/example"],
+    "resource_url": ["https://example.com/dataset"]
+  },
+  "domain": {
+    "dataset_basic_information": {},
+    "dataset_publication_information": {},
+    "dataset_service_information": {}
+  }
+}
+```
+
+规则说明：
+
+- `resource_type` 支持 `dataset` / `data_paper` / `other`，也兼容中文 `数据集` / `数据论文` / `其他`。
+- `core.cstr_identifier` 只接受 CSTR 形态的标识符；如果用户误填 DOI，后端不会写入 `CSTR标识符` / `Identifier`，会放入 `替代标识符` / `Alternative Identifiers`。
+- JSON 顶层也可传单元素数组；多资源数组会返回 400。
+- XML 使用同名标签即可，例如 `<resource><resource_type>dataset</resource_type><core>...</core></resource>`。
 
 #### 历史命中逻辑
 

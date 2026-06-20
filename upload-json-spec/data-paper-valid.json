@@ -1,0 +1,49 @@
+{
+  "resource_type": "data_paper",
+  "core": {
+    "title": "A Data Paper for Scientific Metadata Benchmarking",
+    "cstr_identifier": "31253.11.CSTR.2026.000002",
+    "creators": [
+      "Chen Wang",
+      "Maria Smith"
+    ],
+    "publisher": "Journal of Example Data",
+    "publication_date": "2026-05-18",
+    "description": "This data paper describes a benchmark dataset and its construction workflow.",
+    "keywords": [
+      "data paper",
+      "metadata",
+      "benchmark"
+    ],
+    "subjects": [
+      "Data Science"
+    ],
+    "language": "en",
+    "alternative_identifiers": [
+      "10.5678/example.datapaper.002"
+    ],
+    "resource_url": [
+      "https://example.org/papers/metadata-benchmark"
+    ]
+  },
+  "domain": {
+    "data_paper_content_information": {
+      "Title": "A Data Paper for Scientific Metadata Benchmarking",
+      "Abstract": "The paper introduces the dataset structure, quality control process, and reuse scenarios.",
+      "Keywords": [
+        "data paper",
+        "metadata"
+      ],
+      "Data Collection and Processing Methods": "Records were manually curated and normalized into a consistent schema.",
+      "Data Quality Control and Evaluation": "Each record was checked for identifier validity and required fields."
+    },
+    "data_paper_publication_information": {
+      "Publication Date": "2026-05-18",
+      "Journal": "Journal of Example Data"
+    },
+    "data_paper_service_information": {
+      "Data Paper Download URL": "https://example.org/papers/metadata-benchmark/download",
+      "Dataset Access URL": "https://example.org/datasets/metadata-benchmark"
+    }
+  }
+}

@@ -1,6 +1,30 @@
 const BACKEND_QUERY_URL = 'http://127.0.0.1:4000/query';
 const BACKEND_REGISTER_URL = 'http://127.0.0.1:4000/register';
 const HISTORY_LOOKUP_URL = 'http://127.0.0.1:4000/history/lookup';
+const DOWNLOAD_LANGUAGE = 'en';
+const CONVERSION_LOG_STORAGE_KEY = 'metadata_conversion_logs_v1';
+const MAX_CONVERSION_LOGS = 50;
+const UPLOAD_EXAMPLE_JSON = `{
+  "resource_type": "dataset",
+  "core": {
+    "title": "Example Dataset",
+    "cstr_identifier": "31253.11.CSTR.2026.000001",
+    "creators": ["Alice Zhang", "Bob Li"],
+    "publisher": "Example Data Center",
+    "publication_date": "2026-06-20",
+    "description": "A short description of the resource.",
+    "keywords": ["metadata", "dataset"],
+    "subjects": ["Computer Science"],
+    "language": "en",
+    "alternative_identifiers": ["10.1234/example.dataset"],
+    "resource_url": ["https://example.org/datasets/001"]
+  },
+  "domain": {
+    "dataset_basic_information": {},
+    "dataset_publication_information": {},
+    "dataset_service_information": {}
+  }
+}`;
 
 const LABEL_TRANSLATIONS_EN = {
     资源类型候选列表: 'Resource Type Candidates',
@@ -107,8 +131,8 @@ const LABEL_TRANSLATIONS_EN = {
 
 const MODE_LABELS = {
     common: {
-        zh: '通用元数据项目表',
-        en: 'General Metadata',
+        zh: '核心元数据项目表',
+        en: 'Core Metadata',
     },
     domain: {
         zh: '领域专用元数据项目表',
@@ -118,19 +142,31 @@ const MODE_LABELS = {
 
 const UI_TEXT = {
     zh: {
-        appTitle: 'Metadata Organizer',
-        startTitle: 'Metadata Organizer',
-        startDescription: '请选择分析方式：当前网页 / 输入 URL / 上传文件 / 输入 DOI/CSTR',
+        appTitle: '元数据双向映射工具',
+        startTitle: '元数据双向映射工具',
+        startDescription: '请选择分析方式：领域到核心 / 核心到领域',
+        domainToCoreTitle: '领域到核心',
+        domainToCoreHint: '从网页内容抽取并映射为核心元数据',
+        coreToDomainTitle: '核心到领域',
+        coreToDomainHint: '通过标识符解析资源并补全领域元数据',
+        openLogsTitle: '转换日志',
+        logTitle: '转换日志',
+        logSubtitle: '查看最近的转换任务和完整结果',
+        logDetailTitle: '转换详情',
+        logEmpty: '暂无转换日志',
+        logDetailEmpty: '请选择一条转换日志',
+        clearLogsTitle: '清空',
         chooseWebLabel: '当前网页',
         chooseWebHint: '提取当前标签页并整理元数据',
         chooseUrlLabel: '输入 URL',
         chooseUrlHint: '输入网页地址后由后端直接抓取分析',
         chooseUploadLabel: '上传数据',
-        chooseUploadHint: '上传 JSON / TXT 等文本文件',
+        chooseUploadHint: '上传符合格式要求的 JSON / XML 文件',
         chooseIdentifierLabel: '输入 DOI/CSTR',
         chooseIdentifierHint: '通过编号解析资源并整理元数据',
         uploadTitle: '上传数据文件',
-        uploadDescription: '支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadExampleButton: '查看 JSON 示例格式',
+        uploadExampleButtonHide: '收起 JSON 示例格式',
         uploadButton: '选择文件',
         confirmUploadButton: '确认并分析',
         reselectUploadButton: '重新选择',
@@ -170,19 +206,31 @@ const UI_TEXT = {
         loadingUrl: '正在抓取 URL 页面...',
     },
     en: {
-        appTitle: 'Metadata Organizer',
-        startTitle: 'Metadata Organizer',
-        startDescription: 'Choose an analysis mode: current page / URL / upload file / DOI/CSTR',
+        appTitle: 'Metadata Bidirectional Mapping Tool',
+        startTitle: 'Metadata Bidirectional Mapping Tool',
+        startDescription: 'Choose a mapping direction: domain to core / core to domain',
+        domainToCoreTitle: 'Domain to Core',
+        domainToCoreHint: 'Extract page content and map it to core metadata',
+        coreToDomainTitle: 'Core to Domain',
+        coreToDomainHint: 'Resolve identifiers and enrich domain metadata',
+        openLogsTitle: 'Conversion Logs',
+        logTitle: 'Conversion Logs',
+        logSubtitle: 'Review recent conversion tasks and complete results',
+        logDetailTitle: 'Conversion Detail',
+        logEmpty: 'No conversion logs yet',
+        logDetailEmpty: 'Select a conversion log',
+        clearLogsTitle: 'Clear',
         chooseWebLabel: 'Current page',
         chooseWebHint: 'Extract the current tab and organize metadata',
         chooseUrlLabel: 'Enter URL',
         chooseUrlHint: 'Submit a web address and let the backend fetch it',
         chooseUploadLabel: 'Upload data',
-        chooseUploadHint: 'Upload JSON / TXT and other text files',
+        chooseUploadHint: 'Upload a formatted JSON / XML file',
         chooseIdentifierLabel: 'Enter DOI/CSTR',
         chooseIdentifierHint: 'Resolve identifiers and organize metadata',
         uploadTitle: 'Upload data file',
-        uploadDescription: 'Supported file formats: JSON / TXT / CSV / MD / XML / HTML / LOG',
+        uploadExampleButton: 'View JSON example',
+        uploadExampleButtonHide: 'Hide JSON example',
         uploadButton: 'Choose file',
         confirmUploadButton: 'Confirm and analyze',
         reselectUploadButton: 'Choose again',
@@ -250,6 +298,9 @@ const state = {
     urlResultReady: false,
     urlHistoryUsed: false,
     currentPageData: null,  // 存储当前提取的页面数据
+    conversionLogs: [],
+    selectedLogId: null,
+    previousWorkspace: 'start',
 };
 
 function isObject(value) {
@@ -301,6 +352,164 @@ function activateSourceMode(sourceMode) {
 function setActiveView(isAnalysisVisible) {
     document.getElementById('startScreen').hidden = isAnalysisVisible;
     document.getElementById('analysisWorkspace').hidden = !isAnalysisVisible;
+    document.getElementById('logWorkspace').hidden = true;
+}
+
+function loadConversionLogs() {
+    try {
+        const raw = localStorage.getItem(CONVERSION_LOG_STORAGE_KEY);
+        const parsed = JSON.parse(raw || '[]');
+        state.conversionLogs = Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        state.conversionLogs = [];
+    }
+}
+
+function saveConversionLogs() {
+    localStorage.setItem(CONVERSION_LOG_STORAGE_KEY, JSON.stringify(state.conversionLogs));
+}
+
+function getSourceLabel(source) {
+    return {
+        web: '当前网页',
+        url: 'URL',
+        upload: '上传 JSON/XML',
+        identifier: 'DOI/CSTR',
+        text: '文本',
+    }[source] || source || '未知来源';
+}
+
+function getLogDisplayTitle(entry) {
+    if (!entry) {
+        return '';
+    }
+    if (entry.source === 'upload') {
+        return entry.title || '未命名上传文件';
+    }
+    if (entry.source === 'identifier') {
+        return entry.title || entry.identifierInput || 'DOI/CSTR 查询';
+    }
+    return entry.url || entry.title || '未命名转换任务';
+}
+
+function recordConversionLog({ source, mode, strategy, title, url, inputText, payload, identifierInput }) {
+    const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        createdAt: new Date().toISOString(),
+        source,
+        mode,
+        strategy,
+        title: title || '',
+        url: url || '',
+        identifierInput: identifierInput || '',
+        inputPreview: String(inputText || '').slice(0, 1000),
+        payload,
+    };
+    state.conversionLogs = [entry, ...state.conversionLogs].slice(0, MAX_CONVERSION_LOGS);
+    state.selectedLogId = entry.id;
+    saveConversionLogs();
+}
+
+function showLogs() {
+    state.previousWorkspace = document.getElementById('analysisWorkspace').hidden ? 'start' : 'analysis';
+    document.getElementById('startScreen').hidden = true;
+    document.getElementById('analysisWorkspace').hidden = true;
+    document.getElementById('logWorkspace').hidden = false;
+    renderLogs();
+}
+
+function closeLogs() {
+    document.getElementById('logWorkspace').hidden = true;
+    if (state.previousWorkspace === 'analysis') {
+        document.getElementById('analysisWorkspace').hidden = false;
+    } else {
+        document.getElementById('startScreen').hidden = false;
+    }
+}
+
+function renderLogs() {
+    const ui = getUIText();
+    const list = document.getElementById('logList');
+    const detail = document.getElementById('logDetail');
+    document.getElementById('logTitle').textContent = ui.logTitle;
+    document.getElementById('logSubtitle').textContent = ui.logSubtitle;
+    document.getElementById('logDetailTitle').textContent = ui.logDetailTitle;
+    document.getElementById('clearLogsButton').textContent = ui.clearLogsTitle;
+
+    list.innerHTML = '';
+    if (!state.conversionLogs.length) {
+        const empty = document.createElement('div');
+        empty.className = 'log-item-meta';
+        empty.style.padding = '14px';
+        empty.textContent = ui.logEmpty;
+        list.appendChild(empty);
+        detail.className = 'log-detail empty';
+        detail.textContent = ui.logDetailEmpty;
+        return;
+    }
+
+    if (!state.selectedLogId || !state.conversionLogs.some((entry) => entry.id === state.selectedLogId)) {
+        state.selectedLogId = state.conversionLogs[0].id;
+    }
+
+    state.conversionLogs.forEach((entry) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `log-item${entry.id === state.selectedLogId ? ' active' : ''}`;
+        button.addEventListener('click', () => {
+            state.selectedLogId = entry.id;
+            renderLogs();
+        });
+
+        const title = document.createElement('div');
+        title.className = 'log-item-title';
+        title.textContent = getLogDisplayTitle(entry);
+
+        const meta = document.createElement('div');
+        meta.className = 'log-item-meta';
+        meta.textContent = `${getSourceLabel(entry.source)} · ${entry.mode || 'common'} · ${new Date(entry.createdAt).toLocaleString('zh-CN', { hour12: false })}`;
+
+        button.append(title, meta);
+        list.appendChild(button);
+    });
+
+    const selected = state.conversionLogs.find((entry) => entry.id === state.selectedLogId);
+    renderLogDetail(selected);
+}
+
+function appendLogDetailSection(container, title, value) {
+    const section = document.createElement('section');
+    section.className = 'log-detail-section';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const pre = document.createElement('pre');
+    pre.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    section.append(heading, pre);
+    container.appendChild(section);
+}
+
+function renderLogDetail(entry) {
+    const ui = getUIText();
+    const detail = document.getElementById('logDetail');
+    detail.innerHTML = '';
+    if (!entry) {
+        detail.className = 'log-detail empty';
+        detail.textContent = ui.logDetailEmpty;
+        return;
+    }
+
+    detail.className = 'log-detail';
+    appendLogDetailSection(detail, '任务信息', {
+        source: getSourceLabel(entry.source),
+        mode: entry.mode,
+        strategy: entry.strategy,
+        title: entry.title,
+        url: entry.url,
+        identifierInput: entry.identifierInput,
+        createdAt: entry.createdAt,
+    });
+    appendLogDetailSection(detail, '输入预览', entry.inputPreview || '无');
+    appendLogDetailSection(detail, '转换结果', entry.payload || {});
 }
 
 function setUploadPanelState() {
@@ -628,22 +837,25 @@ function flattenStructuredValue(value, prefix = '', lines = []) {
 async function readFileAsText(file) {
     const rawText = await file.text();
     const trimmedText = rawText.trim();
+    const lowerName = String(file.name || '').toLowerCase();
 
     if (!trimmedText) {
         return '';
     }
 
-    if (file.name.toLowerCase().endsWith('.json') || trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+    if (!lowerName.endsWith('.json') && !lowerName.endsWith('.xml')) {
+        throw new Error('仅支持 JSON / XML 文件');
+    }
+
+    if (lowerName.endsWith('.json')) {
         try {
-            const parsed = JSON.parse(rawText);
-            const flattenedText = flattenStructuredValue(parsed).join('\n').trim();
-            return flattenedText || normalizeWhitespace(rawText);
+            JSON.parse(rawText);
         } catch (error) {
-            console.warn('Failed to parse JSON upload, falling back to raw text.', error);
+            throw new Error('JSON 格式不合法，请按页面提示的 core/domain 结构上传');
         }
     }
 
-    return normalizeWhitespace(rawText);
+    return rawText;
 }
 
 function getModeSchemaKey(mode, payload = null) {
@@ -970,7 +1182,7 @@ async function waitForTabComplete(tabId, timeoutMs = 20000) {
 async function requestMetadataFromText(mode, text, { title = '', url = '', html = '', strategy = 'auto', source = 'text', forceReanalyze = false } = {}) {
     const language = state.language;
     if (!text) {
-        throw new Error('没有可发送给大模型的内容');
+        throw new Error('没有可分析的内容');
     }
 
     updateStatus(getUIText(language).loadingSend, 'loading');
@@ -997,6 +1209,15 @@ async function requestMetadataFromText(mode, text, { title = '', url = '', html 
 
     const payload = await response.json();
     applyMetadataResponse(payload, mode);
+    recordConversionLog({
+        source,
+        mode,
+        strategy,
+        title,
+        url,
+        inputText: text,
+        payload,
+    });
     return payload;
 }
 
@@ -1047,6 +1268,15 @@ async function requestMetadataFromUrl(mode, { forceReanalyze = false } = {}) {
     if (cachedResult && cachedResult.found) {
         state.urlResultReady = true;
         applyMetadataResponse(cachedResult, mode);
+        recordConversionLog({
+            source: 'url',
+            mode,
+            strategy: 'history',
+            title: cachedResult.history_page_title || '',
+            url,
+            inputText: '',
+            payload: cachedResult,
+        });
         setAnalysisVisibility();
         setUrlReanalyzeButtonVisibility();
         renderMode(mode);
@@ -1112,6 +1342,15 @@ async function requestMetadataFromIdentifiers(mode) {
     applyIdentifierItemToCache();
     renderIdentifierSelector();
     state.lastFetchedAt = new Date();
+    recordConversionLog({
+        source: 'identifier',
+        mode,
+        strategy: 'identifier',
+        title: `DOI/CSTR: ${identifiers.slice(0, 80)}`,
+        identifierInput: identifiers,
+        inputText: identifiers,
+        payload,
+    });
     return payload;
 }
 
@@ -1218,6 +1457,7 @@ async function requestMetadataForUploadedFile(mode) {
         title: file.name,
         url: '',
         source: 'upload',
+        strategy: 'upload_rule',
     });
 }
 
@@ -1481,6 +1721,20 @@ function parseIdentifierTokens(input) {
         .filter(Boolean);
 }
 
+function getPayloadSectionKey(schemaKey, language) {
+    if (language !== 'en') {
+        return schemaKey;
+    }
+
+    return {
+        核心元数据: 'Core Metadata',
+        数据集元数据: 'Dataset Metadata',
+        数据论文元数据: 'Data Paper Metadata',
+        标准文献元数据: 'Standard Literature Metadata',
+        生态科学数据元数据: 'Ecological Science Data Metadata',
+    }[schemaKey] || schemaKey;
+}
+
 function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
     const payload = payloadBundle && payloadBundle[language];
     if (!payload) {
@@ -1489,12 +1743,13 @@ function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
     const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
     const schemaRoot = schema[schemaKey] || schema['核心元数据'];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
-    const sectionPayload = getEffectiveSectionPayload(payload, schemaKey);
+    const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
     return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
 }
 
 async function downloadJsonFile(mode) {
     const language = state.language;
+    const downloadLanguage = DOWNLOAD_LANGUAGE;
     const schema = state.schemaCache[mode] || await loadSchema(mode);
     if (!schema) {
         updateStatus(getUIText(language).downloadBlocked, 'error');
@@ -1527,7 +1782,7 @@ async function downloadJsonFile(mode) {
                 if (!item || item.status !== 'ok' || !isObject(item.payload)) {
                     return '';
                 }
-                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, language);
+                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, downloadLanguage);
                 if (!downloadPayload) {
                     return '';
                 }
@@ -1543,7 +1798,7 @@ async function downloadJsonFile(mode) {
             const blob = new Blob([lines.join('\n')], { type: 'application/jsonl;charset=utf-8' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `identifiers-${mode}-${language}.jsonl`;
+            link.download = `identifiers-${mode}-${downloadLanguage}.jsonl`;
             link.click();
             URL.revokeObjectURL(link.href);
             return;
@@ -1551,7 +1806,7 @@ async function downloadJsonFile(mode) {
     }
 
     const payloadBundle = state.resultCache[getCacheKey(mode)];
-    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, language);
+    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, downloadLanguage);
     if (!downloadPayload) {
         updateStatus(getUIText(language).downloadBlocked, 'error');
         return;
@@ -1559,7 +1814,7 @@ async function downloadJsonFile(mode) {
     const blob = new Blob([JSON.stringify(downloadPayload, null, 2)], { type: 'application/json;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${mode}-${language}-metadata.json`;
+    link.download = `${mode}-${downloadLanguage}-metadata.json`;
     link.click();
     URL.revokeObjectURL(link.href);
 }
@@ -1570,6 +1825,11 @@ function updateStaticText() {
 
     document.getElementById('startTitle').textContent = ui.startTitle;
     document.getElementById('startDescription').textContent = ui.startDescription;
+    document.getElementById('openLogsStartButton').textContent = ui.openLogsTitle;
+    document.getElementById('domainToCoreTitle').textContent = ui.domainToCoreTitle;
+    document.getElementById('domainToCoreHint').textContent = ui.domainToCoreHint;
+    document.getElementById('coreToDomainTitle').textContent = ui.coreToDomainTitle;
+    document.getElementById('coreToDomainHint').textContent = ui.coreToDomainHint;
     document.getElementById('chooseWebLabel').textContent = ui.chooseWebLabel;
     document.getElementById('chooseWebHint').textContent = ui.chooseWebHint;
     document.getElementById('chooseUrlLabel').textContent = ui.chooseUrlLabel;
@@ -1581,7 +1841,12 @@ function updateStaticText() {
     document.getElementById('appTitle').textContent = ui.appTitle;
     document.getElementById('extensionTitle').textContent = ui.extensionTitle;
     document.getElementById('uploadTitle').textContent = ui.uploadTitle;
-    document.getElementById('uploadDescription').textContent = ui.uploadDescription;
+    const uploadExampleJson = document.getElementById('uploadExampleJson');
+    const uploadExampleButton = document.getElementById('uploadExampleButton');
+    if (uploadExampleJson && uploadExampleButton) {
+        uploadExampleJson.textContent = UPLOAD_EXAMPLE_JSON;
+        uploadExampleButton.textContent = uploadExampleJson.hidden ? ui.uploadExampleButton : ui.uploadExampleButtonHide;
+    }
     document.getElementById('urlTitle').textContent = ui.urlTitle;
     document.getElementById('urlDescription').textContent = ui.urlDescription;
     document.getElementById('urlInput').setAttribute('placeholder', ui.urlPlaceholder);
@@ -1602,6 +1867,10 @@ function updateStaticText() {
     document.getElementById('refreshButton').setAttribute('title', ui.refreshTitle);
     document.getElementById('downloadButton').setAttribute('aria-label', ui.downloadTitle);
     document.getElementById('downloadButton').setAttribute('title', ui.downloadTitle);
+    document.getElementById('openLogsButton').setAttribute('aria-label', ui.openLogsTitle);
+    document.getElementById('openLogsButton').setAttribute('title', ui.openLogsTitle);
+    document.getElementById('closeLogsButton').setAttribute('aria-label', '返回');
+    document.getElementById('closeLogsButton').setAttribute('title', '返回');
     document.querySelector('.mode-switcher').setAttribute('aria-label', ui.modeSwitcherLabel);
 
     const selectedFileName = document.getElementById('selectedFileName');
@@ -1641,6 +1910,9 @@ function updateStaticText() {
     if (langEnButton) {
         langEnButton.classList.toggle('active', language === 'en');
         langEnButton.textContent = ui.languageEn;
+    }
+    if (!document.getElementById('logWorkspace').hidden) {
+        renderLogs();
     }
 }
 
@@ -1845,6 +2117,15 @@ function setLanguage(language) {
 
 function bindEvents() {
     document.getElementById('homeButton').addEventListener('click', resetToStartScreen);
+    document.getElementById('openLogsStartButton').addEventListener('click', showLogs);
+    document.getElementById('openLogsButton').addEventListener('click', showLogs);
+    document.getElementById('closeLogsButton').addEventListener('click', closeLogs);
+    document.getElementById('clearLogsButton').addEventListener('click', () => {
+        state.conversionLogs = [];
+        state.selectedLogId = null;
+        saveConversionLogs();
+        renderLogs();
+    });
     document.getElementById('chooseWebButton').addEventListener('click', () => selectSourceMode('web'));
     document.getElementById('chooseUrlButton').addEventListener('click', () => selectSourceMode('url'));
     document.getElementById('chooseUploadButton').addEventListener('click', () => selectSourceMode('upload'));
@@ -1868,6 +2149,11 @@ function bindEvents() {
             selectSourceMode('upload');
         }
         document.getElementById('fileInput').click();
+    });
+    document.getElementById('uploadExampleButton').addEventListener('click', () => {
+        const example = document.getElementById('uploadExampleJson');
+        example.hidden = !example.hidden;
+        updateStaticText();
     });
 
     document.getElementById('confirmUploadButton').addEventListener('click', confirmUploadAndAnalyze);
@@ -2021,6 +2307,7 @@ async function reextractWithLLM() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    loadConversionLogs();
     bindEvents();
     updateStaticText();
     try {

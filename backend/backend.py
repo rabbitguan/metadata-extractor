@@ -13,6 +13,7 @@ from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
 from field_filter import apply_requirement_filter
 from get_id import get_typed_identifiers
 from identifier import process_source_code
+from upload_rule_extractor import extract_upload_metadata
 from metadata_store import (
     get_latest_analysis_history_by_url,
     initialize_metadata_store,
@@ -106,6 +107,14 @@ def _parse_bool(value):
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
     return bool(value)
+
+
+def _looks_like_structured_upload(title='', source='', strategy=''):
+    if strategy == 'upload_rule' or source == 'upload':
+        return True
+
+    filename = str(title or '').strip().lower()
+    return filename.endswith('.json') or filename.endswith('.xml')
 
 
 def normalize_llm_answer(raw_answer):
@@ -322,9 +331,12 @@ def _resource_type_from_domain(domain_value, language='zh'):
 
 
 def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto'):
-    llm_answer = normalize_llm_answer(
-        qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
-    )
+    if strategy == 'upload_rule':
+        llm_answer = normalize_llm_answer(extract_upload_metadata(text, title=title))
+    else:
+        llm_answer = normalize_llm_answer(
+            qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
+        )
     zh_answer = llm_answer.get('zh')
     en_answer = llm_answer.get('en')
     if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
@@ -502,9 +514,11 @@ def handle_register_request(data):
     html = data.get('html', '')
     url = data.get('url', '')
     title = data.get('title', '')
-    if not str(text or '').strip() and source in {'text', 'web'}:
+    if not str(text or '').strip() and source in {'text', 'web', 'upload'}:
         return jsonify({"status": "error", "message": "Missing text"}), 400
-    print("Asking LLM to process text")
+    if _looks_like_structured_upload(title=title, source=source, strategy=strategy):
+        strategy = 'upload_rule'
+    print("Asking LLM to process text" if strategy != 'upload_rule' else "Using upload rule extractor")
     print(
         f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
     )
@@ -513,12 +527,14 @@ def handle_register_request(data):
         merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy)
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
+        if strategy == 'upload_rule':
+            return jsonify({"status": "error", "message": str(error)}), 400
         return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
     except Exception as error:
         print(f"Processing Error: {error}")
         return jsonify({"status": "error", "message": f"Failed to process text: {error}"}), 500
 
-    print("LLM processing complete")
+    print("Processing complete")
     print("Merged answer:", json.dumps(merged_answer, ensure_ascii=False, indent=2))
     return jsonify(merged_answer)
 

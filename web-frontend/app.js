@@ -1,5 +1,29 @@
 const BACKEND_QUERY_URL = "http://127.0.0.1:4000/query";
 const BACKEND_REGISTER_URL = "http://127.0.0.1:4000/register";
+const DOWNLOAD_LANGUAGE = "en";
+const CONVERSION_LOG_STORAGE_KEY = "metadata_web_conversion_logs_v1";
+const MAX_CONVERSION_LOGS = 50;
+const UPLOAD_EXAMPLE_JSON = `{
+  "resource_type": "dataset",
+  "core": {
+    "title": "Example Dataset",
+    "cstr_identifier": "31253.11.CSTR.2026.000001",
+    "creators": ["Alice Zhang", "Bob Li"],
+    "publisher": "Example Data Center",
+    "publication_date": "2026-06-20",
+    "description": "A short description of the resource.",
+    "keywords": ["metadata", "dataset"],
+    "subjects": ["Computer Science"],
+    "language": "en",
+    "alternative_identifiers": ["10.1234/example.dataset"],
+    "resource_url": ["https://example.org/datasets/001"]
+  },
+  "domain": {
+    "dataset_basic_information": {},
+    "dataset_publication_information": {},
+    "dataset_service_information": {}
+  }
+}`;
 
 const STANDARD_SCHEMA = JSON.parse(`{
     "资源类型候选列表": [
@@ -302,22 +326,38 @@ const LABEL_TRANSLATIONS_EN = {
 };
 
 const MODE_LABELS = {
-    common: { zh: "通用元数据项目表", en: "General Metadata" },
+    common: { zh: "核心元数据项目表", en: "Core Metadata" },
     domain: { zh: "领域专用元数据项目表", en: "Domain Metadata" }
 };
 
 const UI_TEXT = {
     zh: {
-        startTitle: "Metadata Organizer",
-        startDescription: "请选择分析方式：输入 URL / 上传文件 / 输入 DOI/CSTR",
+        startTitle: "元数据双向映射工具",
+        startDescription: "请选择分析方式：领域到核心 / 核心到领域",
+        domainToCoreTitle: "领域到核心",
+        domainToCoreHint: "从 URL 或文件内容抽取并映射为核心元数据",
+        coreToDomainTitle: "核心到领域",
+        coreToDomainHint: "通过标识符解析资源并补全领域元数据",
+        openLogsTitle: "转换日志",
+        logTitle: "转换日志",
+        logSubtitle: "查看最近的转换任务和完整结果",
+        logDetailTitle: "转换详情",
+        logEmpty: "暂无转换日志",
+        logDetailEmpty: "请选择一条转换日志",
+        logTaskInfoTitle: "任务信息",
+        logInputPreviewTitle: "输入预览",
+        logResultTitle: "转换结果",
+        clearLogsTitle: "清空",
+        closeLogsTitle: "返回",
         chooseUrlLabel: "输入 URL",
         chooseUrlHint: "输入网页地址后由后端直接抓取分析",
         chooseUploadLabel: "上传数据",
-        chooseUploadHint: "上传 JSON / TXT 等文本文件",
+        chooseUploadHint: "上传符合格式要求的 JSON / XML 文件",
         chooseIdentifierLabel: "输入 DOI/CSTR",
         chooseIdentifierHint: "通过编号解析资源并整理元数据",
         uploadTitle: "上传数据文件",
-        uploadDescription: "支持文件格式：JSON / TXT / CSV / MD / XML / HTML / LOG",
+        uploadExampleButton: "查看 JSON 示例格式",
+        uploadExampleButtonHide: "收起 JSON 示例格式",
         uploadButton: "选择文件",
         confirmUploadButton: "确认并分析",
         reselectUploadButton: "重新选择",
@@ -354,16 +394,32 @@ const UI_TEXT = {
         initErrorPrefix: "初始化失败: "
     },
     en: {
-        startTitle: "Metadata Organizer",
-        startDescription: "Choose an analysis mode: URL / upload file / DOI/CSTR",
+        startTitle: "Metadata Bidirectional Mapping Tool",
+        startDescription: "Choose a mapping direction: domain to core / core to domain",
+        domainToCoreTitle: "Domain to Core",
+        domainToCoreHint: "Extract URL or file content and map it to core metadata",
+        coreToDomainTitle: "Core to Domain",
+        coreToDomainHint: "Resolve identifiers and enrich domain metadata",
+        openLogsTitle: "Conversion Logs",
+        logTitle: "Conversion Logs",
+        logSubtitle: "Review recent conversion tasks and complete results",
+        logDetailTitle: "Conversion Detail",
+        logEmpty: "No conversion logs yet",
+        logDetailEmpty: "Select a conversion log",
+        logTaskInfoTitle: "Task Info",
+        logInputPreviewTitle: "Input Preview",
+        logResultTitle: "Conversion Result",
+        clearLogsTitle: "Clear",
+        closeLogsTitle: "Back",
         chooseUrlLabel: "Enter URL",
         chooseUrlHint: "Submit a web address and let the backend fetch it",
         chooseUploadLabel: "Upload data",
-        chooseUploadHint: "Upload JSON / TXT and other text files",
+        chooseUploadHint: "Upload a formatted JSON / XML file",
         chooseIdentifierLabel: "Enter DOI/CSTR",
         chooseIdentifierHint: "Resolve identifiers and organize metadata",
         uploadTitle: "Upload data file",
-        uploadDescription: "Supported file formats: JSON / TXT / CSV / MD / XML / HTML / LOG",
+        uploadExampleButton: "View JSON example",
+        uploadExampleButtonHide: "Hide JSON example",
         uploadButton: "Choose file",
         confirmUploadButton: "Confirm and analyze",
         reselectUploadButton: "Choose again",
@@ -448,7 +504,11 @@ const state = {
     currentIdentifierIndex: 0,
     urlInput: "",
     urlResultReady: false,
-    isRefreshing: false
+    isRefreshing: false,
+    conversionLogs: [],
+    selectedLogId: null,
+    logResultLanguage: "zh",
+    previousWorkspace: "analysis"
 };
 
 function isObject(value) {
@@ -484,6 +544,208 @@ function getSourceResultCache() {
 function activateSourceMode(sourceMode) {
     state.sourceMode = sourceMode;
     state.resultCache = getSourceResultCache();
+}
+
+function loadConversionLogs() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CONVERSION_LOG_STORAGE_KEY) || "[]");
+        state.conversionLogs = Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        state.conversionLogs = [];
+    }
+}
+
+function saveConversionLogs() {
+    localStorage.setItem(CONVERSION_LOG_STORAGE_KEY, JSON.stringify(state.conversionLogs));
+}
+
+function getSourceLabel(source) {
+    return {
+        url: "URL",
+        upload: "上传 JSON/XML",
+        identifier: "DOI/CSTR",
+        text: "文本"
+    }[source] || source || "未知来源";
+}
+
+function getTaskSummary(entry) {
+    if (!entry) return "";
+    const isEnglish = state.language === "en";
+    if (entry.source === "identifier") {
+        return isEnglish ? "Core to Domain: Identifier Query" : "核心到领域：标识符查询";
+    }
+    if (entry.source === "upload") {
+        return isEnglish ? "Domain to Core: JSON/XML Upload" : "领域到核心：JSON/XML上传";
+    }
+    if (entry.source === "url") {
+        return isEnglish ? "Domain to Core: URL Query" : "领域到核心：URL查询";
+    }
+    return isEnglish ? `Conversion: ${getSourceLabel(entry.source)}` : `转换任务：${getSourceLabel(entry.source)}`;
+}
+
+function getLogDisplayTitle(entry) {
+    if (!entry) return "";
+    if (entry.source === "upload") return entry.title || "未命名上传文件";
+    if (entry.source === "identifier") return entry.title || entry.identifierInput || "DOI/CSTR 查询";
+    return entry.url || entry.title || "未命名转换任务";
+}
+
+function recordConversionLog({ source, mode, strategy, title, url, inputText, payload, identifierInput }) {
+    const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        createdAt: new Date().toISOString(),
+        source,
+        mode,
+        strategy,
+        title: title || "",
+        url: url || "",
+        identifierInput: identifierInput || "",
+        inputPreview: String(inputText || "").slice(0, 1000),
+        payload
+    };
+    state.conversionLogs = [entry, ...state.conversionLogs].slice(0, MAX_CONVERSION_LOGS);
+    state.selectedLogId = entry.id;
+    saveConversionLogs();
+}
+
+function showLogs() {
+    state.previousWorkspace = document.getElementById("analysisWorkspace").hidden ? "start" : "analysis";
+    state.logResultLanguage = state.language === "en" ? "en" : "zh";
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = false;
+    renderLogs();
+}
+
+function closeLogs() {
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("startScreen").hidden = state.previousWorkspace !== "start";
+    document.getElementById("analysisWorkspace").hidden = state.previousWorkspace !== "analysis";
+    if (state.previousWorkspace === "analysis") setAnalysisVisibility();
+}
+
+function appendLogDetailSection(container, title, value) {
+    const section = document.createElement("section");
+    section.className = "log-detail-section";
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const pre = document.createElement("pre");
+    pre.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    section.append(heading, pre);
+    container.appendChild(section);
+}
+
+function pickLanguagePayload(payload, language) {
+    if (!isObject(payload)) return payload || {};
+    if (isObject(payload[language])) return payload[language];
+    if (Array.isArray(payload.items)) {
+        return {
+            ...payload,
+            items: payload.items.map((item) => {
+                if (!isObject(item) || !isObject(item.payload)) return item;
+                const localizedPayload = isObject(item.payload[language]) ? item.payload[language] : item.payload;
+                return { ...item, payload: localizedPayload };
+            })
+        };
+    }
+    return payload;
+}
+
+function appendLogResultSection(container, entry) {
+    const ui = getUIText();
+    const section = document.createElement("section");
+    section.className = "log-detail-section";
+
+    const head = document.createElement("div");
+    head.className = "log-result-head";
+
+    const heading = document.createElement("h3");
+    heading.textContent = ui.logResultTitle;
+
+    const toggle = document.createElement("div");
+    toggle.className = "log-result-toggle";
+    [
+        { language: "zh", label: ui.languageZh },
+        { language: "en", label: ui.languageEn }
+    ].forEach((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = option.label;
+        button.className = option.language === state.logResultLanguage ? "active" : "";
+        button.addEventListener("click", () => {
+            state.logResultLanguage = option.language;
+            renderLogDetail(entry);
+        });
+        toggle.appendChild(button);
+    });
+
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(pickLanguagePayload(entry.payload, state.logResultLanguage), null, 2);
+    head.append(heading, toggle);
+    section.append(head, pre);
+    container.appendChild(section);
+}
+
+function renderLogDetail(entry) {
+    const detail = document.getElementById("logDetail");
+    detail.innerHTML = "";
+    if (!entry) {
+        detail.className = "log-detail empty";
+        detail.textContent = getUIText().logDetailEmpty;
+        return;
+    }
+    detail.className = "log-detail";
+    const ui = getUIText();
+    appendLogDetailSection(detail, ui.logTaskInfoTitle, getTaskSummary(entry));
+    appendLogDetailSection(detail, ui.logInputPreviewTitle, entry.inputPreview || (state.language === "en" ? "None" : "无"));
+    appendLogResultSection(detail, entry);
+}
+
+function renderLogs() {
+    const ui = getUIText();
+    const list = document.getElementById("logList");
+    document.getElementById("logTitle").textContent = ui.logTitle;
+    document.getElementById("logSubtitle").textContent = ui.logSubtitle;
+    document.getElementById("logDetailTitle").textContent = ui.logDetailTitle;
+    document.getElementById("clearLogsButton").textContent = ui.clearLogsTitle;
+    document.getElementById("closeLogsButton").textContent = ui.closeLogsTitle;
+
+    list.innerHTML = "";
+    if (!state.conversionLogs.length) {
+        const empty = document.createElement("div");
+        empty.className = "log-item-meta";
+        empty.style.padding = "14px";
+        empty.textContent = ui.logEmpty;
+        list.appendChild(empty);
+        renderLogDetail(null);
+        return;
+    }
+
+    if (!state.selectedLogId || !state.conversionLogs.some((entry) => entry.id === state.selectedLogId)) {
+        state.selectedLogId = state.conversionLogs[0].id;
+    }
+
+    state.conversionLogs.forEach((entry) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `log-item${entry.id === state.selectedLogId ? " active" : ""}`;
+        button.addEventListener("click", () => {
+            state.selectedLogId = entry.id;
+            renderLogs();
+        });
+
+        const title = document.createElement("div");
+        title.className = "log-item-title";
+        title.textContent = getLogDisplayTitle(entry);
+
+        const meta = document.createElement("div");
+        meta.className = "log-item-meta";
+        meta.textContent = `${getTaskSummary(entry)} · ${new Date(entry.createdAt).toLocaleString("zh-CN", { hour12: false })}`;
+        button.append(title, meta);
+        list.appendChild(button);
+    });
+
+    renderLogDetail(state.conversionLogs.find((entry) => entry.id === state.selectedLogId));
 }
 
 function setUploadPanelState() {
@@ -651,10 +913,10 @@ async function requestBackend(url, payload, loadingText) {
     return responseBody;
 }
 
-async function requestMetadataFromText(mode, text, { title = "", url = "", html = "", strategy = "auto" } = {}) {
-    if (!text) throw new Error(state.language === "zh" ? "没有可发送给大模型的内容" : "No text to analyze");
+async function requestMetadataFromText(mode, text, { title = "", url = "", html = "", strategy = "auto", source = "text" } = {}) {
+    if (!text) throw new Error(state.language === "zh" ? "没有可分析的内容" : "No text to analyze");
     const payload = await requestBackend(BACKEND_REGISTER_URL, {
-        source: "text",
+        source,
         text,
         html,
         url,
@@ -667,6 +929,15 @@ async function requestMetadataFromText(mode, text, { title = "", url = "", html 
     state.resultCache.domain = payload;
     state.resultCache[state.mode] = payload;
     state.lastFetchedAt = new Date();
+    recordConversionLog({
+        source,
+        mode,
+        strategy,
+        title,
+        url,
+        inputText: text,
+        payload
+    });
     return payload;
 }
 
@@ -684,6 +955,15 @@ async function requestMetadataFromUrl(mode) {
     state.resultCache.domain = payload;
     state.resultCache[state.mode] = payload;
     state.lastFetchedAt = new Date();
+    recordConversionLog({
+        source: "url",
+        mode,
+        strategy: "url",
+        title: url,
+        url,
+        inputText: url,
+        payload
+    });
     return payload;
 }
 
@@ -703,6 +983,15 @@ async function requestMetadataFromIdentifiers(mode) {
     applyIdentifierItemToCache();
     renderIdentifierSelector();
     state.lastFetchedAt = new Date();
+    recordConversionLog({
+        source: "identifier",
+        mode,
+        strategy: "identifier",
+        title: `DOI/CSTR: ${identifiers.slice(0, 80)}`,
+        identifierInput: identifiers,
+        inputText: identifiers,
+        payload
+    });
     return payload;
 }
 
@@ -724,17 +1013,24 @@ function readFileAsText(file) {
         reader.onload = () => {
             const rawText = String(reader.result || "");
             const lowerName = String(file.name || "").toLowerCase();
+            const trimmedText = rawText.trim();
+            if (!trimmedText) {
+                resolve("");
+                return;
+            }
+            if (!lowerName.endsWith(".json") && !lowerName.endsWith(".xml")) {
+                reject(new Error(state.language === "zh" ? "仅支持 JSON / XML 文件" : "Only JSON / XML files are supported"));
+                return;
+            }
             if (lowerName.endsWith(".json")) {
                 try {
-                    const parsed = JSON.parse(rawText);
-                    const flattenedText = flattenStructuredValue(parsed).join("\n").trim();
-                    resolve(flattenedText || normalizeWhitespace(rawText));
-                    return;
+                    JSON.parse(rawText);
                 } catch (error) {
-                    console.warn("Failed to parse JSON upload, fallback to raw text.", error);
+                    reject(new Error(state.language === "zh" ? "JSON 格式不合法，请按页面提示的 core/domain 结构上传" : "Invalid JSON. Use the core/domain structure shown on the page"));
+                    return;
                 }
             }
-            resolve(normalizeWhitespace(rawText));
+            resolve(rawText);
         };
         reader.onerror = () => reject(new Error("读取文件失败"));
         reader.readAsText(file, "utf-8");
@@ -750,7 +1046,7 @@ async function requestMetadataForUploadedFile(mode) {
     if (!normalizedText) throw new Error(state.language === "zh" ? "文件内容为空" : "File content is empty");
     state.uploadedText = normalizedText;
     state.uploadedTitle = file.name;
-    return requestMetadataFromText(mode, normalizedText, { title: file.name, url: "" });
+    return requestMetadataFromText(mode, normalizedText, { title: file.name, url: "", strategy: "upload_rule", source: "upload" });
 }
 
 function renderFieldValue(data) {
@@ -947,18 +1243,30 @@ function parseIdentifierTokens(input) {
     return String(input).split(/[\s,，;；、]+/).map((item) => item.trim()).filter(Boolean);
 }
 
+function getPayloadSectionKey(schemaKey, language) {
+    if (language !== "en") return schemaKey;
+    return {
+        核心元数据: "Core Metadata",
+        数据集元数据: "Dataset Metadata",
+        数据论文元数据: "Data Paper Metadata",
+        标准文献元数据: "Standard Literature Metadata",
+        生态科学数据元数据: "Ecological Science Data Metadata"
+    }[schemaKey] || schemaKey;
+}
+
 function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
     const payload = payloadBundle && payloadBundle[language];
     if (!payload) return null;
     const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
     const schemaRoot = schema[schemaKey] || schema["核心元数据"];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
-    const sectionPayload = getEffectiveSectionPayload(payload, schemaKey);
+    const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
     return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
 }
 
 async function downloadJsonFile(mode) {
     const language = state.language;
+    const downloadLanguage = DOWNLOAD_LANGUAGE;
     const schema = state.schemaCache[mode] || await loadSchema(mode);
     if (!schema) return updateStatus(getUIText(language).downloadBlocked, "error");
 
@@ -980,7 +1288,7 @@ async function downloadJsonFile(mode) {
                 const bucket = key ? buckets.get(key) : null;
                 const item = bucket && bucket.length > 0 ? bucket.shift() : null;
                 if (!item || item.status !== "ok" || !isObject(item.payload)) return "";
-                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, language);
+                const downloadPayload = buildDownloadPayloadForItem(mode, item.payload, schema, downloadLanguage);
                 if (!downloadPayload) return "";
                 return JSON.stringify({
                     identifier: item.identifier ?? null,
@@ -994,7 +1302,7 @@ async function downloadJsonFile(mode) {
             const blob = new Blob([lines.join("\n")], { type: "application/jsonl;charset=utf-8" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `identifiers-${mode}-${language}.jsonl`;
+            link.download = `identifiers-${mode}-${downloadLanguage}.jsonl`;
             link.click();
             URL.revokeObjectURL(link.href);
             return;
@@ -1002,13 +1310,13 @@ async function downloadJsonFile(mode) {
     }
 
     const payloadBundle = state.resultCache[mode];
-    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, language);
+    const downloadPayload = buildDownloadPayloadForItem(mode, payloadBundle, schema, downloadLanguage);
     if (!downloadPayload) return updateStatus(getUIText(language).downloadBlocked, "error");
 
     const blob = new Blob([JSON.stringify(downloadPayload, null, 2)], { type: "application/json;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${mode}-${language}-metadata.json`;
+    link.download = `${mode}-${downloadLanguage}-metadata.json`;
     link.click();
     URL.revokeObjectURL(link.href);
 }
@@ -1019,6 +1327,10 @@ function updateStaticText() {
 
     document.getElementById("startTitle").textContent = ui.startTitle;
     document.getElementById("startDescription").textContent = ui.startDescription;
+    document.getElementById("domainToCoreTitle").textContent = ui.domainToCoreTitle;
+    document.getElementById("domainToCoreHint").textContent = ui.domainToCoreHint;
+    document.getElementById("coreToDomainTitle").textContent = ui.coreToDomainTitle;
+    document.getElementById("coreToDomainHint").textContent = ui.coreToDomainHint;
     document.getElementById("chooseUrlLabel").textContent = ui.chooseUrlLabel;
     document.getElementById("chooseUrlHint").textContent = ui.chooseUrlHint;
     document.getElementById("chooseUploadLabel").textContent = ui.chooseUploadLabel;
@@ -1027,7 +1339,10 @@ function updateStaticText() {
     document.getElementById("chooseIdentifierHint").textContent = ui.chooseIdentifierHint;
     document.getElementById("extensionTitle").textContent = ui.extensionTitle;
     document.getElementById("uploadTitle").textContent = ui.uploadTitle;
-    document.getElementById("uploadDescription").textContent = ui.uploadDescription;
+    const uploadExampleJson = document.getElementById("uploadExampleJson");
+    const uploadExampleButton = document.getElementById("uploadExampleButton");
+    uploadExampleJson.textContent = UPLOAD_EXAMPLE_JSON;
+    uploadExampleButton.textContent = uploadExampleJson.hidden ? ui.uploadExampleButton : ui.uploadExampleButtonHide;
     document.getElementById("urlTitle").textContent = ui.urlTitle;
     document.getElementById("urlDescription").textContent = ui.urlDescription;
     document.getElementById("urlInput").setAttribute("placeholder", ui.urlPlaceholder);
@@ -1041,6 +1356,7 @@ function updateStaticText() {
     document.getElementById("identifierSelectLabel").textContent = ui.identifierSelectLabel;
     document.getElementById("refreshButton").textContent = ui.refreshTitle;
     document.getElementById("downloadButton").textContent = ui.downloadTitle;
+    document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
     document.querySelector(".mode-switcher").setAttribute("aria-label", ui.modeSwitcherLabel);
 
     const selectedFileName = document.getElementById("selectedFileName");
@@ -1071,6 +1387,7 @@ function updateStaticText() {
     langZhButton.textContent = ui.languageZh;
     langEnButton.classList.toggle("active", language === "en");
     langEnButton.textContent = ui.languageEn;
+    if (!document.getElementById("logWorkspace").hidden) renderLogs();
 }
 
 function clearAnalysisView() {
@@ -1212,6 +1529,7 @@ function reselectUploadFile() {
 function setLanguage(language) {
     if (language === state.language) return;
     state.language = language;
+    state.logResultLanguage = language === "en" ? "en" : "zh";
     updateStaticText();
     if (state.resultCache.common || state.resultCache.domain) renderMode(state.mode);
 }
@@ -1230,9 +1548,22 @@ function bindEvents() {
 
     document.getElementById("refreshButton").addEventListener("click", refreshCurrentMode);
     document.getElementById("downloadButton").addEventListener("click", async () => downloadJsonFile(state.mode));
+    document.getElementById("openLogsButton").addEventListener("click", showLogs);
+    document.getElementById("closeLogsButton").addEventListener("click", closeLogs);
+    document.getElementById("clearLogsButton").addEventListener("click", () => {
+        state.conversionLogs = [];
+        state.selectedLogId = null;
+        saveConversionLogs();
+        renderLogs();
+    });
     document.getElementById("uploadButton").addEventListener("click", () => {
         if (state.sourceMode !== "upload") selectSourceMode("upload");
         document.getElementById("fileInput").click();
+    });
+    document.getElementById("uploadExampleButton").addEventListener("click", () => {
+        const example = document.getElementById("uploadExampleJson");
+        example.hidden = !example.hidden;
+        updateStaticText();
     });
     document.getElementById("confirmUploadButton").addEventListener("click", confirmUploadAndAnalyze);
     document.getElementById("reselectUploadButton").addEventListener("click", reselectUploadFile);
@@ -1270,6 +1601,7 @@ function bindEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    loadConversionLogs();
     bindEvents();
     updateStaticText();
     try {

@@ -1,0 +1,13 @@
+{
+  "resource_type": "other",
+  "core": {
+    "title": "Minimal Upload Rule Test",
+    "creators": [
+      "Test User"
+    ],
+    "description": "A minimal JSON object for testing upload parsing.",
+    "resource_url": [
+      "https://example.org/resources/minimal"
+    ]
+  }
+}
