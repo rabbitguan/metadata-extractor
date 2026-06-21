@@ -11,6 +11,8 @@
         <div class="container nav-inner">
             <button id="brandHomeButton" class="brand" type="button">元数据双向映射工具</button>
             <div class="nav-actions">
+                <button id="openApiDocsButton" class="nav-log-button" type="button">接口文档</button>
+                <button id="openLogsButton" class="nav-log-button" type="button">转换日志</button>
                 <div class="lang-toggle" role="group" aria-label="Language switcher">
                     <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
                     <button id="langEnButton" class="lang-button" type="button" data-language="en">EN</button>
@@ -24,7 +26,7 @@
         </div>
     </header>
 
-    <section class="page-hero">
+    <section id="pageHero" class="page-hero">
         <div class="container hero-inner">
             <h1 id="startTitle">元数据双向映射工具</h1>
             <p id="startDescription">请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据</p>
@@ -67,6 +69,7 @@
 
         <section id="analysisWorkspace" hidden>
             <div class="toolbar">
+                <button id="analysisHomeButton" class="btn secondary" type="button">返回主页</button>
                 <div class="tool-actions">
                     <button id="refreshButton" class="btn secondary" type="button">刷新</button>
                     <button id="downloadButton" class="btn primary" type="button">下载</button>
@@ -160,11 +163,19 @@
                 </section>
             </div>
         </section>
-    </main>
 
-    <aside class="right-rail" aria-label="工具导航">
-        <button id="openLogsButton" class="right-rail-button" type="button">转换日志</button>
-    </aside>
+        <section id="apiDocsWorkspace" class="api-docs-workspace" hidden>
+            <div class="log-header">
+                <button id="closeApiDocsButton" class="btn secondary" type="button">返回主页</button>
+                <div>
+                    <h2 id="apiDocsTitle">接口文档</h2>
+                    <p id="apiDocsSubtitle">后端主服务地址：http://127.0.0.1:4000</p>
+                </div>
+            </div>
+
+            <div id="apiDocsContent" class="api-docs-layout"></div>
+        </section>
+    </main>
 
     <footer class="page-footer">
         <div class="container footer-inner">
