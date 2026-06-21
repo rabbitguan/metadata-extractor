@@ -366,6 +366,12 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
         '生态科学数据基本信息',
         '生态科学数据出版信息',
         '生态科学数据服务信息',
+        '标识信息',
+        '数据内容信息',
+        '数据质量与方法',
+        '空间与时间覆盖范围',
+        '项目与资助信息',
+        '分发与引用信息',
     }
     domain_fields_en = {
         'Data Paper Content Information',
@@ -381,6 +387,12 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
         'Ecological Science Data Basic Information',
         'Ecological Science Data Publication Information',
         'Ecological Science Data Service Information',
+        'Identification Information',
+        'Data Content Information',
+        'Data Quality and Methods',
+        'Spatial and Temporal Coverage',
+        'Project and Funding Information',
+        'Distribution and Citation Information',
     }
 
     domain_zh = {k: v for k, v in zh_answer.items() if k in domain_fields_zh}

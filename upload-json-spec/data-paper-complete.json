@@ -1,0 +1,138 @@
+{
+  "resource_type": "data_paper",
+  "core": {
+    "title": "A Multi-Source Urban Water Quality Dataset for Seasonal Analysis",
+    "cstr_identifier": "31253.11.CSTR.2026.100002",
+    "creators": [
+      "Li Ming",
+      "Chen Yu",
+      "Wang Tao",
+      "Emily Zhang"
+    ],
+    "publisher": "Journal of Environmental Data Science",
+    "publication_date": "2026-03-18",
+    "description": "This data paper describes the construction, quality control, and reuse scenarios of a multi-source urban water quality dataset collected from 18 monitoring sites.",
+    "keywords": [
+      "urban water quality",
+      "seasonal analysis",
+      "monitoring network",
+      "environmental sensing",
+      "spatiotemporal variation"
+    ],
+    "subjects": [
+      "Environmental Science",
+      "Hydrology",
+      "Data Science"
+    ],
+    "language": "en",
+    "contributors": [
+      "City Environmental Monitoring Program"
+    ],
+    "alternative_identifiers": [
+      "10.1234/jeds.2026.0318"
+    ],
+    "related_identifiers": [
+      "31253.11.CSTR.2026.100001"
+    ],
+    "rights": "CC BY 4.0",
+    "funders": [
+      "National Natural Science Foundation of China, NSFC-2024-1007",
+      "City Environmental Monitoring Program, CEMP-2023-44"
+    ],
+    "version": "Accepted manuscript v1.0",
+    "resource_url": [
+      "https://journal.example.org/articles/jeds-2026-0318",
+      "https://data.example.org/water-quality"
+    ]
+  },
+  "domain": {
+    "data_paper_content_information": {
+      "Title": "A Multi-Source Urban Water Quality Dataset for Seasonal Analysis",
+      "Abstract": "The paper introduces monthly water-quality observations collected between March 2022 and February 2024 from upstream, midstream, and downstream monitoring sites. It documents sampling procedures, calibration logs, sensor metadata, and data-quality rules.",
+      "Keywords": [
+        "water quality",
+        "urban hydrology",
+        "sensor network",
+        "quality control"
+      ],
+      "Dataset Basic Information": {
+        "Identifier": "31253.11.CSTR.2026.100003",
+        "Title": "Urban Water Quality Monitoring Dataset 2022-2024",
+        "Abstract": "A dataset containing pH, dissolved oxygen, conductivity, turbidity, nitrate, phosphate, ammonia nitrogen, and temperature measurements for 18 monitoring sites.",
+        "Keywords": [
+          "pH",
+          "dissolved oxygen",
+          "turbidity",
+          "nutrients"
+        ],
+        "Scope": {
+          "Time Range": "2022-03 to 2024-02",
+          "Spatial Range": "18 monitoring sites across upstream, midstream, and downstream urban river segments"
+        },
+        "Language": "en",
+        "File Content": "CSV measurement tables, XLSX sampling schedule, JSON sensor metadata, TXT calibration logs, README, and variable dictionary.",
+        "Funding Project": "NSFC-2024-1007; CEMP-2023-44",
+        "Data Volume": "4.8 GB",
+        "Data Format": "CSV, TXT, XLSX, JSON",
+        "Dataset Authors": {
+          "Author Name": [
+            "Li Ming",
+            "Chen Yu",
+            "Emily Zhang"
+          ],
+          "Affiliation": [
+            "Metropolitan University",
+            "City Environmental Monitoring Center"
+          ],
+          "Email": [
+            "emily.zhang@example.edu"
+          ],
+          "Contribution": "Field sampling, instrument calibration, data curation, and dataset documentation.",
+          "Biography": "The dataset authors specialize in environmental monitoring, urban hydrology, and reusable scientific data publishing."
+        }
+      },
+      "Introduction": "Urban river systems show strong seasonal and spatial variation. The paper explains why a harmonized open dataset is useful for reproducibility studies and baseline model training.",
+      "Data Collection and Processing Methods": "Samples were collected monthly. Measurements were calibrated with standard buffer solutions and processed through unit normalization, timestamp alignment, duplicate removal, and automated range checks.",
+      "Data Sample Description": "Each record includes site identifier, sample time, river segment, coordinates, meteorological context, measured variables, instrument identifier, and quality-control flag.",
+      "Data Quality Control and Evaluation": "Quality control followed a two-stage process with manual review and automated outlier detection. Suspicious readings were retained with flags rather than silently removed.",
+      "Data Use Methods and Recommendations": "Users should filter by quality-control flags for trend analysis and cite both the article and the dataset. Missing values are marked as NA.",
+      "References": [
+        "APHA. Standard Methods for the Examination of Water and Wastewater.",
+        "Wang et al. Urban river water-quality monitoring with sensor networks."
+      ],
+      "Acknowledgements": "The authors thank field technicians and local environmental agencies for site access and instrument maintenance.",
+      "Data Paper Authors": {
+        "Author Name": [
+          "Li Ming",
+          "Chen Yu",
+          "Wang Tao",
+          "Emily Zhang"
+        ],
+        "Affiliation": [
+          "Metropolitan University",
+          "City Environmental Monitoring Center"
+        ],
+        "Email": [
+          "emily.zhang@example.edu"
+        ],
+        "Contribution": "Paper writing, data validation, statistical analysis, and repository preparation.",
+        "Biography": "The authors work on open environmental data, water-quality analytics, and urban sensing infrastructure."
+      }
+    },
+    "data_paper_publication_information": {
+      "Received Date": "2025-11-22",
+      "Review Date": "2026-01-16",
+      "Accepted Date": "2026-02-21",
+      "Publication Date": "2026-03-18",
+      "Version Information": "Accepted manuscript v1.0",
+      "Journal": "Journal of Environmental Data Science"
+    },
+    "data_paper_service_information": {
+      "Data Paper Citation": "Li M.; Chen Y.; Wang T.; Zhang E. A Multi-Source Urban Water Quality Dataset for Seasonal Analysis. Journal of Environmental Data Science, 2026.",
+      "Data Paper Download URL": "https://journal.example.org/articles/jeds-2026-0318/download",
+      "Data Paper License": "CC BY 4.0",
+      "Dataset Access URL": "https://data.example.org/water-quality"
+    }
+  },
+  "extension_info": "This data-paper sample contains a nested dataset description to test recursive key translation and identifier filling."
+}
