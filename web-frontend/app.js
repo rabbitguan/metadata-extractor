@@ -1,5 +1,23 @@
-const BACKEND_QUERY_URL = "http://127.0.0.1:4000/query";
-const BACKEND_REGISTER_URL = "http://127.0.0.1:4000/register";
+const SERVICE_PROXY_PREFIX = "/sso/proxy/mapping-tool";
+
+function getServiceBasePath() {
+    const pathname = window.location.pathname.replace(/\/+$/, "");
+    return pathname === SERVICE_PROXY_PREFIX || pathname.startsWith(`${SERVICE_PROXY_PREFIX}/`)
+        ? SERVICE_PROXY_PREFIX
+        : "";
+}
+
+function buildServiceUrl(path) {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${getServiceBasePath()}${normalizedPath}`;
+}
+
+function getServiceBasePathLabel() {
+    return getServiceBasePath() || "/";
+}
+
+const BACKEND_QUERY_URL = buildServiceUrl("/query");
+const BACKEND_REGISTER_URL = buildServiceUrl("/register");
 const DOWNLOAD_LANGUAGE = "en";
 const CONVERSION_LOG_STORAGE_KEY = "metadata_web_conversion_logs_v1";
 const MAX_CONVERSION_LOGS = 50;
@@ -341,7 +359,7 @@ const UI_TEXT = {
         homeTitle: "返回主页",
         openApiDocsTitle: "接口文档",
         apiDocsTitle: "接口文档",
-        apiDocsSubtitle: "后端主服务地址：http://127.0.0.1:4000",
+        apiDocsSubtitle: "后端接口基址：",
         openLogsTitle: "转换日志",
         logTitle: "转换日志",
         logSubtitle: "查看最近的转换任务和完整结果",
@@ -407,7 +425,7 @@ const UI_TEXT = {
         homeTitle: "Back To Home",
         openApiDocsTitle: "API Docs",
         apiDocsTitle: "API Docs",
-        apiDocsSubtitle: "Backend base URL: http://127.0.0.1:4000",
+        apiDocsSubtitle: "Backend API base path: ",
         openLogsTitle: "Conversion Logs",
         logTitle: "Conversion Logs",
         logSubtitle: "Review recent conversion tasks and complete results",
@@ -465,6 +483,185 @@ const UI_TEXT = {
     }
 };
 
+const REGISTER_SUCCESS_RESPONSE = {
+    zh: {
+        "核心元数据": {
+            "标题": "全球气候观测数据论文示例",
+            "CSTR标识符": "31253.11.CSTR.2026.000001",
+            "创建者": ["张三", "李四"],
+            "发布机构": "示例数据中心",
+            "发布日期": "2026-06-20",
+            "描述": "该资源描述全球气候观测数据的采集、处理、质量控制和使用方法。",
+            "关键词": ["气候观测", "数据论文", "元数据"],
+            "学科": ["大气科学", "地球科学"],
+            "语言": "zh",
+            "贡献者": ["王五"],
+            "替代标识符": ["10.1234/example.paper"],
+            "关联标识符": ["10.1234/example.dataset"],
+            "权限": "CC BY 4.0",
+            "资助者": ["国家自然科学基金项目 62300001"],
+            "版本": "v1.0",
+            "资源链接": ["https://example.org/papers/metadata-example"],
+            "资源类型": "数据论文",
+            "领域判定": "数据论文元数据",
+            "扩展信息": "该示例用于说明后端返回的双语元数据结构。"
+        },
+        "数据论文元数据": {
+            "数据论文内容信息": {
+                "标识符": "10.1234/example.paper",
+                "标题": "全球气候观测数据论文示例",
+                "摘要": "本文介绍全球气候观测数据集的来源、处理流程、质量控制方法和复用建议。",
+                "关键词": ["气候观测", "质量控制", "开放数据"],
+                "数据集基本信息": {
+                    "标识符": "31253.11.CSTR.2026.000002",
+                    "标题": "全球气候观测示例数据集",
+                    "摘要": "该数据集包含 2020 至 2025 年的站点温度、降水和湿度观测记录。",
+                    "关键词": ["温度", "降水", "湿度"],
+                    "范围": {
+                        "时间范围": "2020-01-01 至 2025-12-31",
+                        "空间范围": "全球陆地观测站点"
+                    },
+                    "语种": "zh",
+                    "文件内容": "CSV 数据文件、README 文件和数据字典",
+                    "基金项目": "国家自然科学基金项目 62300001",
+                    "数据量": "2.4 GB",
+                    "数据格式": "CSV",
+                    "数据集作者": {
+                        "作者姓名": "张三",
+                        "工作单位": "示例数据中心",
+                        "电子邮箱": "zhangsan@example.org",
+                        "工作贡献": "数据整理与质量控制",
+                        "作者简介": "长期从事气候数据管理与共享研究。"
+                    }
+                },
+                "引言": "气候观测数据是气候变化研究和模型评估的重要基础。",
+                "数据采集和处理方法": "数据来自地面观测站，经过格式统一、异常值检测和缺测值标记。",
+                "数据样本描述": "样本记录包含站点编号、观测时间、温度、降水量和相对湿度字段。",
+                "数据质量控制和评估": "采用范围检查、时间连续性检查和人工复核相结合的方法。",
+                "数据使用方法和建议": "建议用户在使用前阅读数据字典，并根据研究目标筛选站点和时间范围。",
+                "参考文献": ["示例数据中心. 全球气候观测示例数据集. 2026."],
+                "致谢": "感谢参与数据采集、整理和审核的工作人员。",
+                "数据论文作者": {
+                    "作者姓名": "李四",
+                    "工作单位": "示例大学",
+                    "电子邮箱": "lisi@example.edu",
+                    "工作贡献": "论文撰写与方法说明",
+                    "作者简介": "研究方向为科学数据出版与元数据标准化。"
+                }
+            },
+            "数据论文出版信息": {
+                "收稿日期": "2026-04-01",
+                "同评日期": "2026-04-20",
+                "录用日期": "2026-05-10",
+                "出版日期": "2026-06-20",
+                "版本信息": "v1.0",
+                "出版期刊": "示例数据论文期刊"
+            },
+            "数据论文服务信息": {
+                "数据论文引用格式": "张三, 李四. 全球气候观测数据论文示例. 示例数据论文期刊, 2026.",
+                "数据论文下载地址": "https://example.org/papers/metadata-example/download",
+                "数据论文共享许可协议": "CC BY 4.0",
+                "数据集访问地址": "https://example.org/datasets/climate-example"
+            }
+        }
+    },
+    en: {
+        "Core Metadata": {
+            "Title": "Global Climate Observation Data Paper Example",
+            "Identifier": "31253.11.CSTR.2026.000001",
+            "Creators": ["San Zhang", "Si Li"],
+            "Publisher": "Example Data Center",
+            "Publication Date": "2026-06-20",
+            "Description": "This resource describes the collection, processing, quality control, and reuse guidance for a global climate observation dataset.",
+            "Keywords": ["climate observation", "data paper", "metadata"],
+            "Subjects": ["Atmospheric Science", "Earth Science"],
+            "Language": "en",
+            "Contributors": ["Wu Wang"],
+            "Alternative Identifiers": ["10.1234/example.paper"],
+            "Related Identifiers": ["10.1234/example.dataset"],
+            "Rights": "CC BY 4.0",
+            "Funders": ["National Natural Science Foundation Project 62300001"],
+            "Version": "v1.0",
+            "Resource URL": ["https://example.org/papers/metadata-example"],
+            "ResourceType": "Data Paper",
+            "Domain Classification": "Data Paper Metadata",
+            "Extension Info": "This example demonstrates the bilingual metadata response returned by the backend."
+        },
+        "Data Paper Metadata": {
+            "Data Paper Content Information": {
+                "Identifier": "10.1234/example.paper",
+                "Title": "Global Climate Observation Data Paper Example",
+                "Abstract": "This paper introduces the source, processing workflow, quality control methods, and reuse recommendations for a global climate observation dataset.",
+                "Keywords": ["climate observation", "quality control", "open data"],
+                "Dataset Basic Information": {
+                    "Identifier": "31253.11.CSTR.2026.000002",
+                    "Title": "Global Climate Observation Example Dataset",
+                    "Abstract": "The dataset contains station-based temperature, precipitation, and humidity observations from 2020 to 2025.",
+                    "Keywords": ["temperature", "precipitation", "humidity"],
+                    "Coverage": {
+                        "Temporal Coverage": "2020-01-01 to 2025-12-31",
+                        "Spatial Coverage": "Global land observation stations"
+                    },
+                    "Language": "en",
+                    "File Content": "CSV data files, README file, and data dictionary",
+                    "Funding Project": "National Natural Science Foundation Project 62300001",
+                    "Data Volume": "2.4 GB",
+                    "Data Format": "CSV",
+                    "Dataset Authors": {
+                        "Author Name": "San Zhang",
+                        "Affiliation": "Example Data Center",
+                        "Email": "zhangsan@example.org",
+                        "Contribution": "Data curation and quality control",
+                        "Biography": "Researcher working on climate data management and sharing."
+                    }
+                },
+                "Introduction": "Climate observation data are an important foundation for climate change research and model evaluation.",
+                "Data Collection and Processing Methods": "Data were collected from ground stations and processed through format normalization, outlier detection, and missing-value labeling.",
+                "Data Sample Description": "Sample records contain station identifier, observation time, temperature, precipitation, and relative humidity fields.",
+                "Data Quality Control and Evaluation": "Quality control combines range checks, temporal consistency checks, and manual review.",
+                "Data Usage Methods and Suggestions": "Users are advised to read the data dictionary and filter stations and time ranges according to their research goals.",
+                "References": ["Example Data Center. Global Climate Observation Example Dataset. 2026."],
+                "Acknowledgements": "We thank the staff involved in data collection, curation, and review.",
+                "Data Paper Authors": {
+                    "Author Name": "Si Li",
+                    "Affiliation": "Example University",
+                    "Email": "lisi@example.edu",
+                    "Contribution": "Manuscript writing and method description",
+                    "Biography": "Researcher focused on scientific data publishing and metadata standardization."
+                }
+            },
+            "Data Paper Publication Information": {
+                "Received Date": "2026-04-01",
+                "Peer Review Date": "2026-04-20",
+                "Accepted Date": "2026-05-10",
+                "Publication Date": "2026-06-20",
+                "Version Information": "v1.0",
+                "Journal": "Example Data Paper Journal"
+            },
+            "Data Paper Service Information": {
+                "Data Paper Citation Format": "Zhang S, Li S. Global Climate Observation Data Paper Example. Example Data Paper Journal, 2026.",
+                "Data Paper Download URL": "https://example.org/papers/metadata-example/download",
+                "Data Paper License": "CC BY 4.0",
+                "Dataset Access URL": "https://example.org/datasets/climate-example"
+            }
+        }
+    }
+};
+
+const QUERY_SUCCESS_RESPONSE = {
+    items: [
+        {
+            identifier: "10.1000/xyz123",
+            type: "doi",
+            resolved_url: "https://doi.org/10.1000/xyz123",
+            source: "doi.org",
+            status: "ok",
+            payload: REGISTER_SUCCESS_RESPONSE,
+            updated_at: "2026-06-21T00:00:00Z"
+        }
+    ]
+};
+
 const API_DOCS_TEXT = {
     zh: {
         descriptionLabel: "接口说明",
@@ -484,37 +681,10 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     url: "https://example.com/paper",
                     text: "页面文本内容",
-                    html: "<html>...</html>",
+                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
                     title: "页面标题"
                 },
-                success: {
-                    zh: {
-                        "核心元数据": {
-                            "标题": "示例标题",
-                            "资源类型": "数据论文",
-                            "领域判定": "数据论文元数据",
-                            "扩展信息": "未提取到"
-                        },
-                        "数据论文元数据": {
-                            "数据论文内容信息": {
-                                "摘要": "..."
-                            }
-                        }
-                    },
-                    en: {
-                        "Core Metadata": {
-                            Title: "Example Title",
-                            ResourceType: "Data Paper",
-                            "Domain Classification": "Data Paper Metadata",
-                            "Extension Info": "Not extracted"
-                        },
-                        "Data Paper Metadata": {
-                            "Data Paper Content Information": {
-                                Abstract: "..."
-                            }
-                        }
-                    }
-                },
+                success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "Missing text"
@@ -532,26 +702,7 @@ const API_DOCS_TEXT = {
                         "12345.12.ABCD-2024"
                     ]
                 },
-                success: {
-                    items: [
-                        {
-                            identifier: "10.1000/xyz123",
-                            type: "doi",
-                            resolved_url: "https://doi.org/10.1000/xyz123",
-                            source: "doi.org",
-                            status: "ok",
-                            payload: {
-                                zh: {
-                                    "核心元数据": {}
-                                },
-                                en: {
-                                    "Core Metadata": {}
-                                }
-                            },
-                            updated_at: "2026-06-21T00:00:00Z"
-                        }
-                    ]
-                },
+                success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "No DOI or CSTR identifier found"
@@ -577,37 +728,10 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     url: "https://example.com/paper",
                     text: "Page text content",
-                    html: "<html>...</html>",
+                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
                     title: "Page title"
                 },
-                success: {
-                    zh: {
-                        "核心元数据": {
-                            "标题": "中文标题示例",
-                            "资源类型": "数据论文",
-                            "领域判定": "数据论文元数据",
-                            "扩展信息": "未提取到"
-                        },
-                        "数据论文元数据": {
-                            "数据论文内容信息": {
-                                "摘要": "中文摘要示例"
-                            }
-                        }
-                    },
-                    en: {
-                        "Core Metadata": {
-                            Title: "Example Title",
-                            ResourceType: "Data Paper",
-                            "Domain Classification": "Data Paper Metadata",
-                            "Extension Info": "Not extracted"
-                        },
-                        "Data Paper Metadata": {
-                            "Data Paper Content Information": {
-                                Abstract: "..."
-                            }
-                        }
-                    }
-                },
+                success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "Missing text"
@@ -625,26 +749,7 @@ const API_DOCS_TEXT = {
                         "12345.12.ABCD-2024"
                     ]
                 },
-                success: {
-                    items: [
-                        {
-                            identifier: "10.1000/xyz123",
-                            type: "doi",
-                            resolved_url: "https://doi.org/10.1000/xyz123",
-                            source: "doi.org",
-                            status: "ok",
-                            payload: {
-                                zh: {
-                                    "核心元数据": {}
-                                },
-                                en: {
-                                    "Core Metadata": {}
-                                }
-                            },
-                            updated_at: "2026-06-21T00:00:00Z"
-                        }
-                    ]
-                },
+                success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "No DOI or CSTR identifier found"
@@ -801,7 +906,7 @@ function renderApiDocs() {
     const docs = API_DOCS_TEXT[state.language] || API_DOCS_TEXT.zh;
     const ui = getUIText();
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
 
     const root = document.getElementById("apiDocsContent");
@@ -1636,7 +1741,7 @@ function updateStaticText() {
     document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
     document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
     document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
     document.getElementById("closeLogsButton").textContent = ui.closeLogsTitle;

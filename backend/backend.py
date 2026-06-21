@@ -36,6 +36,14 @@ FETCH_HEADERS = {
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
 
 
+def get_gateway_user():
+    return {
+        'id': request.headers.get('X-User-Id', ''),
+        'name': request.headers.get('X-User-Name', ''),
+        'email': request.headers.get('X-User-Email', ''),
+    }
+
+
 def _normalize_url_candidate(value):
     text = str(value or '').strip()
     if not text:
@@ -583,6 +591,11 @@ def history():
         parsed_offset = 0
 
     return jsonify({'records': records, 'limit': parsed_limit, 'offset': parsed_offset})
+
+
+@app.route('/user', methods=['GET'])
+def user():
+    return jsonify({'user': get_gateway_user()})
 
 
 def collect_identifier_text(data):
