@@ -410,6 +410,9 @@ const UI_TEXT = {
         coreToDomainTitle: "核心元数据到领域元数据",
         coreToDomainHint: "通过标识符解析资源并补全领域元数据",
         homeTitle: "返回主页",
+        openApiDocsTitle: "接口文档",
+        apiDocsTitle: "接口文档",
+        apiDocsSubtitle: "后端主服务地址：http://127.0.0.1:4000",
         openLogsTitle: "转换日志",
         logTitle: "转换日志",
         logSubtitle: "查看最近的转换任务和完整结果",
@@ -472,7 +475,10 @@ const UI_TEXT = {
         domainToCoreHint: "Extract URL or file content and map it to core metadata",
         coreToDomainTitle: "Core Metadata to Domain Metadata",
         coreToDomainHint: "Resolve identifiers and enrich domain metadata",
-        homeTitle: "Back to Home",
+        homeTitle: "Back To Home",
+        openApiDocsTitle: "API Docs",
+        apiDocsTitle: "API Docs",
+        apiDocsSubtitle: "Backend base URL: http://127.0.0.1:4000",
         openLogsTitle: "Conversion Logs",
         logTitle: "Conversion Logs",
         logSubtitle: "Review recent conversion tasks and complete results",
@@ -483,7 +489,7 @@ const UI_TEXT = {
         logInputPreviewTitle: "Input Preview",
         logResultTitle: "Conversion Result",
         clearLogsTitle: "Clear",
-        closeLogsTitle: "Back to Home",
+        closeLogsTitle: "Back To Home",
         chooseUrlLabel: "Enter URL",
         chooseUrlHint: "Submit a web address and let the backend fetch it",
         chooseUploadLabel: "Upload data",
@@ -527,6 +533,195 @@ const UI_TEXT = {
         languageEn: "EN",
         errorPrefix: "Extraction failed: ",
         initErrorPrefix: "Initialization failed: "
+    }
+};
+
+const API_DOCS_TEXT = {
+    zh: {
+        descriptionLabel: "接口说明",
+        requestLabel: "请求体",
+        successLabel: "成功响应（200）",
+        errorLabel: "失败响应",
+        responseNote: "说明：后端固定返回 zh/en 双语结构，中文字段位于 zh，英文字段位于 en。",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/register",
+                description: "用于 URL、网页文本、普通文本和上传 JSON/XML 内容的元数据提取。",
+                request: {
+                    source: "url",
+                    mode: "common",
+                    strategy: "auto",
+                    force_reanalyze: false,
+                    url: "https://example.com/paper",
+                    text: "页面文本内容",
+                    html: "<html>...</html>",
+                    title: "页面标题"
+                },
+                success: {
+                    zh: {
+                        "核心元数据": {
+                            "标题": "示例标题",
+                            "资源类型": "数据论文",
+                            "领域判定": "数据论文元数据",
+                            "扩展信息": "未提取到"
+                        },
+                        "数据论文元数据": {
+                            "数据论文内容信息": {
+                                "摘要": "..."
+                            }
+                        }
+                    },
+                    en: {
+                        "Core Metadata": {
+                            Title: "Example Title",
+                            ResourceType: "Data Paper",
+                            "Domain Classification": "Data Paper Metadata",
+                            "Extension Info": "Not extracted"
+                        },
+                        "Data Paper Metadata": {
+                            "Data Paper Content Information": {
+                                Abstract: "..."
+                            }
+                        }
+                    }
+                },
+                error: {
+                    status: "error",
+                    message: "Missing text"
+                }
+            },
+            {
+                method: "POST",
+                path: "/query",
+                description: "用于从 DOI/CSTR 标识符解析资源页面，再进行元数据提取。",
+                request: {
+                    source: "identifier",
+                    mode: "common",
+                    identifiers: [
+                        "10.1000/xyz123",
+                        "12345.12.ABCD-2024"
+                    ]
+                },
+                success: {
+                    items: [
+                        {
+                            identifier: "10.1000/xyz123",
+                            type: "doi",
+                            resolved_url: "https://doi.org/10.1000/xyz123",
+                            source: "doi.org",
+                            status: "ok",
+                            payload: {
+                                zh: {
+                                    "核心元数据": {}
+                                },
+                                en: {
+                                    "Core Metadata": {}
+                                }
+                            },
+                            updated_at: "2026-06-21T00:00:00Z"
+                        }
+                    ]
+                },
+                error: {
+                    status: "error",
+                    message: "No DOI or CSTR identifier found"
+                }
+            }
+        ]
+    },
+    en: {
+        descriptionLabel: "Description",
+        requestLabel: "Request Body",
+        successLabel: "Success Response (200)",
+        errorLabel: "Error Response",
+        responseNote: "Note: the backend always returns a bilingual zh/en payload. Chinese fields live under zh, and English fields live under en.",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/register",
+                description: "Extract metadata from URLs, web text, plain text, or uploaded JSON/XML content.",
+                request: {
+                    source: "url",
+                    mode: "common",
+                    strategy: "auto",
+                    force_reanalyze: false,
+                    url: "https://example.com/paper",
+                    text: "Page text content",
+                    html: "<html>...</html>",
+                    title: "Page title"
+                },
+                success: {
+                    zh: {
+                        "核心元数据": {
+                            "标题": "中文标题示例",
+                            "资源类型": "数据论文",
+                            "领域判定": "数据论文元数据",
+                            "扩展信息": "未提取到"
+                        },
+                        "数据论文元数据": {
+                            "数据论文内容信息": {
+                                "摘要": "中文摘要示例"
+                            }
+                        }
+                    },
+                    en: {
+                        "Core Metadata": {
+                            Title: "Example Title",
+                            ResourceType: "Data Paper",
+                            "Domain Classification": "Data Paper Metadata",
+                            "Extension Info": "Not extracted"
+                        },
+                        "Data Paper Metadata": {
+                            "Data Paper Content Information": {
+                                Abstract: "..."
+                            }
+                        }
+                    }
+                },
+                error: {
+                    status: "error",
+                    message: "Missing text"
+                }
+            },
+            {
+                method: "POST",
+                path: "/query",
+                description: "Resolve DOI/CSTR identifiers to resource pages and extract metadata.",
+                request: {
+                    source: "identifier",
+                    mode: "common",
+                    identifiers: [
+                        "10.1000/xyz123",
+                        "12345.12.ABCD-2024"
+                    ]
+                },
+                success: {
+                    items: [
+                        {
+                            identifier: "10.1000/xyz123",
+                            type: "doi",
+                            resolved_url: "https://doi.org/10.1000/xyz123",
+                            source: "doi.org",
+                            status: "ok",
+                            payload: {
+                                zh: {
+                                    "核心元数据": {}
+                                },
+                                en: {
+                                    "Core Metadata": {}
+                                }
+                            },
+                            updated_at: "2026-06-21T00:00:00Z"
+                        }
+                    ]
+                },
+                error: {
+                    status: "error",
+                    message: "No DOI or CSTR identifier found"
+                }
+            }
+        ]
     }
 };
 
@@ -656,6 +851,63 @@ function getTaskSummary(entry) {
     return isEnglish ? `Conversion: ${getSourceLabel(entry.source)}` : `转换任务：${getSourceLabel(entry.source)}`;
 }
 
+function createApiDocSection(title, payload) {
+    const fragment = document.createDocumentFragment();
+    const heading = document.createElement("h4");
+    heading.textContent = title;
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    fragment.append(heading, pre);
+    return fragment;
+}
+
+function createApiDocNote(text) {
+    const note = document.createElement("p");
+    note.className = "api-doc-note";
+    note.textContent = text;
+    return note;
+}
+
+function renderApiDocs() {
+    const docs = API_DOCS_TEXT[state.language] || API_DOCS_TEXT.zh;
+    const ui = getUIText();
+    document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
+    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
+
+    const root = document.getElementById("apiDocsContent");
+    root.innerHTML = "";
+    docs.endpoints.forEach((endpoint) => {
+        const card = document.createElement("article");
+        card.className = "api-doc-card";
+
+        const head = document.createElement("div");
+        head.className = "api-doc-head";
+        const method = document.createElement("span");
+        method.className = "api-method";
+        method.textContent = endpoint.method;
+        const path = document.createElement("h3");
+        path.textContent = endpoint.path;
+        head.append(method, path);
+
+        const descriptionTitle = document.createElement("h4");
+        descriptionTitle.textContent = docs.descriptionLabel;
+        const description = document.createElement("p");
+        description.textContent = endpoint.description;
+
+        card.append(
+            head,
+            descriptionTitle,
+            description,
+            createApiDocSection(docs.requestLabel, endpoint.request),
+            createApiDocSection(docs.successLabel, endpoint.success),
+            createApiDocNote(docs.responseNote),
+            createApiDocSection(docs.errorLabel, endpoint.error)
+        );
+        root.appendChild(card);
+    });
+}
+
 function getLogDisplayTitle(entry) {
     if (!entry) return "";
     if (entry.source === "upload") return entry.title || "未命名上传文件";
@@ -684,14 +936,35 @@ function recordConversionLog({ source, mode, strategy, title, url, inputText, pa
 function showLogs() {
     state.previousWorkspace = document.getElementById("analysisWorkspace").hidden ? "start" : "analysis";
     state.logResultLanguage = state.language === "en" ? "en" : "zh";
+    document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = false;
     renderLogs();
 }
 
-function goHome() {
+function showApiDocs() {
+    window.location.hash = "api-docs";
+    updateStaticText();
+    document.getElementById("pageHero").hidden = true;
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = false;
+    renderApiDocs();
+    requestAnimationFrame(() => {
+        document.getElementById("apiDocsWorkspace").scrollIntoView({ block: "start" });
+    });
+}
+
+function goHome() {
+    if (window.location.hash === "#api-docs") {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    document.getElementById("pageHero").hidden = false;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("startScreen").hidden = false;
     state.previousWorkspace = "start";
@@ -1431,7 +1704,13 @@ function updateStaticText() {
     document.getElementById("identifierSelectLabel").textContent = ui.identifierSelectLabel;
     document.getElementById("refreshButton").textContent = ui.refreshTitle;
     document.getElementById("downloadButton").textContent = ui.downloadTitle;
+    document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
+    document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
+    document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
+    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
     document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
+    document.getElementById("closeLogsButton").textContent = ui.closeLogsTitle;
     document.getElementById("homeButton").setAttribute("aria-label", ui.homeTitle);
     document.getElementById("homeButton").setAttribute("title", ui.homeTitle);
     document.getElementById("brandHomeButton").setAttribute("aria-label", ui.homeTitle);
@@ -1466,6 +1745,7 @@ function updateStaticText() {
     langZhButton.textContent = ui.languageZh;
     langEnButton.classList.toggle("active", language === "en");
     langEnButton.textContent = ui.languageEn;
+    if (!document.getElementById("apiDocsWorkspace").hidden) renderApiDocs();
     if (!document.getElementById("logWorkspace").hidden) renderLogs();
 }
 
@@ -1524,8 +1804,10 @@ function setMode(mode) {
 
 function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
+    document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("analysisWorkspace").hidden = false;
     state.uploadResultReady = false;
     state.identifierResultReady = false;
@@ -1609,7 +1891,10 @@ function reselectUploadFile() {
 }
 
 function setLanguage(language) {
-    if (language === state.language) return;
+    if (language === state.language) {
+        updateStaticText();
+        return;
+    }
     state.language = language;
     state.logResultLanguage = language === "en" ? "en" : "zh";
     updateStaticText();
@@ -1619,6 +1904,7 @@ function setLanguage(language) {
 function bindEvents() {
     document.getElementById("homeButton").addEventListener("click", goHome);
     document.getElementById("brandHomeButton").addEventListener("click", goHome);
+    document.getElementById("analysisHomeButton").addEventListener("click", goHome);
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -1632,6 +1918,8 @@ function bindEvents() {
 
     document.getElementById("refreshButton").addEventListener("click", refreshCurrentMode);
     document.getElementById("downloadButton").addEventListener("click", async () => downloadJsonFile(state.mode));
+    document.getElementById("openApiDocsButton").addEventListener("click", showApiDocs);
+    document.getElementById("closeApiDocsButton").addEventListener("click", goHome);
     document.getElementById("openLogsButton").addEventListener("click", showLogs);
     document.getElementById("closeLogsButton").addEventListener("click", goHome);
     document.getElementById("clearLogsButton").addEventListener("click", () => {
@@ -1694,7 +1982,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         activateSourceMode("url");
         state.sourceMode = "url";
         setAnalysisVisibility();
-        goHome();
+        if (window.location.hash === "#api-docs") {
+            showApiDocs();
+        } else {
+            goHome();
+        }
     } catch (error) {
         console.error(error);
         updateStatus(`${getUIText(state.language).initErrorPrefix}${error.message}`, "error");
