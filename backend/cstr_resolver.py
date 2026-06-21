@@ -3,6 +3,8 @@ import json
 import re
 from urllib.parse import quote, urljoin
 
+from cstr_target_rules import resolve as resolve_target_rule
+
 
 FETCH_HEADERS = {
     'User-Agent': 'metadata-extractor/1.0 (+https://localhost)',
@@ -96,6 +98,10 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
 
 
 def resolve_cstr(cstr, clean_html=None):
+    rule_result = resolve_target_rule(cstr, clean_html=clean_html)
+    if rule_result:
+        return rule_result
+
     quoted_cstr = quote(cstr, safe='._;()/:A-Z0-9-')
     candidates = [
         ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
