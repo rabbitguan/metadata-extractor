@@ -144,10 +144,10 @@ const UI_TEXT = {
     zh: {
         appTitle: '元数据双向映射工具',
         startTitle: '元数据双向映射工具',
-        startDescription: '请选择分析方式：领域到核心 / 核心到领域',
-        domainToCoreTitle: '领域到核心',
+        startDescription: '请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据',
+        domainToCoreTitle: '领域元数据到核心元数据',
         domainToCoreHint: '从网页内容抽取并映射为核心元数据',
-        coreToDomainTitle: '核心到领域',
+        coreToDomainTitle: '核心元数据到领域元数据',
         coreToDomainHint: '通过标识符解析资源并补全领域元数据',
         openLogsTitle: '转换日志',
         logTitle: '转换日志',
@@ -208,10 +208,10 @@ const UI_TEXT = {
     en: {
         appTitle: 'Metadata Bidirectional Mapping Tool',
         startTitle: 'Metadata Bidirectional Mapping Tool',
-        startDescription: 'Choose a mapping direction: domain to core / core to domain',
-        domainToCoreTitle: 'Domain to Core',
+        startDescription: 'Choose a mapping direction: domain metadata to core metadata / core metadata to domain metadata',
+        domainToCoreTitle: 'Domain Metadata to Core Metadata',
         domainToCoreHint: 'Extract page content and map it to core metadata',
-        coreToDomainTitle: 'Core to Domain',
+        coreToDomainTitle: 'Core Metadata to Domain Metadata',
         coreToDomainHint: 'Resolve identifiers and enrich domain metadata',
         openLogsTitle: 'Conversion Logs',
         logTitle: 'Conversion Logs',
@@ -419,12 +419,7 @@ function showLogs() {
 }
 
 function closeLogs() {
-    document.getElementById('logWorkspace').hidden = true;
-    if (state.previousWorkspace === 'analysis') {
-        document.getElementById('analysisWorkspace').hidden = false;
-    } else {
-        document.getElementById('startScreen').hidden = false;
-    }
+    resetToStartScreen();
 }
 
 function renderLogs() {
@@ -1869,8 +1864,8 @@ function updateStaticText() {
     document.getElementById('downloadButton').setAttribute('title', ui.downloadTitle);
     document.getElementById('openLogsButton').setAttribute('aria-label', ui.openLogsTitle);
     document.getElementById('openLogsButton').setAttribute('title', ui.openLogsTitle);
-    document.getElementById('closeLogsButton').setAttribute('aria-label', '返回');
-    document.getElementById('closeLogsButton').setAttribute('title', '返回');
+    document.getElementById('closeLogsButton').setAttribute('aria-label', '返回主页');
+    document.getElementById('closeLogsButton').setAttribute('title', '返回主页');
     document.querySelector('.mode-switcher').setAttribute('aria-label', ui.modeSwitcherLabel);
 
     const selectedFileName = document.getElementById('selectedFileName');
