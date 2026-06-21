@@ -9,10 +9,17 @@
 <body>
     <header class="top-nav">
         <div class="container nav-inner">
-            <div class="brand">元数据双向映射工具</div>
-            <div class="lang-toggle" role="group" aria-label="Language switcher">
-                <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
-                <button id="langEnButton" class="lang-button" type="button" data-language="en">EN</button>
+            <button id="brandHomeButton" class="brand" type="button">元数据双向映射工具</button>
+            <div class="nav-actions">
+                <div class="lang-toggle" role="group" aria-label="Language switcher">
+                    <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
+                    <button id="langEnButton" class="lang-button" type="button" data-language="en">EN</button>
+                </div>
+                <button id="homeButton" class="icon-button home-button" type="button" aria-label="返回主页" title="返回主页">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 5.69 18.31 12H16v5h-4v-3H12v3H8v-5H5.69L12 5.69Zm0-3.18L2 12h3v7h6v-5h2v5h6v-7h3L12 2.5Z"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </header>
@@ -20,7 +27,7 @@
     <section class="page-hero">
         <div class="container hero-inner">
             <h1 id="startTitle">元数据双向映射工具</h1>
-            <p id="startDescription">请选择分析方式：领域到核心 / 核心到领域</p>
+            <p id="startDescription">请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据</p>
         </div>
     </section>
 
@@ -29,7 +36,7 @@
             <div class="start-actions">
                 <section class="start-menu">
                     <div class="start-menu-head">
-                        <h2 id="domainToCoreTitle">领域到核心</h2>
+                        <h2 id="domainToCoreTitle">领域元数据到核心元数据</h2>
                         <p id="domainToCoreHint">从 URL 或文件内容抽取并映射为核心元数据</p>
                     </div>
                     <div class="start-menu-actions">
@@ -45,7 +52,7 @@
                 </section>
                 <section class="start-menu">
                     <div class="start-menu-head">
-                        <h2 id="coreToDomainTitle">核心到领域</h2>
+                        <h2 id="coreToDomainTitle">核心元数据到领域元数据</h2>
                         <p id="coreToDomainHint">通过标识符解析资源并补全领域元数据</p>
                     </div>
                     <div class="start-menu-actions">
@@ -58,7 +65,7 @@
             </div>
         </section>
 
-        <section id="analysisWorkspace">
+        <section id="analysisWorkspace" hidden>
             <div class="toolbar">
                 <div class="tool-actions">
                     <button id="refreshButton" class="btn secondary" type="button">刷新</button>
@@ -136,7 +143,7 @@
 
         <section id="logWorkspace" class="log-workspace" hidden>
             <div class="log-header">
-                <button id="closeLogsButton" class="btn secondary" type="button">返回</button>
+                <button id="closeLogsButton" class="btn secondary" type="button">返回主页</button>
                 <div>
                     <h2 id="logTitle">转换日志</h2>
                     <p id="logSubtitle">查看最近的转换任务和完整结果</p>

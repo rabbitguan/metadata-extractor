@@ -11,13 +11,13 @@
         <section id="startScreen" class="start-screen">
             <div class="start-hero">
                 <h1 id="startTitle">元数据双向映射工具</h1>
-                <p id="startDescription" class="start-description">请选择分析方式：领域到核心 / 核心到领域</p>
+                <p id="startDescription" class="start-description">请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据</p>
                 <button id="openLogsStartButton" class="log-link-button" type="button">转换日志</button>
             </div>
             <div class="start-actions">
                 <section class="start-menu">
                     <div class="start-menu-head">
-                        <h2 id="domainToCoreTitle">领域到核心</h2>
+                        <h2 id="domainToCoreTitle">领域元数据到核心元数据</h2>
                         <p id="domainToCoreHint">从网页内容抽取并映射为核心元数据</p>
                     </div>
                     <div class="start-menu-actions">
@@ -37,7 +37,7 @@
                 </button>
                 <section class="start-menu">
                     <div class="start-menu-head">
-                        <h2 id="coreToDomainTitle">核心到领域</h2>
+                        <h2 id="coreToDomainTitle">核心元数据到领域元数据</h2>
                         <p id="coreToDomainHint">通过标识符解析资源并补全领域元数据</p>
                     </div>
                     <div class="start-menu-actions">
@@ -169,9 +169,9 @@
         </div>
         <section id="logWorkspace" class="log-workspace" hidden>
             <header class="log-header">
-                <button id="closeLogsButton" class="icon-button" type="button" aria-label="返回" title="返回">
+                <button id="closeLogsButton" class="icon-button" type="button" aria-label="返回主页" title="返回主页">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.42-1.41L7.83 13H20v-2Z"/>
+                        <path d="M12 5.69 18.31 12H16v5h-4v-3H12v3H8v-5H5.69L12 5.69Zm0-3.18L2 12h3v7h6v-5h2v5h6v-7h3L12 2.5Z"/>
                     </svg>
                 </button>
                 <div>

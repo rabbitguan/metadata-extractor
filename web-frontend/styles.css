@@ -64,10 +64,50 @@ body {
 }
 
 .brand {
+    border: 0;
+    padding: 0;
+    background: transparent;
     font-size: 20px;
     font-weight: 700;
     color: var(--brand-deep);
-    letter-spacing: 0.2px;
+    letter-spacing: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.brand:hover {
+    color: var(--brand-main);
+}
+
+.nav-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.icon-button {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line-main);
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: var(--brand-main);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+}
+
+.icon-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.icon-button:hover {
+    border-color: var(--brand-main);
+    background: var(--brand-soft);
 }
 
 .page-hero {
@@ -254,6 +294,7 @@ body {
 .btn:hover,
 .start-button:hover,
 .mode-button:hover,
+.icon-button:hover,
 .lang-button:hover {
     filter: brightness(0.98);
 }
@@ -744,6 +785,19 @@ body {
 @media (max-width: 560px) {
     .container {
         padding: 0 14px;
+    }
+
+    .nav-inner {
+        height: auto;
+        min-height: 64px;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    .brand {
+        font-size: 18px;
     }
 
     .hero-inner {

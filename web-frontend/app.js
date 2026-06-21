@@ -333,11 +333,12 @@ const MODE_LABELS = {
 const UI_TEXT = {
     zh: {
         startTitle: "元数据双向映射工具",
-        startDescription: "请选择分析方式：领域到核心 / 核心到领域",
-        domainToCoreTitle: "领域到核心",
+        startDescription: "请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据",
+        domainToCoreTitle: "领域元数据到核心元数据",
         domainToCoreHint: "从 URL 或文件内容抽取并映射为核心元数据",
-        coreToDomainTitle: "核心到领域",
+        coreToDomainTitle: "核心元数据到领域元数据",
         coreToDomainHint: "通过标识符解析资源并补全领域元数据",
+        homeTitle: "返回主页",
         openLogsTitle: "转换日志",
         logTitle: "转换日志",
         logSubtitle: "查看最近的转换任务和完整结果",
@@ -348,7 +349,7 @@ const UI_TEXT = {
         logInputPreviewTitle: "输入预览",
         logResultTitle: "转换结果",
         clearLogsTitle: "清空",
-        closeLogsTitle: "返回",
+        closeLogsTitle: "返回主页",
         chooseUrlLabel: "输入 URL",
         chooseUrlHint: "输入网页地址后由后端直接抓取分析",
         chooseUploadLabel: "上传数据",
@@ -395,11 +396,12 @@ const UI_TEXT = {
     },
     en: {
         startTitle: "Metadata Bidirectional Mapping Tool",
-        startDescription: "Choose a mapping direction: domain to core / core to domain",
-        domainToCoreTitle: "Domain to Core",
+        startDescription: "Choose a mapping direction: domain metadata to core metadata / core metadata to domain metadata",
+        domainToCoreTitle: "Domain Metadata to Core Metadata",
         domainToCoreHint: "Extract URL or file content and map it to core metadata",
-        coreToDomainTitle: "Core to Domain",
+        coreToDomainTitle: "Core Metadata to Domain Metadata",
         coreToDomainHint: "Resolve identifiers and enrich domain metadata",
+        homeTitle: "Back to Home",
         openLogsTitle: "Conversion Logs",
         logTitle: "Conversion Logs",
         logSubtitle: "Review recent conversion tasks and complete results",
@@ -410,7 +412,7 @@ const UI_TEXT = {
         logInputPreviewTitle: "Input Preview",
         logResultTitle: "Conversion Result",
         clearLogsTitle: "Clear",
-        closeLogsTitle: "Back",
+        closeLogsTitle: "Back to Home",
         chooseUrlLabel: "Enter URL",
         chooseUrlHint: "Submit a web address and let the backend fetch it",
         chooseUploadLabel: "Upload data",
@@ -572,13 +574,13 @@ function getTaskSummary(entry) {
     if (!entry) return "";
     const isEnglish = state.language === "en";
     if (entry.source === "identifier") {
-        return isEnglish ? "Core to Domain: Identifier Query" : "核心到领域：标识符查询";
+        return isEnglish ? "Core Metadata to Domain Metadata: Identifier Query" : "核心元数据到领域元数据：标识符查询";
     }
     if (entry.source === "upload") {
-        return isEnglish ? "Domain to Core: JSON/XML Upload" : "领域到核心：JSON/XML上传";
+        return isEnglish ? "Domain Metadata to Core Metadata: JSON/XML Upload" : "领域元数据到核心元数据：JSON/XML上传";
     }
     if (entry.source === "url") {
-        return isEnglish ? "Domain to Core: URL Query" : "领域到核心：URL查询";
+        return isEnglish ? "Domain Metadata to Core Metadata: URL Query" : "领域元数据到核心元数据：URL查询";
     }
     return isEnglish ? `Conversion: ${getSourceLabel(entry.source)}` : `转换任务：${getSourceLabel(entry.source)}`;
 }
@@ -617,11 +619,12 @@ function showLogs() {
     renderLogs();
 }
 
-function closeLogs() {
+function goHome() {
     document.getElementById("logWorkspace").hidden = true;
-    document.getElementById("startScreen").hidden = state.previousWorkspace !== "start";
-    document.getElementById("analysisWorkspace").hidden = state.previousWorkspace !== "analysis";
-    if (state.previousWorkspace === "analysis") setAnalysisVisibility();
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("startScreen").hidden = false;
+    state.previousWorkspace = "start";
+    updateStatus("", "info");
 }
 
 function appendLogDetailSection(container, title, value) {
@@ -1327,6 +1330,7 @@ function updateStaticText() {
 
     document.getElementById("startTitle").textContent = ui.startTitle;
     document.getElementById("startDescription").textContent = ui.startDescription;
+    document.getElementById("brandHomeButton").textContent = ui.startTitle;
     document.getElementById("domainToCoreTitle").textContent = ui.domainToCoreTitle;
     document.getElementById("domainToCoreHint").textContent = ui.domainToCoreHint;
     document.getElementById("coreToDomainTitle").textContent = ui.coreToDomainTitle;
@@ -1357,6 +1361,10 @@ function updateStaticText() {
     document.getElementById("refreshButton").textContent = ui.refreshTitle;
     document.getElementById("downloadButton").textContent = ui.downloadTitle;
     document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
+    document.getElementById("homeButton").setAttribute("aria-label", ui.homeTitle);
+    document.getElementById("homeButton").setAttribute("title", ui.homeTitle);
+    document.getElementById("brandHomeButton").setAttribute("aria-label", ui.homeTitle);
+    document.getElementById("brandHomeButton").setAttribute("title", ui.homeTitle);
     document.querySelector(".mode-switcher").setAttribute("aria-label", ui.modeSwitcherLabel);
 
     const selectedFileName = document.getElementById("selectedFileName");
@@ -1445,6 +1453,9 @@ function setMode(mode) {
 
 function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = false;
     state.uploadResultReady = false;
     state.identifierResultReady = false;
     state.identifierResults = [];
@@ -1535,6 +1546,8 @@ function setLanguage(language) {
 }
 
 function bindEvents() {
+    document.getElementById("homeButton").addEventListener("click", goHome);
+    document.getElementById("brandHomeButton").addEventListener("click", goHome);
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -1549,7 +1562,7 @@ function bindEvents() {
     document.getElementById("refreshButton").addEventListener("click", refreshCurrentMode);
     document.getElementById("downloadButton").addEventListener("click", async () => downloadJsonFile(state.mode));
     document.getElementById("openLogsButton").addEventListener("click", showLogs);
-    document.getElementById("closeLogsButton").addEventListener("click", closeLogs);
+    document.getElementById("closeLogsButton").addEventListener("click", goHome);
     document.getElementById("clearLogsButton").addEventListener("click", () => {
         state.conversionLogs = [];
         state.selectedLogId = null;
@@ -1610,6 +1623,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         activateSourceMode("url");
         state.sourceMode = "url";
         setAnalysisVisibility();
+        goHome();
     } catch (error) {
         console.error(error);
         updateStatus(`${getUIText(state.language).initErrorPrefix}${error.message}`, "error");
