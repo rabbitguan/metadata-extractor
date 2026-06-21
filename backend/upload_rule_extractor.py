@@ -9,6 +9,190 @@ from typing import Any, Dict, Iterable, Optional
 DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b', re.IGNORECASE)
 CSTR_PATTERN = re.compile(r'^\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+$', re.IGNORECASE)
 
+DOMAIN_KEY_TRANSLATIONS_ZH = {
+    'Dataset Basic Information': '数据集基本信息',
+    'Dataset Publication Information': '数据集出版信息',
+    'Dataset Service Information': '数据集服务信息',
+    'Data Paper Content Information': '数据论文内容信息',
+    'Data Paper Publication Information': '数据论文出版信息',
+    'Data Paper Service Information': '数据论文服务信息',
+    'Title': '标题',
+    'Identifier': '标识符',
+    'Abstract': '摘要',
+    'Keywords': '关键词',
+    'Scope': '范围',
+    'Time Range': '时间范围',
+    'Spatial Range': '空间范围',
+    'Language': '语种',
+    'File Content': '文件内容',
+    'Funding Project': '基金项目',
+    'Data Volume': '数据量',
+    'Data Format': '数据格式',
+    'Dataset Authors': '数据集作者',
+    'Data Paper Authors': '数据论文作者',
+    'Author Name': '作者姓名',
+    'Affiliation': '工作单位',
+    'Email': '电子邮箱',
+    'Contribution': '工作贡献',
+    'Biography': '作者简介',
+    'Introduction': '引言',
+    'Data Collection and Processing Methods': '数据采集和处理方法',
+    'Data Sample Description': '数据样本描述',
+    'Data Quality Control and Evaluation': '数据质量控制和评估',
+    'Data Use Methods and Recommendations': '数据使用方法和建议',
+    'References': '参考文献',
+    'Acknowledgements': '致谢',
+    'Received Date': '收稿日期',
+    'Review Date': '同评日期',
+    'Accepted Date': '录用日期',
+    'Publication Date': '出版日期',
+    'Version Information': '版本信息',
+    'Journal': '出版期刊',
+    'Dataset Citation': '数据集引用格式',
+    'Dataset License': '数据集共享许可协议',
+    'Dataset Usage Statement': '数据集使用声明',
+    'Dataset Download URL': '数据集下载地址',
+    'Dataset Paper URL': '数据论文访问地址',
+    'Data Paper Citation': '数据论文引用格式',
+    'Data Paper Download URL': '数据论文下载地址',
+    'Data Paper License': '数据论文共享许可协议',
+    'Dataset Access URL': '数据集访问地址',
+    'Resource Name': '资源名称',
+    'Resource Identifier': '资源标识符',
+    'Subject Classification': '学科分类',
+    'Dataset Creators': '数据集创建者',
+    'Creation Date': '创建日期',
+    'Last Modified Date': '最近修改日期',
+    'Use Restrictions': '使用限制',
+    'Identification Information': '标识信息',
+    'Data Content Information': '数据内容信息',
+    'Data Entity': '数据实体',
+    'Entity Name': '实体名称',
+    'Entity Description': '实体描述',
+    'Entity Type': '实体类型',
+    'Data Quality and Methods': '数据质量与方法',
+    'Data Quality Description': '数据质量描述',
+    'Data Generation Method': '数据产生方法',
+    'Quality Control Description': '质量控制说明',
+    'Data Source': '数据源',
+    'Spatial and Temporal Coverage': '空间与时间覆盖范围',
+    'Geographic Description': '地理范围描述',
+    'West Bounding Longitude': '西部边界经度',
+    'East Bounding Longitude': '东部边界经度',
+    'South Bounding Latitude': '南部边界纬度',
+    'North Bounding Latitude': '北部边界纬度',
+    'Start Time': '起始时间',
+    'End Time': '结束时间',
+    'Project and Funding Information': '项目与资助信息',
+    'Project Name': '项目名称',
+    'Project Code': '项目代码',
+    'Funding Source': '资金来源',
+    'Distribution and Citation Information': '分发与引用信息',
+    'Dataset Access or Download URL': '数据集访问或下载地址',
+    'Record Status': '记录状态',
+    'Record Identifier': '记录识别符',
+    'Record Date': '记录日期',
+    'Standard Number': '标准号',
+    'Issuing Agency': '发布机构',
+    'Standard Status': '标准状态',
+    'Implementation or Trial Date': '实施或试行日期',
+    'Confirmation Date': '确认日期',
+    'Replaced Standard': '被代替标准',
+    'Amendment': '修改件',
+    'Supplement': '补充件',
+    'Second Standard Number': '第二标准号',
+    'Approval Organization': '批准单位',
+    'Chinese Standard Name': '中文标准名称',
+    'Original Standard Name': '原文标准名称',
+    'English Standard Name': '英文标准名称',
+    'Issuing Agency Code': '发布机构代码',
+    'Chinese Classification for Standards': '中国标准分类号',
+    'International Classification for Standards': '国际标准分类号',
+    'Effective Region': '有效区域',
+    'Abolition Date': '废止日期',
+    'Original Classification Number': '原分类号',
+    'Drafting Organization': '起草单位',
+    'Deadline': '截止日期',
+    'Text Language': '正文语种',
+    'Publishing Organization': '出版单位',
+    'Audit Item': '稽核项',
+    'Translation': '译文',
+    'Price': '价格',
+    'Other Carrier': '其他载体',
+    'Chinese Abstract': '中文文摘',
+    'English Abstract': '英文文摘',
+    'English Subject Terms': '英文主题词',
+    'Note': '附注',
+    'Document Source': '文献出处',
+    'Replacing Standard': '代替标准',
+    'Cited Documents': '引用文件',
+    'Related Laws': '相关法律',
+    'Consistency Degree': '一致性程度',
+    'Modified Standard': '被修改件',
+    'Supplemented Standard': '被补充件',
+    'Chinese Subject Terms': '中文主题词',
+    'Chinese Free Terms': '中文自由词',
+    'Original Subject Terms': '原文主题词',
+    'Call Number': '索取号',
+    'Holding Flag': '馆藏标志',
+    'Sort Code': '排序码',
+    'Standard Type': '标准类型',
+    'Document Type': '文献类型',
+    'Volume Issue Number': '卷期号',
+    'Document Code': '文献代号',
+    'Publication Cycle': '出版周期',
+    'Publication Place': '出版地',
+    'Security Classification': '密级',
+    'Proposing Organization': '提出单位',
+    'Technical Committee': '归口单位',
+    'Country': '国别',
+    'Indexing Basis': '标引依据',
+    'Update Batch Number': '更新批号',
+    'Standard History': '标准历史',
+    'Participating Organization': '参建单位',
+    'Electronic File Name': '电子文件名称',
+}
+
+DOMAIN_KEY_TRANSLATIONS_EN = {value: key for key, value in DOMAIN_KEY_TRANSLATIONS_ZH.items()}
+DOMAIN_KEY_TRANSLATIONS_ZH.update({
+    'dataset_basic_information': '数据集基本信息',
+    'dataset_publication_information': '数据集出版信息',
+    'dataset_service_information': '数据集服务信息',
+    'data_paper_content_information': '数据论文内容信息',
+    'data_paper_publication_information': '数据论文出版信息',
+    'data_paper_service_information': '数据论文服务信息',
+    'title': '标题',
+    'identifier': '标识符',
+    'abstract': '摘要',
+    'keywords': '关键词',
+    'language': '语种',
+    'publication_date': '出版日期',
+    'version_information': '版本信息',
+    'journal': '出版期刊',
+    'dataset_download_url': '数据集下载地址',
+    'data_paper_download_url': '数据论文下载地址',
+    'dataset_access_url': '数据集访问地址',
+})
+DOMAIN_KEY_TRANSLATIONS_EN.update({
+    'dataset_basic_information': 'Dataset Basic Information',
+    'dataset_publication_information': 'Dataset Publication Information',
+    'dataset_service_information': 'Dataset Service Information',
+    'data_paper_content_information': 'Data Paper Content Information',
+    'data_paper_publication_information': 'Data Paper Publication Information',
+    'data_paper_service_information': 'Data Paper Service Information',
+    'title': 'Title',
+    'identifier': 'Identifier',
+    'abstract': 'Abstract',
+    'keywords': 'Keywords',
+    'language': 'Language',
+    'publication_date': 'Publication Date',
+    'version_information': 'Version Information',
+    'journal': 'Journal',
+    'dataset_download_url': 'Dataset Download URL',
+    'data_paper_download_url': 'Data Paper Download URL',
+    'dataset_access_url': 'Dataset Access URL',
+})
+
 
 def _clean_text(value: Any) -> Optional[str]:
     if value is None:
@@ -45,20 +229,64 @@ def _is_cstr(value: Any) -> bool:
     return bool(CSTR_PATTERN.match(str(value or '').strip()))
 
 
+def _is_missing_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ''
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return False
+
+
 def _lower_key_map(data: Dict[str, Any]) -> Dict[str, Any]:
     return {str(key).strip().lower(): value for key, value in data.items()}
+
+
+def _canonical_key(value: Any) -> str:
+    return re.sub(r'[\s_\-]+', '', str(value or '').strip().lower())
+
+
+def _canonical_key_map(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {_canonical_key(key): value for key, value in data.items()}
+
+
+def _translate_key(key: Any, translations: Dict[str, str]) -> str:
+    text = str(key)
+    if text in translations:
+        return translations[text]
+    canonical = _canonical_key(text)
+    for source_key, target_key in translations.items():
+        if _canonical_key(source_key) == canonical:
+            return target_key
+    return text
+
+
+def _translate_keys_recursive(value: Any, translations: Dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {
+            _translate_key(key, translations): _translate_keys_recursive(item, translations)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_translate_keys_recursive(item, translations) for item in value]
+    return value
 
 
 def _first(data: Dict[str, Any], *keys: str) -> Any:
     if not isinstance(data, dict):
         return None
     lowered = _lower_key_map(data)
+    canonical = _canonical_key_map(data)
     for key in keys:
         if key in data:
             return data.get(key)
         normalized = key.lower()
         if normalized in lowered:
             return lowered.get(normalized)
+        canonical_key = _canonical_key(key)
+        if canonical_key in canonical:
+            return canonical.get(canonical_key)
     return None
 
 
@@ -168,7 +396,70 @@ def _extract_core(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _extract_domain(payload: Dict[str, Any]) -> Dict[str, Any]:
     domain = _first(payload, 'domain', 'domain_metadata', '领域元数据', 'Domain Metadata')
-    return domain if isinstance(domain, dict) else {}
+    if isinstance(domain, dict):
+        return domain
+
+    for key in (
+        '数据集元数据',
+        'Dataset Metadata',
+        '数据论文元数据',
+        'Data Paper Metadata',
+        '标准文献元数据',
+        'Standard Literature Metadata',
+        '生态科学数据元数据',
+        'Ecological Science Data Metadata',
+        '其他元数据',
+        'Other Metadata',
+    ):
+        domain = _first(payload, key)
+        if isinstance(domain, dict):
+            return domain
+
+    domain_section_keys = (
+        'dataset_basic_information',
+        'Dataset Basic Information',
+        '数据集基本信息',
+        'dataset_publication_information',
+        'Dataset Publication Information',
+        '数据集出版信息',
+        'dataset_service_information',
+        'Dataset Service Information',
+        '数据集服务信息',
+        'data_paper_content_information',
+        'Data Paper Content Information',
+        '数据论文内容信息',
+        'data_paper_publication_information',
+        'Data Paper Publication Information',
+        '数据论文出版信息',
+        'data_paper_service_information',
+        'Data Paper Service Information',
+        '数据论文服务信息',
+        'standard_literature_information',
+        'Standard Literature Information',
+        '标准文献信息',
+        'ecological_identification_information',
+        'Identification Information',
+        '标识信息',
+        'ecological_data_content_information',
+        'Data Content Information',
+        '数据内容信息',
+        'ecological_data_quality_and_methods',
+        'Data Quality and Methods',
+        '数据质量与方法',
+        'ecological_spatial_and_temporal_coverage',
+        'Spatial and Temporal Coverage',
+        '空间与时间覆盖范围',
+        'ecological_project_and_funding_information',
+        'Project and Funding Information',
+        '项目与资助信息',
+        'ecological_distribution_and_citation_information',
+        'Distribution and Citation Information',
+        '分发与引用信息',
+    )
+    if any(_first(payload, key) is not None for key in domain_section_keys):
+        return payload
+
+    return {}
 
 
 def _normalize_resource_type(value: Any) -> tuple[str, str, str, str]:
@@ -178,6 +469,10 @@ def _normalize_resource_type(value: Any) -> tuple[str, str, str, str]:
         return '数据集', 'Dataset', '数据集元数据', 'Dataset Metadata'
     if text in {'数据论文'} or normalized in {'data_paper', 'data paper', 'paper'}:
         return '数据论文', 'Data Paper', '数据论文元数据', 'Data Paper Metadata'
+    if text in {'标准文献'} or normalized in {'standard_literature', 'standard literature', 'standard'}:
+        return '标准文献', 'Standard Literature', '标准文献元数据', 'Standard Literature Metadata'
+    if text in {'生态科学数据'} or normalized in {'ecological_data', 'ecological data', 'ecological science data'}:
+        return '生态科学数据', 'Ecological Data', '生态科学数据元数据', 'Ecological Science Data Metadata'
     return '其他', 'Other', '核心元数据', 'Core Metadata'
 
 
@@ -211,40 +506,134 @@ def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Opt
     return cstr_identifier, (_unique_list(alternative) or None)
 
 
-def _domain_sections(domain: Dict[str, Any], resource_type_zh: str, resource_type_en: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
+def _format_domain_identifier(identifier: Optional[str], language: str = 'zh') -> Optional[str]:
+    cleaned = _clean_text(identifier)
+    if not cleaned:
+        return None
+    if _is_cstr(cleaned):
+        return cleaned
+    if _is_doi(cleaned):
+        return f'{cleaned}（doi）' if language == 'zh' else f'{cleaned} (doi)'
+    return cleaned
+
+
+def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifiers: Optional[list], language: str = 'zh') -> Optional[str]:
+    if cstr_identifier:
+        return _format_domain_identifier(cstr_identifier, language=language)
+
+    for identifier in alternative_identifiers or []:
+        cleaned = _clean_text(identifier)
+        if cleaned and _is_cstr(cleaned):
+            return _format_domain_identifier(cleaned, language=language)
+
+    for identifier in alternative_identifiers or []:
+        cleaned = _clean_text(identifier)
+        if cleaned:
+            return _format_domain_identifier(cleaned, language=language)
+
+    return None
+
+
+def _fill_missing_identifier(section: Any, key: str, value: Optional[str]) -> Any:
+    if not isinstance(section, dict) or not value:
+        return section
+    if _is_missing_value(section.get(key)):
+        section[key] = value
+    return section
+
+
+def _domain_sections(
+    domain: Dict[str, Any],
+    resource_type_zh: str,
+    resource_type_en: str,
+    cstr_identifier: Optional[str] = None,
+    alternative_identifiers: Optional[list] = None,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    identifier_zh = _pick_domain_identifier(cstr_identifier, alternative_identifiers, language='zh')
+    identifier_en = _pick_domain_identifier(cstr_identifier, alternative_identifiers, language='en')
+
     if resource_type_zh == '数据集':
+        scoped_domain = _first(domain, '数据集元数据', 'Dataset Metadata')
+        if isinstance(scoped_domain, dict):
+            domain = scoped_domain
         basic = _first(domain, 'dataset_basic_information', 'Dataset Basic Information', '数据集基本信息')
         publication = _first(domain, 'dataset_publication_information', 'Dataset Publication Information', '数据集出版信息')
         service = _first(domain, 'dataset_service_information', 'Dataset Service Information', '数据集服务信息')
+        basic_zh = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(basic, dict) else {}
+        basic_en = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(basic, dict) else {}
+        _fill_missing_identifier(basic_zh, '标识符', identifier_zh)
+        _fill_missing_identifier(basic_en, 'Identifier', identifier_en)
         return (
             {
-                '数据集基本信息': basic if isinstance(basic, dict) else {},
-                '数据集出版信息': publication if isinstance(publication, dict) else {},
-                '数据集服务信息': service if isinstance(service, dict) else {},
+                '数据集基本信息': basic_zh,
+                '数据集出版信息': _translate_keys_recursive(publication, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(publication, dict) else {},
+                '数据集服务信息': _translate_keys_recursive(service, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(service, dict) else {},
             },
             {
-                'Dataset Basic Information': basic if isinstance(basic, dict) else {},
-                'Dataset Publication Information': publication if isinstance(publication, dict) else {},
-                'Dataset Service Information': service if isinstance(service, dict) else {},
+                'Dataset Basic Information': basic_en,
+                'Dataset Publication Information': _translate_keys_recursive(publication, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(publication, dict) else {},
+                'Dataset Service Information': _translate_keys_recursive(service, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(service, dict) else {},
             },
         )
 
     if resource_type_en == 'Data Paper':
+        scoped_domain = _first(domain, '数据论文元数据', 'Data Paper Metadata')
+        if isinstance(scoped_domain, dict):
+            domain = scoped_domain
         content = _first(domain, 'data_paper_content_information', 'Data Paper Content Information', '数据论文内容信息')
         publication = _first(domain, 'data_paper_publication_information', 'Data Paper Publication Information', '数据论文出版信息')
         service = _first(domain, 'data_paper_service_information', 'Data Paper Service Information', '数据论文服务信息')
+        content_zh = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(content, dict) else {}
+        content_en = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(content, dict) else {}
+        _fill_missing_identifier(content_zh, '标识符', identifier_zh)
+        _fill_missing_identifier(content_en, 'Identifier', identifier_en)
         return (
             {
-                '数据论文内容信息': content if isinstance(content, dict) else {},
-                '数据论文出版信息': publication if isinstance(publication, dict) else {},
-                '数据论文服务信息': service if isinstance(service, dict) else {},
+                '数据论文内容信息': content_zh,
+                '数据论文出版信息': _translate_keys_recursive(publication, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(publication, dict) else {},
+                '数据论文服务信息': _translate_keys_recursive(service, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(service, dict) else {},
             },
             {
-                'Data Paper Content Information': content if isinstance(content, dict) else {},
-                'Data Paper Publication Information': publication if isinstance(publication, dict) else {},
-                'Data Paper Service Information': service if isinstance(service, dict) else {},
+                'Data Paper Content Information': content_en,
+                'Data Paper Publication Information': _translate_keys_recursive(publication, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(publication, dict) else {},
+                'Data Paper Service Information': _translate_keys_recursive(service, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(service, dict) else {},
             },
         )
+
+    if resource_type_en == 'Standard Literature':
+        scoped_domain = _first(domain, '标准文献元数据', 'Standard Literature Metadata')
+        if isinstance(scoped_domain, dict):
+            domain = scoped_domain
+        info = _first(domain, 'standard_literature_information', 'Standard Literature Information', '标准文献信息')
+        if not isinstance(info, dict):
+            info = domain
+        info_zh = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(info, dict) else {}
+        info_en = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(info, dict) else {}
+        return (
+            {'标准文献信息': info_zh},
+            {'Standard Literature Information': info_en},
+        )
+
+    if resource_type_en == 'Ecological Data':
+        scoped_domain = _first(domain, '生态科学数据元数据', 'Ecological Science Data Metadata')
+        if isinstance(scoped_domain, dict):
+            domain = scoped_domain
+
+        section_pairs = [
+            ('标识信息', 'Identification Information', ('ecological_identification_information', 'Identification Information', '标识信息')),
+            ('数据内容信息', 'Data Content Information', ('ecological_data_content_information', 'Data Content Information', '数据内容信息')),
+            ('数据质量与方法', 'Data Quality and Methods', ('ecological_data_quality_and_methods', 'Data Quality and Methods', '数据质量与方法')),
+            ('空间与时间覆盖范围', 'Spatial and Temporal Coverage', ('ecological_spatial_and_temporal_coverage', 'Spatial and Temporal Coverage', '空间与时间覆盖范围')),
+            ('项目与资助信息', 'Project and Funding Information', ('ecological_project_and_funding_information', 'Project and Funding Information', '项目与资助信息')),
+            ('分发与引用信息', 'Distribution and Citation Information', ('ecological_distribution_and_citation_information', 'Distribution and Citation Information', '分发与引用信息')),
+        ]
+        zh_sections: Dict[str, Any] = {}
+        en_sections: Dict[str, Any] = {}
+        for zh_key, en_key, aliases in section_pairs:
+            section = _first(domain, *aliases)
+            zh_sections[zh_key] = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(section, dict) else {}
+            en_sections[en_key] = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(section, dict) else {}
+        return zh_sections, en_sections
 
     return {}, {}
 
@@ -309,7 +698,13 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
         'Extension Info': zh['扩展信息'],
     }
 
-    domain_zh_sections, domain_en_sections = _domain_sections(domain, resource_type_zh, resource_type_en)
+    domain_zh_sections, domain_en_sections = _domain_sections(
+        domain,
+        resource_type_zh,
+        resource_type_en,
+        cstr_identifier=cstr_identifier,
+        alternative_identifiers=alternative_identifiers,
+    )
     zh.update(domain_zh_sections)
     en.update(domain_en_sections)
 

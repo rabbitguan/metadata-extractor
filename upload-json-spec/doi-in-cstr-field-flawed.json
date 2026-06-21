@@ -1,0 +1,60 @@
+{
+  "resource_type": "dataset",
+  "core": {
+    "title": "Flawed Soil Moisture Sensor Calibration Dataset",
+    "cstr_identifier": "10.9999/flawed.soil-moisture.2026",
+    "creators": [
+      "Example Sensor Laboratory",
+      "Huang Jie"
+    ],
+    "publisher": "Example Agricultural Data Center",
+    "publication_date": "2026-01-12",
+    "description": "A deliberately flawed upload sample where a DOI is placed in the cstr_identifier field. The backend should not populate the core CSTR field with this value, but should preserve it as an alternative identifier and use it as the domain identifier with a DOI marker.",
+    "keywords": [
+      "soil moisture",
+      "sensor calibration",
+      "flawed identifier test"
+    ],
+    "subjects": [
+      "Agricultural Engineering",
+      "Environmental Monitoring"
+    ],
+    "language": "en",
+    "rights": "CC BY 4.0",
+    "version": "test-v1",
+    "resource_url": [
+      "https://data.example.org/datasets/flawed-soil-moisture-calibration"
+    ]
+  },
+  "domain": {
+    "dataset_basic_information": {
+      "Title": "Flawed Soil Moisture Sensor Calibration Dataset",
+      "Abstract": "This file intentionally puts a DOI into cstr_identifier to verify that CSTR validation and DOI fallback behavior are both working.",
+      "Keywords": [
+        "soil moisture",
+        "sensor calibration",
+        "DOI fallback"
+      ],
+      "Scope": {
+        "Time Range": "2025-04 to 2025-09",
+        "Spatial Range": "Controlled soil-column experiments in Beijing, China"
+      },
+      "Language": "en",
+      "File Content": "Sensor calibration CSV files, laboratory logs, calibration coefficients, and validation plots.",
+      "Data Volume": "1.2 GB",
+      "Data Format": "CSV, JSON, PNG"
+    },
+    "dataset_publication_information": {
+      "Publication Date": "2026-01-12",
+      "Journal": "Example Agricultural Data Repository",
+      "Version Information": "test-v1"
+    },
+    "dataset_service_information": {
+      "Dataset Citation": "Example Sensor Laboratory. Flawed Soil Moisture Sensor Calibration Dataset. Example Agricultural Data Center, 2026.",
+      "Dataset License": "CC BY 4.0",
+      "Dataset Usage Statement": "Use this file only for validating upload error handling.",
+      "Dataset Download URL": "https://data.example.org/datasets/flawed-soil-moisture-calibration/download"
+    }
+  },
+  "extension_info": "Expected behavior: core CSTR is Not extracted/未提取到; alternative identifier contains 10.9999/flawed.soil-moisture.2026; domain identifier shows DOI marker."
+}

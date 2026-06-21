@@ -1,0 +1,101 @@
+{
+  "resource_type": "dataset",
+  "core": {
+    "title": "China Urban Heat Island Observation Dataset 2018-2025",
+    "cstr_identifier": "31253.11.CSTR.2026.100001",
+    "creators": [
+      "National Earth System Science Data Center",
+      "Liu Xiaoyan",
+      "Chen Rui",
+      "Wang Ming"
+    ],
+    "publisher": "National Earth System Science Data Center",
+    "publication_date": "2026-04-18",
+    "description": "A multi-source urban heat island observation dataset covering 35 major Chinese cities from 2018 to 2025. The dataset integrates ground meteorological stations, Landsat surface temperature products, land-use maps, and urban morphology indicators for climate adaptation and urban planning research.",
+    "keywords": [
+      "urban heat island",
+      "surface temperature",
+      "meteorological observation",
+      "urban climate",
+      "remote sensing",
+      "China"
+    ],
+    "subjects": [
+      "Atmospheric Science",
+      "Geography",
+      "Urban Planning"
+    ],
+    "language": "zh; en",
+    "contributors": [
+      "Zhang Yue",
+      "Shanghai Climate Center"
+    ],
+    "alternative_identifiers": [
+      "10.1234/urban-heat-island.2026.001"
+    ],
+    "related_identifiers": [
+      "10.1016/j.uclim.2025.101234"
+    ],
+    "rights": "CC BY 4.0",
+    "funders": [
+      "National Key Research and Development Program of China, 2023YFC3009000",
+      "National Natural Science Foundation of China, 42375092"
+    ],
+    "version": "v2.1",
+    "resource_url": [
+      "https://data.example.org/datasets/china-urban-heat-island-2018-2025",
+      "https://doi.org/10.1234/urban-heat-island.2026.001"
+    ]
+  },
+  "domain": {
+    "dataset_basic_information": {
+      "Title": "China Urban Heat Island Observation Dataset 2018-2025",
+      "Abstract": "This dataset provides harmonized hourly air temperature observations, satellite-derived land surface temperature, impervious-surface fraction, vegetation index, building density, and quality-control flags for 35 Chinese cities.",
+      "Keywords": [
+        "urban heat island",
+        "land surface temperature",
+        "meteorological station",
+        "urban morphology"
+      ],
+      "Scope": {
+        "Time Range": "2018-01-01 to 2025-12-31",
+        "Spatial Range": "35 major cities in China, including Beijing, Shanghai, Guangzhou, Shenzhen, Chengdu, Wuhan, Xi'an, and Harbin"
+      },
+      "Language": "zh; en",
+      "File Content": "Hourly station tables, monthly gridded GeoTIFF files, city boundary shapefiles, station metadata, quality-control reports, and a variable dictionary.",
+      "Funding Project": "National Key Research and Development Program of China, 2023YFC3009000",
+      "Data Volume": "86.4 GB",
+      "Data Format": "CSV, GeoTIFF, SHP, JSON, PDF",
+      "Dataset Authors": {
+        "Author Name": [
+          "Liu Xiaoyan",
+          "Chen Rui",
+          "Wang Ming"
+        ],
+        "Affiliation": [
+          "National Earth System Science Data Center",
+          "Institute of Atmospheric Physics, Chinese Academy of Sciences"
+        ],
+        "Email": [
+          "liuxy@example.org",
+          "chenrui@example.org"
+        ],
+        "Contribution": "Dataset design, station data harmonization, remote sensing processing, quality assessment, and documentation.",
+        "Biography": "The authors work on urban climate observation, remote sensing data fusion, and climate-service data infrastructure."
+      }
+    },
+    "dataset_publication_information": {
+      "Publication Date": "2026-04-18",
+      "Journal": "Scientific Data Bank",
+      "Version Information": "v2.1, includes 2025 station observations and updated Landsat Collection 2 products"
+    },
+    "dataset_service_information": {
+      "Dataset Citation": "National Earth System Science Data Center; Liu X.; Chen R.; Wang M. China Urban Heat Island Observation Dataset 2018-2025. Scientific Data Bank, 2026.",
+      "Dataset License": "CC BY 4.0",
+      "Dataset Usage Statement": "Users should cite the dataset and related data paper. Redistribution of derived city-level products should retain quality-control flags.",
+      "Dataset Download URL": "https://data.example.org/datasets/china-urban-heat-island-2018-2025/download",
+      "Dataset Paper URL": "https://doi.org/10.1016/j.uclim.2025.101234"
+    }
+  },
+  "extension_info": "The test file intentionally mixes tabular, raster, vector, and documentation metadata to exercise nested domain-field mapping."
+}

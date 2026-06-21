@@ -1,0 +1,107 @@
+{
+  "resource_type": "ecological_data",
+  "core": {
+    "title": "Qinghai-Tibet Plateau Alpine Meadow Carbon Flux Dataset 2015-2024",
+    "cstr_identifier": "31253.11.CSTR.2026.100005",
+    "creators": [
+      "Qinghai-Tibet Plateau Ecological Observation Network",
+      "Zhao Lin",
+      "Tsering Dawa",
+      "He Qiang"
+    ],
+    "publisher": "National Tibetan Plateau Data Center",
+    "publication_date": "2026-05-10",
+    "description": "A decade-long ecological dataset of carbon, water, and energy fluxes from alpine meadow observation sites on the Qinghai-Tibet Plateau.",
+    "keywords": [
+      "alpine meadow",
+      "carbon flux",
+      "eddy covariance",
+      "Qinghai-Tibet Plateau",
+      "ecosystem monitoring"
+    ],
+    "subjects": [
+      "Ecology",
+      "Earth System Science",
+      "Climate Change"
+    ],
+    "language": "zh; en",
+    "contributors": [
+      "Haibei Alpine Meadow Ecosystem Research Station",
+      "National Tibetan Plateau Data Center"
+    ],
+    "alternative_identifiers": [
+      "10.5678/tpdc.alpine.flux.2026"
+    ],
+    "related_identifiers": [
+      "10.1016/j.ecolind.2025.112345"
+    ],
+    "rights": "CC BY-NC 4.0",
+    "funders": [
+      "Second Tibetan Plateau Scientific Expedition and Research Program, 2019QZKK0301",
+      "National Natural Science Foundation of China, 42130506"
+    ],
+    "version": "v1.3",
+    "resource_url": [
+      "https://data.example.org/ecology/qtp-alpine-meadow-flux-2015-2024"
+    ]
+  },
+  "domain": {
+    "ecological_identification_information": {
+      "Resource Name": "Qinghai-Tibet Plateau Alpine Meadow Carbon Flux Dataset 2015-2024",
+      "Resource Identifier": "31253.11.CSTR.2026.100005",
+      "Abstract": "The dataset contains half-hourly and daily aggregated eddy-covariance observations, meteorological variables, soil temperature and moisture profiles, vegetation survey records, and site-level metadata for alpine meadow ecosystems.",
+      "Keywords": [
+        "carbon flux",
+        "eddy covariance",
+        "alpine meadow",
+        "ecosystem respiration",
+        "net ecosystem exchange"
+      ],
+      "Subject Classification": "Ecology; Biogeochemistry; Climate Change",
+      "Dataset Creators": "Qinghai-Tibet Plateau Ecological Observation Network; Zhao Lin; Tsering Dawa; He Qiang",
+      "Creation Date": "2026-04-22",
+      "Last Modified Date": "2026-05-10",
+      "Use Restrictions": "Non-commercial research use. Users must cite the dataset and contact the station before using raw high-frequency flux data for site-comparison publications."
+    },
+    "ecological_data_content_information": {
+      "Data Entity": {
+        "Entity Name": "flux_half_hourly_2015_2024.csv",
+        "Entity Description": "Half-hourly CO2, H2O, and energy fluxes with quality-control flags and meteorological drivers.",
+        "Entity Type": "CSV table",
+        "Data Volume": "18.2 GB",
+        "Data Format": "CSV"
+      }
+    },
+    "ecological_data_quality_and_methods": {
+      "Data Quality Description": "Flux records include friction-velocity filtering, spike detection, stationarity tests, footprint screening, and gap-filling quality flags. Daily aggregates are only produced when valid half-hourly coverage exceeds 70 percent.",
+      "Data Generation Method": "CO2 and H2O fluxes were measured using open-path infrared gas analyzers and three-dimensional sonic anemometers. Meteorological observations were collected with calibrated radiation, temperature, humidity, precipitation, and soil sensors.",
+      "Data Collection and Processing Methods": "Raw 10 Hz data were processed with coordinate rotation, time-lag correction, density correction, spike removal, and standardized quality-control procedures. Vegetation surveys were digitized and linked to site metadata.",
+      "Quality Control Description": "Quality-control codes follow 0 for high quality, 1 for moderate quality, and 2 for low confidence. Missing records are encoded as NA and documented in monthly processing logs.",
+      "Data Source": "Haibei Alpine Meadow Ecosystem Research Station; Maqu Grassland Flux Tower; Nagqu Alpine Meadow Observation Site"
+    },
+    "ecological_spatial_and_temporal_coverage": {
+      "Spatial Range": {
+        "Geographic Description": "Alpine meadow observation sites on the northeastern and central Qinghai-Tibet Plateau",
+        "West Bounding Longitude": "91.80",
+        "East Bounding Longitude": "102.95",
+        "South Bounding Latitude": "31.20",
+        "North Bounding Latitude": "37.70"
+      },
+      "Time Range": {
+        "Start Time": "2015-01-01",
+        "End Time": "2024-12-31"
+      }
+    },
+    "ecological_project_and_funding_information": {
+      "Project Name": "Carbon-Water Coupling Processes of Alpine Meadow Ecosystems under Climate Warming",
+      "Project Code": "2019QZKK0301; 42130506",
+      "Funding Source": "Second Tibetan Plateau Scientific Expedition and Research Program; National Natural Science Foundation of China"
+    },
+    "ecological_distribution_and_citation_information": {
+      "Dataset Citation": "Qinghai-Tibet Plateau Ecological Observation Network. Qinghai-Tibet Plateau Alpine Meadow Carbon Flux Dataset 2015-2024. National Tibetan Plateau Data Center, 2026.",
+      "Dataset License": "CC BY-NC 4.0",
+      "Dataset Access or Download URL": "https://data.example.org/ecology/qtp-alpine-meadow-flux-2015-2024/download"
+    }
+  },
+  "extension_info": "This ecological sample uses all ecological section groups from backend/standard.json and is intended to test nested translation and UI rendering."
+}
