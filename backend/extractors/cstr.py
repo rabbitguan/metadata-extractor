@@ -17,6 +17,22 @@ def _clean_text(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
+def _has_cjk(value: Optional[str]) -> bool:
+    return bool(re.search(r'[\u4e00-\u9fff]', str(value or '')))
+
+
+def _english_text(value: Optional[str]) -> Optional[str]:
+    cleaned = _clean_text(value)
+    if not cleaned or _has_cjk(cleaned):
+        return None
+    return cleaned
+
+
+def _english_list(values: Optional[list]) -> Optional[list]:
+    result = [_english_text(value) for value in _ensure_list(values)]
+    return [item for item in result if item] or None
+
+
 def _ensure_list(value: Any) -> list:
     if value is None:
         return []
@@ -140,15 +156,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     title_en = _first_non_empty(content_data.get('titleEN'), content_data.get('resourceName'), title)
     if not title_zh:
         title_zh = title_en or identifier or url
-    if not title_en:
-        title_en = title_zh or identifier or url
+    title_en = _english_text(title_en) or identifier or url
 
     abstract_zh = _first_non_empty(content_data.get('abstractCN'), content_data.get('descriptionCN'))
     abstract_en = _first_non_empty(content_data.get('abstractEN'), content_data.get('descriptionEN'))
     if not abstract_zh:
         abstract_zh = abstract_en
-    if not abstract_en:
-        abstract_en = abstract_zh
+    abstract_en = _english_text(abstract_en)
 
     authors = content_data.get('authors') or []
     author_names = _unique_list(
@@ -180,8 +194,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     publisher_en = _first_non_empty(content_data.get('journelEN'), content_data.get('registerOrganizationEN'))
     if not publisher_zh:
         publisher_zh = publisher_en
-    if not publisher_en:
-        publisher_en = publisher_zh
+    publisher_en = _english_text(publisher_en)
 
     issue_info = content_data.get('issue')
     publish_date = _first_non_empty(_format_issue_date(issue_info), content_data.get('publicationDate'))
@@ -198,8 +211,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     )
     if not keywords_zh and keywords_en:
         keywords_zh = keywords_en
-    if not keywords_en and keywords_zh:
-        keywords_en = keywords_zh
+    keywords_en = _english_list(keywords_en)
 
     subject_classifications = content_data.get('subjectClassifications') or []
     subjects = _unique_list(
@@ -209,6 +221,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
         for name in _ensure_list(subject.get('subjectName'))
         if _clean_text(name)
     ) or None
+    subjects_en = _english_list(subjects)
 
     alternative_identifiers = _unique_list(
         _clean_text(item.get('identifierValue'))
@@ -255,13 +268,29 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
             'Resource Type Classification': resource_type_en,
             'Domain Classification': domain_en,
             'Identifier': identifier,
+            'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
+            'creators': _english_list(creators_list),
+            'publisher': {'names': [{'lang': 'en', 'name': publisher_en}], 'identifiers': None} if publisher_en else None,
+            'publish_date': publish_date,
+            'descriptions': [{'lang': 'en', 'description': abstract_en}] if abstract_en else None,
+            'keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
+            'subjects': [{'standard_gbt': None, 'standard_oecd': subjects_en}] if subjects_en else None,
+            'language': None,
+            'contributors': None,
+            'alternative_identifiers': alternative_identifiers,
+            'related_identifiers': None,
+            'rights': rights,
+            'funders': None,
+            'version': None,
+            'urls': urls or None,
+            'resource_type': resource_type_en,
             'Title': title_en,
             'Description': abstract_en,
             'Keywords': keywords_en or None,
             'Discipline Classification': None,
-            'Subject Classification': subjects,
+            'Subject Classification': subjects_en,
             'Language': None,
-            'Creators': creators_list,
+            'Creators': _english_list(creators_list),
             'Publisher': publisher_en,
             'Publication Date': publish_date,
             'Contributors': None,

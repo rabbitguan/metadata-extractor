@@ -91,23 +91,59 @@ def _extract_section_bundle(result_payload: Dict[str, Any], language_key: str, c
 def _extract_core_bundle(result_payload: Dict[str, Any], language_key: str, core_key: str) -> Dict[str, Any]:
     bundle = result_payload.get(language_key)
     if not isinstance(bundle, dict):
+        bundle = result_payload
+    if not isinstance(bundle, dict):
         return {}
 
     core = bundle.get(core_key)
+    if not isinstance(core, dict) and core_key == 'Core Metadata':
+        core = bundle.get('核心元数据')
+    if not isinstance(core, dict) and core_key == '核心元数据':
+        core = bundle.get('Core Metadata')
+    if isinstance(core, dict) and isinstance(core.get('metadatas'), list) and core['metadatas']:
+        first_metadata = core['metadatas'][0]
+        return first_metadata if isinstance(first_metadata, dict) else {}
     return core if isinstance(core, dict) else {}
 
 
 def _extract_domain_bundle(result_payload: Dict[str, Any], language_key: str, core_key: str) -> Dict[str, Any]:
     bundle = result_payload.get(language_key)
     if not isinstance(bundle, dict):
+        bundle = result_payload
+    if not isinstance(bundle, dict):
         return {}
 
     domain_bundle: Dict[str, Any] = {}
     for key, value in bundle.items():
-        if key == core_key:
+        if key in {core_key, '核心元数据', 'Core Metadata'}:
             continue
         domain_bundle[key] = value
     return domain_bundle
+
+
+def _domain_from_resource_type(resource_type: Any, language: str) -> str:
+    value = str(resource_type or '').strip()
+    if language == 'en':
+        return {
+            'Dataset': 'Dataset Metadata',
+            'Data Paper': 'Data Paper Metadata',
+            'Standard Literature': 'Standard Literature Metadata',
+            'Ecological Data': 'Ecological Science Data Metadata',
+            'Other': 'Core Metadata',
+        }.get(value, 'Core Metadata')
+
+    return {
+        '数据集': '数据集元数据',
+        'Dataset': '数据集元数据',
+        '数据论文': '数据论文元数据',
+        'Data Paper': '数据论文元数据',
+        '标准文献': '标准文献元数据',
+        'Standard Literature': '标准文献元数据',
+        '生态科学数据': '生态科学数据元数据',
+        'Ecological Data': '生态科学数据元数据',
+        '其他': '核心元数据',
+        'Other': '核心元数据',
+    }.get(value, '核心元数据')
 
 
 def save_analysis_history(
@@ -126,10 +162,10 @@ def save_analysis_history(
     domain_zh = _extract_domain_bundle(result_payload, 'zh', '核心元数据')
     domain_en = _extract_domain_bundle(result_payload, 'en', 'Core Metadata')
 
-    resource_type_zh = core_zh.get('资源类型')
-    resource_type_en = core_en.get('ResourceType')
-    domain_classification_zh = core_zh.get('领域判定')
-    domain_classification_en = core_en.get('Domain Classification')
+    resource_type_zh = core_zh.get('resource_type') or core_zh.get('资源类型')
+    resource_type_en = core_en.get('resource_type') or core_en.get('ResourceType')
+    domain_classification_zh = _domain_from_resource_type(resource_type_zh, 'zh')
+    domain_classification_en = _domain_from_resource_type(resource_type_en, 'en')
 
     with _connect() as connection:
         cursor = connection.execute(

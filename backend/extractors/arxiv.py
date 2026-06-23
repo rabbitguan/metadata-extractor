@@ -21,6 +21,35 @@ def _clean_text(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
+def _identifier_items(*values: Optional[str]) -> Optional[list[dict[str, str]]]:
+    items = []
+    for value in values:
+        cleaned = _clean_text(value)
+        if not cleaned:
+            continue
+        item_type = 'DOI' if cleaned.lower().startswith('https://doi.org/') or cleaned.lower().startswith('10.') else 'Other'
+        identifier = cleaned.replace('https://doi.org/', '') if item_type == 'DOI' else cleaned
+        items.append({'type': item_type, 'identifier': identifier})
+    return items or None
+
+
+def _people(names: list[str]) -> Optional[list[dict]]:
+    people = []
+    for name in names:
+        cleaned = _clean_text(name)
+        if cleaned:
+            people.append({
+                'type': 'Person',
+                'person': {
+                    'names': [{'lang': 'en', 'name': cleaned}],
+                    'emails': None,
+                    'identifiers': None,
+                    'affiliations': None,
+                },
+            })
+    return people or None
+
+
 def _extract_meta_content(html: str, meta_name: str) -> Optional[str]:
     pattern = rf'<meta\s+name=["\']{re.escape(meta_name)}["\']\s+content=["\']([^"\']*)["\']'
     match = re.search(pattern, html, flags=re.IGNORECASE | re.DOTALL)
@@ -120,35 +149,28 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
         'zh': {
             '资源类型判定': '数据论文',
             '领域判定': '数据论文元数据',
-            '标识符': primary_identifier,
             'CSTR标识符': cstr_id,
-            '资源名称': _clean_text(title_text) or arxiv_id or url,
-            '描述': _clean_text(abstract_text),
-            '关键词': keywords,
+            '资源名称': None,
+            '描述': None,
+            '关键词': None,
             '生成日期': publication_date,
             '注册日期': None,
             '最新发布日期': None,
-            '学科分类': _clean_text(subject_name),
+            '学科分类': None,
             '主题分类': _clean_text(subject_code),
             '知识产权类别': None,
             '资源使用许可': _clean_text(license_url),
             '资源访问地址': url,
-            '替代标识符': alternative_identifiers,
+            '替代标识符': _identifier_items(arxiv_id, doi),
             '共享方式': None,
             '提供方信息': None,
             '服务方信息': None,
             '数据论文内容信息': {
                 '标识符': primary_identifier,
-                '标题': _clean_text(title_text) or arxiv_id or url,
-                '摘要': _clean_text(abstract_text),
-                '关键词': keywords,
-                '数据论文作者': {
-                    '作者姓名': authors if authors else None,
-                    '工作单位': None,
-                    '电子邮箱': None,
-                    '工作贡献': None,
-                    '作者简介': None,
-                },
+                '标题': None,
+                '摘要': None,
+                '关键词': None,
+                '数据论文作者': None,
                 '数据采集和处理方法': None,
             },
             '数据论文出版信息': {
@@ -166,7 +188,23 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
         'en': {
             'Resource Type Classification': 'Data Paper',
             'Domain Classification': 'Data Paper Metadata',
-            'Identifier': primary_identifier,
+            'Identifier': cstr_id,
+            'titles': [{'lang': 'en', 'name': _clean_text(title_text) or arxiv_id or url}],
+            'creators': _people(authors),
+            'publisher': {'names': [{'lang': 'en', 'name': 'arXiv'}], 'identifiers': None},
+            'publish_date': publication_date,
+            'descriptions': [{'lang': 'en', 'description': _clean_text(abstract_text)}] if _clean_text(abstract_text) else None,
+            'keywords': [{'lang': 'en', 'keyword': keywords}] if keywords else None,
+            'subjects': [{'standard_gbt': None, 'standard_oecd': [item for item in [subject_name, subject_code] if item]}],
+            'language': 'en',
+            'contributors': None,
+            'alternative_identifiers': _identifier_items(arxiv_id, doi),
+            'related_identifiers': None,
+            'rights': [{'license_type': None, 'license': None, 'type': None, 'description': _clean_text(license_url), 'cert_num': None}] if _clean_text(license_url) else None,
+            'funders': None,
+            'version': version_info,
+            'urls': [url, pdf_url] if pdf_url else [url],
+            'resource_type': 'Data Paper',
             'Resource Name': _clean_text(title_text) or arxiv_id or url,
             'Description': _clean_text(abstract_text),
             'Keywords': keywords,

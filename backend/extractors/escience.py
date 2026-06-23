@@ -45,6 +45,22 @@ def _clean_text(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
+def _has_cjk(value: Optional[str]) -> bool:
+    return bool(re.search(r'[\u4e00-\u9fff]', str(value or '')))
+
+
+def _english_text(value: Optional[str]) -> Optional[str]:
+    cleaned = _clean_text(value)
+    if not cleaned or _has_cjk(cleaned):
+        return None
+    return cleaned
+
+
+def _english_terms(values: Optional[list[str]]) -> Optional[list[str]]:
+    terms = [_english_text(value) for value in (values or [])]
+    return [term for term in terms if term] or None
+
+
 def _extract_query_identifiers(url: str) -> tuple[Optional[str], Optional[str]]:
     if not url:
         return None, None
@@ -334,47 +350,65 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
         },
     }
 
+    english_title = _english_text(title_en)
+    english_keywords = _english_terms(keywords)
     en_payload: Dict[str, Any] = {
         'Resource Type Classification': 'Dataset',
         'Domain Classification': 'Dataset Metadata',
         'Identifier': identifier_en,
         'CSTR Identifier': cstr_identifier,
-        'Resource Name': title_text,
-        'Title': title_en or title_text,
-        'Creators': creators,
-        'Publisher': publisher,
+        'titles': [{'lang': 'en', 'name': english_title}] if english_title else None,
+        'creators': None,
+        'publisher': None,
+        'publish_date': publish_date,
+        'descriptions': None,
+        'keywords': [{'lang': 'en', 'keyword': english_keywords}] if english_keywords else None,
+        'subjects': None,
+        'language': None,
+        'contributors': None,
+        'alternative_identifiers': None,
+        'related_identifiers': None,
+        'rights': None,
+        'funders': None,
+        'version': None,
+        'urls': [resource_url] if resource_url else None,
+        'resource_type': 'Dataset',
+        'Resource Name': english_title,
+        'Title': english_title,
+        'Creators': None,
+        'Publisher': None,
         'Publication Date': publish_date,
-        'Description': description,
-        'Keywords': keywords,
+        'Description': None,
+        'Keywords': english_keywords,
         'Generation Date': generated_date,
         'Registration Date': None,
         'Latest Release Date': latest_release_date,
-        'Discipline Classification': subject_value,
-        'Subject Classification': theme_value,
+        'Discipline Classification': None,
+        'Subject Classification': None,
         'Intellectual Property Type': None,
         'Usage License': None,
         'Resource Access URL': resource_url,
         'Sharing Details': {
-            'Sharing Channel': sharing_channel,
-            'Sharing Scope': sharing_scope,
-            'Application Process': application_process,
+            'Sharing Channel': None,
+            'Sharing Scope': None,
+            'Application Process': None,
         },
         'Provider Information': None,
         'Service Provider Information': {
-            'Service Provider Name': service_org,
-            'Service Provider Address': service_address,
+            'Service Provider Name': None,
+            'Service Provider Address': None,
             'Service Provider Postal Code': service_postal,
             'Service Provider Phone': service_phone,
             'Service Provider Email': service_email,
         },
         'Dataset Basic Information': {
             'Identifier': identifier_en,
-            'Resource Name': title_text,
-            'Description': description,
-            'Keywords': keywords,
-            'Discipline Classification': subject_terms if subject_terms else None,
-            'Subject Classification': theme_value,
-            'Resource Name (Foreign Language)': title_en,
+            'Resource Name': english_title,
+            'Description': None,
+            'Keywords': english_keywords,
+            'Discipline Classification': None,
+            'Subject Classification': None,
+            'Resource Name (Foreign Language)': english_title,
         },
         'Dataset Publication Information': {
             'Generation Date': generated_date,
@@ -383,13 +417,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
         },
         'Dataset Service Information': {
             'Resource Access URL': resource_url,
-            'Sharing Channel': sharing_channel,
-            'Sharing Scope': sharing_scope,
-            'Application Process': application_process,
+            'Sharing Channel': None,
+            'Sharing Scope': None,
+            'Application Process': None,
         },
         'Extension Info': {
-            'Platform': platform_name,
-            'Resource Name (Foreign Language)': title_en,
+            'Platform': None,
+            'Resource Name (Foreign Language)': english_title,
         },
     }
 

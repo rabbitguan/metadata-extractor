@@ -187,6 +187,25 @@ def _list_field(data: Dict[str, Any], *keys: str) -> Optional[list]:
     return values or None
 
 
+def _structured_field(data: Dict[str, Any], *keys: str) -> Any:
+    value = _first(data, *keys)
+    if isinstance(value, (dict, list)):
+        return value
+    values = _unique_list(_ensure_list(value))
+    return values or None
+
+
+def _structured_scalar_field(data: Dict[str, Any], *keys: str) -> Any:
+    value = _first(data, *keys)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        if value and isinstance(value[0], dict):
+            return value[0]
+        return _clean_text(value[0]) if value else None
+    return _clean_text(value)
+
+
 def _scalar_field(data: Dict[str, Any], *keys: str) -> Optional[str]:
     value = _first(data, *keys)
     if isinstance(value, list):
@@ -196,7 +215,8 @@ def _scalar_field(data: Dict[str, Any], *keys: str) -> Optional[str]:
 
 def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Optional[list]]:
     raw_cstr = _scalar_field(core, 'cstr_identifier', 'cstrIdentifier', 'CSTR标识符', 'identifier', 'Identifier')
-    alternative = _list_field(core, 'alternative_identifiers', 'alternativeIdentifiers', '替代标识符', 'Alternative Identifiers') or []
+    alternative_raw = _structured_field(core, 'alternative_identifiers', 'alternativeIdentifiers', '替代标识符', 'Alternative Identifiers')
+    alternative = _ensure_list(alternative_raw)
     doi = _scalar_field(core, 'doi', 'DOI')
     if doi:
         alternative.append(doi)
@@ -205,10 +225,10 @@ def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Opt
         cstr_identifier = raw_cstr
     else:
         cstr_identifier = None
-        if raw_cstr and (_is_doi(raw_cstr) or raw_cstr not in alternative):
+        if raw_cstr and (_is_doi(raw_cstr) or raw_cstr not in [str(item) for item in alternative]):
             alternative.append(raw_cstr)
 
-    return cstr_identifier, (_unique_list(alternative) or None)
+    return cstr_identifier, (alternative or None)
 
 
 def _domain_sections(domain: Dict[str, Any], resource_type_zh: str, resource_type_en: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -260,53 +280,53 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
     )
     cstr_identifier, alternative_identifiers = _extract_identifier_fields(core)
 
-    titles = _list_field(core, 'title', 'titles', '标题', 'Title') or ([title] if title else None)
-    description = _list_field(core, 'description', 'descriptions', '描述', 'Description', 'abstract', '摘要')
-    keywords = _list_field(core, 'keywords', '关键词', 'Keywords')
-    subjects = _list_field(core, 'subjects', '学科', 'Subjects')
-    resource_urls = _list_field(core, 'resource_url', 'resource_urls', 'urls', '资源链接', 'Resource URL')
+    titles = _structured_field(core, 'title', 'titles', '标题', 'Title') or ([title] if title else None)
+    description = _structured_field(core, 'description', 'descriptions', '描述', 'Description', 'abstract', '摘要')
+    keywords = _structured_field(core, 'keywords', '关键词', 'Keywords')
+    subjects = _structured_field(core, 'subjects', '学科', 'Subjects')
+    resource_urls = _structured_field(core, 'resource_url', 'resource_urls', 'urls', '资源链接', 'Resource URL')
 
     zh: Dict[str, Any] = {
-        '标题': titles,
-        'CSTR标识符': cstr_identifier,
-        '创建者': _list_field(core, 'creators', '创建者', 'Creators'),
-        '发布机构': _scalar_field(core, 'publisher', '发布机构', 'Publisher'),
-        '发布日期': _scalar_field(core, 'publication_date', 'publish_date', '发布日期', 'Publication Date'),
-        '描述': description,
-        '关键词': keywords,
-        '学科': subjects,
-        '语言': _scalar_field(core, 'language', '语言', 'Language'),
-        '贡献者': _list_field(core, 'contributors', '贡献者', 'Contributors'),
-        '替代标识符': alternative_identifiers,
-        '关联标识符': _list_field(core, 'related_identifiers', '关联标识符', 'Related Identifiers'),
-        '权限': _scalar_field(core, 'rights', '权限', 'Rights'),
-        '资助者': _list_field(core, 'funders', '资助者', 'Funders'),
-        '版本': _scalar_field(core, 'version', '版本', 'Version'),
-        '资源链接': resource_urls,
-        '资源类型': resource_type_zh,
-        '领域判定': domain_zh,
-        '扩展信息': _scalar_field(payload, 'extension_info', '扩展信息', 'Extension Info'),
+        'titles': titles,
+        'identifier': cstr_identifier,
+        'creators': _structured_field(core, 'creators', '创建者', 'Creators'),
+        'publisher': _structured_scalar_field(core, 'publisher', '发布机构', 'Publisher'),
+        'publish_date': _scalar_field(core, 'publication_date', 'publish_date', '发布日期', 'Publication Date'),
+        'descriptions': description,
+        'keywords': keywords,
+        'subjects': subjects,
+        'language': _scalar_field(core, 'language', '语言', 'Language'),
+        'contributors': _structured_field(core, 'contributors', '贡献者', 'Contributors'),
+        'alternative_identifiers': alternative_identifiers,
+        'related_identifiers': _structured_field(core, 'related_identifiers', '关联标识符', 'Related Identifiers'),
+        'rights': _structured_field(core, 'rights', '权限', 'Rights'),
+        'funders': _structured_field(core, 'funders', '资助者', 'Funders'),
+        'version': _scalar_field(core, 'version', '版本', 'Version'),
+        'urls': resource_urls,
+        'resource_type': resource_type_zh,
+        'domain_metadata': domain_zh,
+        'extension_info': _scalar_field(payload, 'extension_info', '扩展信息', 'Extension Info'),
     }
     en: Dict[str, Any] = {
-        'Title': titles,
-        'Identifier': cstr_identifier,
-        'Creators': zh['创建者'],
-        'Publisher': zh['发布机构'],
-        'Publication Date': zh['发布日期'],
-        'Description': description,
-        'Keywords': keywords,
-        'Subjects': subjects,
-        'Language': zh['语言'],
-        'Contributors': zh['贡献者'],
-        'Alternative Identifiers': alternative_identifiers,
-        'Related Identifiers': zh['关联标识符'],
-        'Rights': zh['权限'],
-        'Funders': zh['资助者'],
-        'Version': zh['版本'],
-        'Resource URL': resource_urls,
-        'ResourceType': resource_type_en,
-        'Domain Classification': domain_en,
-        'Extension Info': zh['扩展信息'],
+        'titles': titles,
+        'identifier': cstr_identifier,
+        'creators': zh['creators'],
+        'publisher': zh['publisher'],
+        'publish_date': zh['publish_date'],
+        'descriptions': description,
+        'keywords': keywords,
+        'subjects': subjects,
+        'language': zh['language'],
+        'contributors': zh['contributors'],
+        'alternative_identifiers': alternative_identifiers,
+        'related_identifiers': zh['related_identifiers'],
+        'rights': zh['rights'],
+        'funders': zh['funders'],
+        'version': zh['version'],
+        'urls': resource_urls,
+        'resource_type': resource_type_en,
+        'domain_metadata': domain_en,
+        'extension_info': zh['extension_info'],
     }
 
     domain_zh_sections, domain_en_sections = _domain_sections(domain, resource_type_zh, resource_type_en)

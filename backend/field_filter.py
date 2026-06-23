@@ -47,7 +47,10 @@ def filter_response(data, empty_placeholder='未提取到'):
             # 处理列表
             if isinstance(field_value, list):
                 if not is_empty_value(field_value):
-                    result[field_key] = field_value
+                    result[field_key] = [
+                        filter_object(item) if isinstance(item, dict) else item
+                        for item in field_value
+                    ]
                 else:
                     result[field_key] = empty_placeholder
                 continue
