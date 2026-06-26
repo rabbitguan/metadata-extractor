@@ -18,6 +18,7 @@
   "mode": "common",
   "strategy": "auto",
   "force_reanalyze": false,
+  "dynamic_render": "auto",
   "text": "页面文本内容",
   "html": "<html>...</html>",
   "url": "https://example.com/paper",
@@ -31,6 +32,7 @@
 - `mode`：前端模式标识，常见值：`common` / `domain`（后端会透传给模型流程）
 - `strategy`：提取策略，常见值：`auto` / `llm` / `rule`
 - `force_reanalyze`：是否跳过历史缓存并强制重新分析（支持 `true/false`、`"1"`、`"true"` 等）
+- `dynamic_render`：URL 直抓时是否使用浏览器动态渲染。支持 `auto` / `true` / `false`，默认 `auto`；只有后端启动时加了 `-d` 才会真正启用动态渲染
 - `text`：待分析文本；当 `source` 为 `text` 或 `web` 时不能为空
 - `html`：页面 HTML（用于规则提取与历史入库）
 - `url`：页面 URL
@@ -43,6 +45,22 @@
 1. 必须提供 `url`
 2. 后端会先抓取 URL 页面并提取文本，再进入分析流程
 3. `text/html/title` 以抓取结果为准
+4. CSTR 查询会继续访问配置好的补充源，例如 eScience；后端启动时加 `-d` 后，这些网页才会按规则尝试 Playwright 动态渲染
+
+动态渲染运行时说明：
+
+- 普通抓取先使用 `requests`，动态渲染作为兜底或指定域名增强。
+- 默认不启用动态渲染；本地启动后端时加 `-d` 只表示“访问网页后用浏览器渲染再解析”，不影响是否访问 NCDC/eScience 等数据源。
+- 环境变量 `METADATA_DYNAMIC_RENDER_MODE` 仍支持 `auto` / `always` / `never`，默认 `never`。
+- 环境变量 `METADATA_DYNAMIC_RENDER_DOMAINS` 可配置自动动态渲染域名，默认 `ncdc.ac.cn,escience.org.cn`。
+- 如果 Playwright/Chromium 不可用，后端会自动回退到静态抓取并打印 warning。
+
+本地直接运行 `backend.py` 时，需要动态渲染就加 `-d`：
+
+```bash
+python backend.py
+python backend.py -d
+```
 
 #### 策略行为（`strategy`）
 
@@ -82,7 +100,7 @@
 规则说明：
 
 - `resource_type` 支持 `dataset` / `data_paper` / `other`，也兼容中文 `数据集` / `数据论文` / `其他`。
-- `core.cstr_identifier` 只接受 CSTR 形态的标识符；如果用户误填 DOI，后端不会写入 `CSTR标识符` / `Identifier`，会放入 `替代标识符` / `Alternative Identifiers`。
+- `core.cstr_identifier` 只接受 CSTR 形态的标识符；如果用户误填 DOI，后端不会写入核心字段 `identifier`，会放入 `alternative_identifiers`。
 - JSON 顶层也可传单元素数组；多资源数组会返回 400。
 - XML 使用同名标签即可，例如 `<resource><resource_type>dataset</resource_type><core>...</core></resource>`。
 
@@ -106,30 +124,63 @@
 
 ```json
 {
-  "zh": {
-    "核心元数据": {
-      "标题": "示例标题",
-      "资源类型": "数据论文",
-      "领域判定": "数据论文元数据",
-      "扩展信息": "未提取到"
-    },
-    "数据论文元数据": {
-      "数据论文内容信息": {
-        "摘要": "..."
+  "核心元数据": {
+    "metadatas": [
+      {
+        "titles": [
+          {"lang": "zh", "name": "示例标题"},
+          {"lang": "en", "name": "Example Title"}
+        ],
+        "identifier": "未提取到",
+        "creators": [
+          {
+            "type": "Person",
+            "person": {
+              "names": [
+                {"lang": "zh", "name": "张三"},
+                {"lang": "en", "name": "San Zhang"}
+              ],
+              "emails": "未提取到",
+              "identifiers": "未提取到",
+              "affiliations": "未提取到"
+            }
+          }
+        ],
+        "publisher": {
+          "names": [
+            {"lang": "zh", "name": "示例机构"},
+            {"lang": "en", "name": "Example Organization"}
+          ],
+          "identifiers": "未提取到"
+        },
+        "publish_date": "2026-06-20",
+        "descriptions": [
+          {"lang": "zh", "description": "示例描述"},
+          {"lang": "en", "description": "Example description"}
+        ],
+        "keywords": [
+          {"lang": "zh", "keyword": ["元数据"]},
+          {"lang": "en", "keyword": ["metadata"]}
+        ],
+        "subjects": [{"standard_gbt": ["520"], "standard_oecd": ["102"]}],
+        "language": "zh",
+        "contributors": "未提取到",
+        "alternative_identifiers": "未提取到",
+        "related_identifiers": "未提取到",
+        "rights": "未提取到",
+        "funders": "未提取到",
+        "version": "未提取到",
+        "urls": ["https://example.org/resource"],
+        "resource_type": "Data Paper"
       }
-    }
+    ]
   },
-  "en": {
-    "Core Metadata": {
-      "Title": "Example Title",
-      "ResourceType": "Data Paper",
-      "Domain Classification": "Data Paper Metadata",
-      "Extension Info": "Not extracted"
-    },
-    "Data Paper Metadata": {
-      "Data Paper Content Information": {
-        "Abstract": "..."
-      }
+  "数据论文元数据": {
+    "数据论文内容信息": {
+      "摘要": [
+        {"lang": "zh", "description": "..."},
+        {"lang": "en", "description": "..."}
+      ]
     }
   }
 }
@@ -137,12 +188,10 @@
 
 说明：
 
-- 后端会保证核心字段存在，空值会被填充为占位文本：
-  - 中文：`未提取到`
-  - 英文：`Not extracted`
-- 返回体的核心结构是：
-  - 中文：`zh -> 核心元数据`
-  - 英文：`en -> Core Metadata`
+- `核心元数据` 下保持与规范示例一致的 `metadatas` 数组结构。
+- `metadatas[0]` 只包含核心元数据 17 个字段，不包含领域判定、扩展信息等辅助字段。
+- 后端会保证核心字段存在，空值会被填充为占位文本 `未提取到`。
+- 返回体不再按顶层 `zh` / `en` 分块；需要中英文的字段值在字段内部用 `lang` 区分。
 - 领域结构是否存在，取决于规则/模型提取结果。
 
 #### 失败响应

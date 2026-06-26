@@ -11,6 +11,35 @@ from .base import MetadataDict
 
 RULE_NAME = 'NCDC Metadata Detail'
 
+TITLE_LABELS = {
+    '首页',
+    '数据资源',
+    '台站数据',
+    '数据专题',
+    '期刊数据',
+    '模型工具',
+    '数据汇交',
+    '数据汇交指南',
+    '科技计划汇交资源',
+    '应急响应',
+    '全球灾害',
+    '科普',
+    '综合新闻',
+    '平台介绍',
+    '详情',
+    '数据集摘要',
+    '基本信息',
+    '引用和标注',
+    '许可协议',
+    '数据源描述',
+    '数据加工方法',
+    '数据质量描述',
+    '项目支持信息',
+    '相关数据',
+    '数据文件列表',
+    '服务记录',
+}
+
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -34,6 +63,31 @@ def _first_non_empty(*values: Optional[str]) -> Optional[str]:
         if text:
             return text
     return None
+
+
+def _looks_like_url(value: Optional[str]) -> bool:
+    return bool(re.match(r'^https?://', str(value or '').strip(), flags=re.IGNORECASE))
+
+
+def _valid_title(value: Optional[str]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text or _looks_like_url(text):
+        return None
+    text = re.split(r'\s+-\s*国家冰川冻土沙漠科学数据中心|\s*\|\s*国家冰川冻土沙漠科学数据中心', text)[0].strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if 'ncdc.ac.cn' in lowered or '国家冰川冻土沙漠科学数据中心' == text:
+        return None
+    if text in TITLE_LABELS:
+        return None
+    if len(text) <= 6 and text.endswith('数据'):
+        return None
+    if re.search(r'\b(CSTR|DOI)\b', text, flags=re.IGNORECASE):
+        return None
+    if len(text) < 4:
+        return None
+    return text
 
 
 def _split_terms(value: Optional[str]) -> list[str]:
@@ -69,6 +123,24 @@ def _extract_by_label(soup: BeautifulSoup, labels: list[str]) -> Optional[str]:
         if not value_cell:
             continue
         value_text = _text_or_none(value_cell)
+        if value_text:
+            return value_text
+
+    for row in soup.select('.metadata-detail .row, .metadata-details-wrapper .row'):
+        header_node = row.select_one('.t-title')
+        if not header_node:
+            continue
+        header = _text_or_none(header_node)
+        if not header:
+            continue
+        header = header.rstrip('：:').strip()
+        if header not in labels:
+            continue
+
+        value_node = row.select_one('.t-value')
+        if not value_node:
+            continue
+        value_text = _text_or_none(value_node)
         if value_text:
             return value_text
 
@@ -160,10 +232,19 @@ def _extract_first_paragraph(soup: BeautifulSoup, title_text: str) -> Optional[s
 def _extract_cstr(text: str) -> Optional[str]:
     if not text:
         return None
+    match = re.search(r'cstr\.cn/(?:CSTR:)?([A-Za-z0-9._-]+)', text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).rstrip('.,;。；')
     match = re.search(r'CSTR:\s*([A-Za-z0-9._-]+)', text, flags=re.IGNORECASE)
     if match:
         return match.group(1).rstrip('.,;。；')
-    match = re.search(r'\b\d{5}\.\d{2}\.\d{2}\.\d{2}\.\d{5}-V\d+\b|\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b', text)
+    match = re.search(
+        r'\b\d{5}\.\d{2}\.\d{2}\.\d{2}\.\d{5}-V\d+\b'
+        r'|\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b'
+        r'|\b\d{5}\.\d{2}\.[A-Z0-9]+(?:\.[A-Z0-9]+){2,6}\b',
+        text,
+        flags=re.IGNORECASE,
+    )
     if match:
         return match.group(0).rstrip('.,;。；')
     return None
@@ -179,15 +260,62 @@ def _extract_doi(text: str) -> Optional[str]:
 
 
 def _extract_title(soup: BeautifulSoup) -> Optional[str]:
-    title = _text_or_none(soup.select_one('.metadata-details-title'))
+    title = _valid_title(_text_or_none(soup.select_one('.metadata-details-title')))
     if title:
         return title
+
+    title = _valid_title(_extract_by_label(soup, ['中文名称', '资源名称', '数据集名称']))
+    if title:
+        return title
+
+    for selector in ('meta[property="og:title"]', 'meta[name="title"]'):
+        node = soup.select_one(selector)
+        title = _valid_title(node.get('content') if node else None)
+        if title:
+            return title
+
+    for selector in ('h1', '.title', '.resource-title'):
+        title = _valid_title(_text_or_none(soup.select_one(selector)))
+        if title:
+            return title
 
     meta_title = soup.title.string if soup.title and soup.title.string else None
     if meta_title:
         cleaned = _clean_text(meta_title)
         if cleaned:
-            return cleaned.split(' - ')[0].strip()
+            title = _valid_title(re.split(r'\s+-\s+|\s+_\s+|\s*\|\s*', cleaned)[0])
+            if title:
+                return title
+
+    return None
+
+
+def _extract_title_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+
+    raw_lines = [_clean_text(line) for line in re.split(r'[\r\n]+', text)]
+    raw_lines = [line for line in raw_lines if line]
+
+    for line in raw_lines:
+        match = re.match(r'^(?:中文名称|资源名称|数据集名称|标题)\s*[:：]?\s*(.+)$', line)
+        if match:
+            title = _valid_title(match.group(1))
+            if title:
+                return title
+
+    for line in raw_lines:
+        title = _valid_title(line)
+        if not title:
+            continue
+        if any(marker in title for marker in ('摘要', '发布时间', '点击量', '下载量')):
+            continue
+        if len(title) <= 120 and re.search(r'(数据集|数据|冻土|人口|社会经济|文化|dataset)', title, flags=re.IGNORECASE):
+            return title
+
+    match = re.search(r'([^\n。；;]{4,120}(?:数据集|数据|冻土|人口|社会经济|文化|dataset)[^\n。；;]{0,60})', text, flags=re.IGNORECASE)
+    if match:
+        return _valid_title(match.group(1))
 
     return None
 
@@ -331,9 +459,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         return None
 
     soup = BeautifulSoup(content, 'html.parser')
+    full_text = soup.get_text('\n', strip=True)
 
-    title_zh = _first_non_empty(_extract_title(soup), title, url)
-    title_en = _first_non_empty(title_zh, title)
+    title_zh = _first_non_empty(_extract_title(soup), _extract_title_from_text(full_text), _valid_title(title), '未提取到标题')
+    title_en = _first_non_empty(_extract_by_label(soup, ['英文名称']), title_zh)
     abstract = _extract_first_paragraph(soup, '数据集摘要')
     source_description = _extract_first_paragraph(soup, '数据源描述')
     processing_method = _extract_first_paragraph(soup, '数据加工方法')
@@ -376,10 +505,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             '北部边界纬度': north,
         }
 
-    cstr_identifier = _extract_cstr(cstr_text or '') or _extract_cstr(reference_citation or '')
-    doi_identifier = _extract_doi(doi_text or '') or _extract_doi(reference_citation or '')
-    identifier = cstr_identifier or doi_identifier or title_zh
-    alternative_identifiers = [item for item in [doi_identifier, cstr_identifier] if item]
+    cstr_identifier = _extract_cstr(cstr_text or '') or _extract_cstr(reference_citation or '') or _extract_cstr(full_text)
+    doi_identifier = _extract_doi(doi_text or '') or _extract_doi(reference_citation or '') or _extract_doi(full_text)
+    identifier = cstr_identifier or doi_identifier
+    alternative_identifiers = [item for item in [doi_identifier] if item]
 
     funders = _extract_project_support(soup)
     contact_info = _extract_contact_info(soup)

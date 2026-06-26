@@ -210,9 +210,7 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
     )
     
     # 核心元数据字段列表（强制要求）
-    core_fields_zh = "标题、CSTR标识符、创建者、发布机构、发布日期、描述、关键词、学科、语言、贡献者、替代标识符、关联标识符、权限、资助者、版本、资源链接、资源类型"
-    
-    core_fields_en = "titles, identifier, creators, publisher, publish_date, descriptions, keywords, subjects, language, contributors, alternative_identifiers, related_identifiers, rights, funders, version, urls, ResourceType"
+    core_fields = "titles, identifier, creators, publisher, publish_date, descriptions, keywords, subjects, language, contributors, alternative_identifiers, related_identifiers, rights, funders, version, urls, resource_type"
     
     # 使用字符串拼接避免 f-string 中的复杂格式问题
     rules = "\n".join([
@@ -231,12 +229,23 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
         "• 完全不存在的字段必须返回 null，不要编造。",
         "• 当不确定时，选择 null 而不是猜测。",
         "",
-        "2) 【最重要】必须在顶层返回以下核心元数据字段（zh 和 en 都要有）:",
-        "   中文必须包含：" + core_fields_zh,
-        "   英文必须包含：" + core_fields_en,
+        "2) 【最重要】核心元数据字段键名必须使用《科技资源标识核心元数据规范》中的接口参数名，不要使用中文名称或展示英文名作为 JSON key:",
+        "   必须包含：" + core_fields,
+        "   例如发布机构字段必须写成 publisher，发布日期字段必须写成 publish_date。",
         "   如果网页中完全没有提及这个字段，或者证据不足，使用 null。不要编造。",
+        "   核心元数据的值结构必须参考规范第 6 节元数据示例：",
+        "   - titles: [{\"lang\":\"zh/en\",\"name\":\"...\"}]",
+        "   - creators/contributors: [{\"type\":\"Person\",\"person\":{\"names\":[{\"lang\":\"zh/en\",\"name\":\"...\"}],\"emails\":...,\"identifiers\":...,\"affiliations\":...}}] 或 {\"type\":\"Organize\",\"affiliation\":{...}}",
+        "   - publisher: {\"names\":[{\"lang\":\"zh/en\",\"name\":\"...\"}],\"identifiers\":[{\"type\":\"ROR/CSTR/Other\",\"identifier\":\"...\"}]}",
+        "   - descriptions: [{\"lang\":\"zh/en\",\"description\":\"...\"}]",
+        "   - keywords: [{\"lang\":\"zh/en\",\"keyword\":[\"...\"]}]",
+        "   - subjects: [{\"standard_gbt\":[\"...\"],\"standard_oecd\":[\"...\"]}]",
+        "   - alternative_identifiers: [{\"type\":\"DOI/CSTR/URL/Other\",\"identifier\":\"...\"}]",
+        "   - related_identifiers: [{\"relation\":\"...\",\"type\":\"DOI/CSTR/URL/Other\",\"identifier\":{\"type\":\"...\",\"identifier\":\"...\"}}]",
+        "   - rights: [{\"license_type\":...,\"license\":...,\"type\":...,\"description\":...,\"cert_num\":...}]",
+        "   - funders: [{\"name\":...,\"proj_type\":...,\"proj_num\":...,\"proj_name\":...}]",
         "",
-        "3) 中文版本：所有键名和可翻译字段值必须是中文；英文版本：所有键名和可翻译字段值必须是英文。",
+        "3) 不要按 zh/en 分成两块返回。需要中英文的值放在同一个字段数组里，用 lang 区分，例如 [{\"lang\":\"zh\",\"name\":\"...\"},{\"lang\":\"en\",\"name\":\"...\"}]。",
         "",
         "4) 不可翻译/保留原样的内容包括但不限于：网址、DOI、arXiv ID、邮箱、UUID、日期、数值、代码片段、专有编号。",
         "",
@@ -244,7 +253,7 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
         "",
         "6) 对于作者、机构、期刊、许可、分类等字段，优先输出简短规范名称，不要展开解释。",
         "",
-        "7) 对于含多值的字段，可返回数组。",
+        "7) 对于含多值的字段，可返回数组；核心元数据字段必须优先使用上述标准对象数组，不要简化成纯字符串数组。",
         "",
         "8) 【重要】扩展信息字段：中文为\"扩展信息\"，英文为\"Extension Info\"。"
         "   请从网页中提取以上所有字段都没有覆盖到的、但你认为重要的额外信息，"
@@ -252,131 +261,79 @@ def _build_prompt(content, standard, url='', title='', preclassified_type=None):
             "4) 不可翻译/保留原样的内容包括但不限于：网址、DOI、arXiv ID、邮箱、UUID、日期、数值、代码片段、专有编号。",
             "• 标识符类型要求：对于核心字段中的“CSTR标识符”，必须是 CSTR 格式（示例：12345.12.123456.123456）。如果网页中没有明确的 CSTR 标识符，请返回 null，不要用 arXiv ID、DOI 或 URL 代替。",
             "",
-        "9) 必须从\"资源类型候选列表\"中判断资源类型，并将结果写入顶层：",
-        "   - 中文键：\"资源类型判定\"（值只能是：\"数据集\"/\"数据论文\"/\"其他\"）",
-        "   - 英文键：\"Resource Type Classification\"（值只能是：\"Dataset\"/\"Data Paper\"/\"Other\"）",
+        "9) 必须从\"资源类型候选列表\"中判断资源类型，并将结果写入核心字段 resource_type，值使用规范英文枚举：\"Dataset\"/\"Data Paper\"/\"Other\"。",
         "",
-        "10) 必须同时写入领域切换字段（也在顶层）：",
-        "   - 中文键：\"领域判定\"（值严格对应：数据集→\"数据集元数据\" / 数据论文→\"数据论文元数据\" / 其他→\"核心元数据\"）",
-        "   - 英文键：\"Domain Classification\"（值：\"Dataset Metadata\" / \"Data Paper Metadata\" / \"Core Metadata\"）",
+        "10) 核心元数据对象只能包含上述 17 个字段，不要把 domain_metadata、领域判定、extension_info、扩展信息放入核心元数据对象。",
         "",
-        "11) 除了上述核心元数据字段外，还要根据领域判定值返回对应的完整领域 schema 结构：",
-        "    - 领域判定 = \"数据论文元数据\" → 额外返回\"数据论文内容信息\"、\"数据论文出版信息\"、\"数据论文服务信息\"及其子字段",
-        "    - 领域判定 = \"数据集元数据\" → 额外返回\"数据集基本信息\"、\"数据集出版信息\"、\"数据集服务信息\"及其子字段",
-        "    - 领域判定 = \"核心元数据\" → 不需要额外返回领域结构",
+        "11) 除了核心元数据外，还要根据 resource_type 返回对应的完整领域 schema 结构：",
+        "    - resource_type = \"数据论文\" / \"Data Paper\" → 额外返回\"数据论文内容信息\"、\"数据论文出版信息\"、\"数据论文服务信息\"及其子字段",
+        "    - resource_type = \"数据集\" / \"Dataset\" → 额外返回\"数据集基本信息\"、\"数据集出版信息\"、\"数据集服务信息\"及其子字段",
+        "    - resource_type = \"其他\" / \"Other\" → 不需要额外返回领域结构",
         "",
         "12) 如果页面来自 arXiv（URL/title/text 中出现 arXiv 线索），优先判定为\"数据论文\"。",
         "",
-        "13) 最终返回的 JSON 顶层结构应该是：",
+        "13) 最终返回的 JSON 顶层结构应该是统一对象，不要包含顶层 zh/en：",
         "    {",
-        '        "zh": {',
-        '            "资源类型判定": "...",',
-        '            "领域判定": "...",',
-        '            "标识符": ...,',
-        '            "资源名称": ...,',
-        '            "描述": ...,',
-        '            "关键词": ...,',
-        '            "生成日期": ...,',
-        '            "注册日期": ...,',
-        '            "最新发布日期": ...,',
-        '            "学科分类": ...,',
-        '            "主题分类": ...,',
-        '            "知识产权类别": ...,',
-        '            "资源使用许可": ...,',
-        '            "资源访问地址": ...,',
-        '            "共享方式": ...,',
-        '            "提供方信息": ...,',
-        '            "服务方信息": ...,',
-        '            "数据论文内容信息": {...},',
-        '            "数据论文出版信息": {...},',
-        '            "数据论文服务信息": {...},',
-        '            "扩展信息": "..."',
-        "        },",
-        '        "en": {...}',
+        '        "核心元数据": {"metadatas": [{',
+        '          "titles": [{"lang": "zh", "name": "..."}, {"lang": "en", "name": "..."}],',
+        '          "identifier": ...,',
+        '          "creators": [{"type": "Person", "person": {"names": [{"lang": "zh", "name": "..."}, {"lang": "en", "name": "..."}], "emails": null, "identifiers": null, "affiliations": null}}],',
+        '          "publisher": {"names": [{"lang": "zh", "name": "..."}, {"lang": "en", "name": "..."}], "identifiers": null},',
+        '          "publish_date": ...,',
+        '          "descriptions": [{"lang": "zh", "description": "..."}, {"lang": "en", "description": "..."}],',
+        '          "keywords": [{"lang": "zh", "keyword": ["..."]}, {"lang": "en", "keyword": ["..."]}],',
+        '          "subjects": [{"standard_gbt": ["..."], "standard_oecd": null}],',
+        '          "language": ...,',
+        '          "contributors": ...,',
+        '          "alternative_identifiers": ...,',
+        '          "related_identifiers": ...,',
+        '          "rights": ...,',
+        '          "funders": ...,',
+        '          "version": ...,',
+        '          "urls": ...,',
+        '          "resource_type": "Dataset/Data Paper/Other"',
+        '        }]},',
+        '        "数据论文内容信息": {...},',
+        '        "数据论文出版信息": {...},',
+        '        "数据论文服务信息": {...}',
         "    }"
     ])
     
     few_shot_examples = '''
-示例（数据论文 - 必须包含核心元数据 + 领域元数据）：
+示例（数据论文 - 核心元数据必须是文档第 6 节 metadatas 形态，且核心对象只有 17 个字段）：
 网页文字: "Paper: Title: Climate Observations. DOI: 10.1234/abcd. Published on 2025-01-01."
 期望输出:
 {
-    "zh": {
-        "资源类型判定": "数据论文",
-        "领域判定": "数据论文元数据",
-        "标识符": "10.1234/abcd",
-        "资源名称": "气候观测数据分析",
-        "描述": "分析了气候观测数据的时间序列特征。",
-        "关键词": ["气候", "观测", "时间序列"],
-        "生成日期": "2025-01-01",
-        "注册日期": null,
-        "最新发布日期": null,
-        "学科分类": "大气科学",
-        "主题分类": "气候变化",
-        "知识产权类别": null,
-        "资源使用许可": null,
-        "资源访问地址": "https://example.org/paper/123",
-        "共享方式": null,
-        "提供方信息": null,
-        "服务方信息": null,
-        "数据论文内容信息": {
-            "标识符": "10.1234/abcd",
-            "标题": "气候观测数据分析",
-            "摘要": "短摘要：分析了气候观测数据的时间序列特征。",
-            "关键词": ["气候", "观测", "时间序列"],
-            "数据论文作者": {"作者姓名": "Smith"},
-            "数据采集和处理方法": "采集自地面站，使用标准化质量控制和插值方法。"
-        },
-        "数据论文出版信息": {
-            "收稿日期": "2025-01-01",
-            "出版期刊": "Journal of Climate Data"
-        },
-        "数据论文服务信息": {
-            "数据论文下载地址": "https://example.org/paper/123",
-            "数据论文共享许可协议": "CC BY 4.0"
-        },
-        "扩展信息": ""
-    },
-    "en": {
-        "Resource Type Classification": "Data Paper",
-        "Domain Classification": "Data Paper Metadata",
-        "Identifier": "10.1234/abcd",
-        "Resource Name": "Climate Observations Analysis",
-        "Description": "Short abstract: analyzes time-series features of climate observations.",
-        "Keywords": ["climate", "observations", "time-series"],
-        "Generation Date": "2025-01-01",
-        "Registration Date": null,
-        "Latest Release Date": null,
-        "Discipline Classification": "Atmospheric Science",
-        "Subject Classification": "Climate Change",
-        "Intellectual Property Type": null,
-        "Usage License": null,
-        "Resource Access URL": "https://example.org/paper/123",
-        "Sharing Details": null,
-        "Provider Information": null,
-        "Service Provider Information": null,
-        "Data Paper Content Information": {
-            "Identifier": "10.1234/abcd",
-            "Title": "Climate Observations Analysis",
-            "Abstract": "Short abstract: analyzes time-series features of climate observations.",
-            "Keywords": ["climate", "observations", "time-series"],
-            "Data Paper Authors": {"Author Name": "Smith"},
-            "Data Collection and Processing Methods": "Collected from ground stations with QC and interpolation."
-        },
-        "Data Paper Publication Information": {
-            "Received Date": "2025-01-01",
-            "Journal": "Journal of Climate Data"
-        },
-        "Data Paper Service Information": {
-            "Data Paper Download URL": "https://example.org/paper/123",
-            "Data Paper License": "CC BY 4.0"
-        },
-        "Extension Info": ""
-    }
+  "核心元数据": {
+    "metadatas": [
+      {
+        "titles": [{"lang": "zh", "name": "气候观测数据分析"}, {"lang": "en", "name": "Climate Observations Analysis"}],
+        "identifier": null,
+        "creators": [{"type": "Person", "person": {"names": [{"lang": "zh", "name": "Smith"}, {"lang": "en", "name": "Smith"}], "emails": null, "identifiers": null, "affiliations": null}}],
+        "publisher": {"names": [{"lang": "zh", "name": "Journal of Climate Data"}, {"lang": "en", "name": "Journal of Climate Data"}], "identifiers": null},
+        "publish_date": "2025-01-01",
+        "descriptions": [{"lang": "zh", "description": "分析了气候观测数据的时间序列特征。"}, {"lang": "en", "description": "Short abstract: analyzes time-series features of climate observations."}],
+        "keywords": [{"lang": "zh", "keyword": ["气候", "观测", "时间序列"]}, {"lang": "en", "keyword": ["climate", "observations", "time-series"]}],
+        "subjects": [{"standard_gbt": ["大气科学"], "standard_oecd": null}],
+        "language": "zh",
+        "contributors": null,
+        "alternative_identifiers": [{"type": "DOI", "identifier": "10.1234/abcd"}],
+        "related_identifiers": null,
+        "rights": null,
+        "funders": null,
+        "version": null,
+        "urls": ["https://example.org/paper/123"],
+        "resource_type": "Data Paper"
+      }
+    ]
+  },
+  "数据论文内容信息": {"标识符": {"type": "DOI", "identifier": "10.1234/abcd"}, "标题": [{"lang": "zh", "name": "气候观测数据分析"}, {"lang": "en", "name": "Climate Observations Analysis"}]},
+  "数据论文出版信息": {"出版日期": "2025-01-01"},
+  "数据论文服务信息": {"数据论文下载地址": "https://example.org/paper/123"}
 }
 '''
 
-    prompt = f"""基于以下标准 JSON（中文/英文）以及网页文字，一次性输出中文与英文两个版本的元数据 JSON，严格按照规则返回，不要多余文本。
+    prompt = f"""基于以下标准 JSON（中文/英文）以及网页文字，输出一份统一元数据 JSON，核心元数据里的中英文值使用 lang 区分，严格按照规则返回，不要多余文本。
 
 {rules}
 
@@ -407,7 +364,7 @@ Resource type candidates (English):
 规则预判资源类型（可作为强参考）:
 {preclassified_type or '未预判'}
 
-请直接输出仅包含顶层键 `zh` 和 `en` 的 JSON 对象。"""
+请直接输出统一 JSON 对象，不要包含顶层 `zh` 和 `en`。"""
 
     return prompt
 
@@ -582,13 +539,19 @@ def _set_core_classification(answer, resource_type, domain, language='zh'):
     if not isinstance(answer, dict):
         return
 
-    resource_key = 'Resource Type Classification' if language == 'en' else '资源类型判定'
-    domain_key = 'Domain Classification' if language == 'en' else '领域判定'
+    section_key = 'Core Metadata' if language == 'en' else '核心元数据'
+    section = answer.get(section_key)
+    if isinstance(section, dict):
+        metadatas = section.get('metadatas')
+        if isinstance(metadatas, list) and metadatas and isinstance(metadatas[0], dict):
+            if not metadatas[0].get('resource_type'):
+                metadatas[0]['resource_type'] = resource_type
+            return
+
+    resource_key = 'resource_type'
 
     if not answer.get(resource_key):
         answer[resource_key] = resource_type
-    if not answer.get(domain_key):
-        answer[domain_key] = domain
 
 
 def _map_type_to_domain_and_en(resource_type_zh):
@@ -607,7 +570,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     
     # 第一步：尝试检测并处理已知网站（不调用大模型）
     if strategy in ('auto', 'rule'):
-        print("DEBUG", url, title, rule_content)
+        print(f"[Extractor Debug] url={url}, title={title}, content_len={len(rule_content or '')}")
         website_result = extract_metadata(url=url, title=title, content=rule_content)
         if website_result is not None:
             return _normalize_inline_math_tree(website_result)
@@ -648,26 +611,32 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
-            zh = parsed.get('zh', {})
-            en = parsed.get('en', {})
             type_en, domain_zh, domain_en = _map_type_to_domain_and_en(pre_type_zh)
-            _set_core_classification(zh, pre_type_zh, domain_zh, 'zh')
-            _set_core_classification(en, type_en, domain_en, 'en')
-            parsed['zh'] = zh
-            parsed['en'] = en
+            if isinstance(parsed.get('zh'), dict) or isinstance(parsed.get('en'), dict):
+                zh = parsed.get('zh', {})
+                en = parsed.get('en', {})
+                _set_core_classification(zh, pre_type_zh, domain_zh, 'zh')
+                _set_core_classification(en, type_en, domain_en, 'en')
+                parsed['zh'] = zh
+                parsed['en'] = en
+            else:
+                _set_core_classification(parsed, type_en, domain_zh, 'zh')
             parsed = _normalize_inline_math_tree(parsed)
         return parsed
     except Exception:
         extracted = _extract_json_from_text(raw)
         if extracted is not None:
             if isinstance(extracted, dict):
-                zh = extracted.get('zh', {})
-                en = extracted.get('en', {})
                 type_en, domain_zh, domain_en = _map_type_to_domain_and_en(pre_type_zh)
-                _set_core_classification(zh, pre_type_zh, domain_zh, 'zh')
-                _set_core_classification(en, type_en, domain_en, 'en')
-                extracted['zh'] = zh
-                extracted['en'] = en
+                if isinstance(extracted.get('zh'), dict) or isinstance(extracted.get('en'), dict):
+                    zh = extracted.get('zh', {})
+                    en = extracted.get('en', {})
+                    _set_core_classification(zh, pre_type_zh, domain_zh, 'zh')
+                    _set_core_classification(en, type_en, domain_en, 'en')
+                    extracted['zh'] = zh
+                    extracted['en'] = en
+                else:
+                    _set_core_classification(extracted, type_en, domain_zh, 'zh')
                 extracted = _normalize_inline_math_tree(extracted)
             return extracted
 

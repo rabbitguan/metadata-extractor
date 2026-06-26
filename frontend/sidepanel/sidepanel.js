@@ -243,7 +243,7 @@ const UI_TEXT = {
         modeSwitcherLabel: '元数据模式切换',
         extensionTitle: '扩展信息',
         waiting: '等待提取结果',
-        noContent: '未提取到内容',
+        noContent: '未提取到',
         updatedAt: '更新于 ',
         loadingExtract: '正在提取当前页面文字...',
         loadingFile: '正在读取文件内容...',
@@ -307,7 +307,7 @@ const UI_TEXT = {
         modeSwitcherLabel: 'Metadata mode switcher',
         extensionTitle: 'Extension Info',
         waiting: 'Waiting for results',
-        noContent: 'No content extracted',
+        noContent: 'Not extracted',
         updatedAt: 'Updated at ',
         loadingExtract: 'Extracting page text...',
         loadingFile: 'Reading file content...',
@@ -536,6 +536,28 @@ function appendLogDetailSection(container, title, value) {
     container.appendChild(section);
 }
 
+function pickLanguagePayload(payload, language) {
+    if (!isObject(payload)) {
+        return payload || {};
+    }
+    if (isObject(payload[language])) {
+        return filterLocalizedTree(payload[language], language) || {};
+    }
+    if (Array.isArray(payload.items)) {
+        return {
+            ...payload,
+            items: payload.items.map((item) => {
+                if (!isObject(item) || !isObject(item.payload)) {
+                    return item;
+                }
+                const rawPayload = isObject(item.payload[language]) ? item.payload[language] : item.payload;
+                return { ...item, payload: filterLocalizedTree(rawPayload, language) || {} };
+            }),
+        };
+    }
+    return filterLocalizedTree(payload, language) || {};
+}
+
 function renderLogDetail(entry) {
     const ui = getUIText();
     const detail = document.getElementById('logDetail');
@@ -557,7 +579,7 @@ function renderLogDetail(entry) {
         createdAt: entry.createdAt,
     });
     appendLogDetailSection(detail, '输入预览', entry.inputPreview || '无');
-    appendLogDetailSection(detail, '转换结果', entry.payload || {});
+    appendLogDetailSection(detail, '转换结果', pickLanguagePayload(entry.payload || {}, state.language));
 }
 
 function setUploadPanelState() {
@@ -712,9 +734,12 @@ const FIELD_VALUE_ALIASES = {
     funders: ['Funders', 'Funding Project', '基金项目', '资助者'],
     version: ['Version', 'Version Information', '版本', '版本信息'],
     urls: ['Resource URL', 'Resource Access URL', 'Dataset Download URL', 'Data Paper Download URL', '资源链接'],
-    ResourceType: ['ResourceType', 'Resource Type Classification', '资源类型'],
-    'Domain Classification': ['领域判定'],
-    'Extension Info': ['扩展信息'],
+    resource_type: ['ResourceType', 'Resource Type Classification', '资源类型', '资源类型判定'],
+    ResourceType: ['resource_type', 'Resource Type Classification', '资源类型'],
+    domain_metadata: ['Domain Classification', '领域判定'],
+    'Domain Classification': ['domain_metadata', '领域判定'],
+    extension_info: ['Extension Info', '扩展信息'],
+    'Extension Info': ['extension_info', '扩展信息'],
     标题: ['资源名称', 'Title', 'Resource Name'],
     CSTR标识符: ['标识符', 'Identifier'],
     创建者: ['作者姓名', 'Data Paper Authors', 'Author Name', 'creators'],
@@ -731,7 +756,7 @@ const FIELD_VALUE_ALIASES = {
     资助者: ['funders', '基金项目'],
     版本: ['版本信息', 'version'],
     资源链接: ['资源访问地址', '数据论文下载地址', 'Dataset Download URL', 'Data Paper Download URL', 'urls'],
-    资源类型: ['资源类型判定', 'Resource Type Classification', 'ResourceType'],
+    资源类型: ['resource_type', '资源类型判定', 'Resource Type Classification', 'ResourceType'],
     Title: ['titles', 'Resource Name', '资源名称'],
     Identifier: ['identifier', 'CSTR标识符', '标识符'],
     Creators: ['creators', 'Authors', 'Author Name', 'Data Paper Authors', 'Dataset Authors', '创建者'],
@@ -748,9 +773,9 @@ const FIELD_VALUE_ALIASES = {
     Funders: ['funders', 'Funding Project', '基金项目', '资助者'],
     Version: ['version', 'Version Information', '版本', '版本信息'],
     'Resource URL': ['urls', 'Resource Access URL', 'Dataset Download URL', 'Data Paper Download URL', '资源链接'],
-    ResourceType: ['Resource Type Classification', '资源类型'],
-    'Domain Classification': ['领域判定'],
-    'Extension Info': ['扩展信息'],
+    ResourceType: ['resource_type', 'Resource Type Classification', '资源类型'],
+    'Domain Classification': ['domain_metadata', '领域判定'],
+    'Extension Info': ['extension_info', '扩展信息'],
     作者姓名: ['Author Name'],
     工作单位: ['Affiliation'],
     电子邮箱: ['Email'],
@@ -935,15 +960,15 @@ function getCacheKey(mode = state.mode) {
 }
 
 function getExtensionKey(language = state.language) {
-    return language === 'en' ? 'Extension Info' : '扩展信息';
+    return 'extension_info';
 }
 
 function getDomainClassificationKey(language = state.language) {
-    return language === 'en' ? 'Domain Classification' : '领域判定';
+    return 'domain_metadata';
 }
 
 function getResourceTypeClassificationKey(language = state.language) {
-    return language === 'en' ? 'Resource Type Classification' : '资源类型判定';
+    return 'resource_type';
 }
 
 function getFieldValue(field) {
@@ -1003,7 +1028,9 @@ function getSchemaKeyFromResourceType(resourceType, language = state.language) {
 function getSchemaKeyForMode(mode, payload, language = state.language) {
     if (mode === 'domain') {
         const coreKey = language === 'en' ? 'Core Metadata' : '核心元数据';
-        const coreData = isObject(payload) ? (payload[coreKey] || payload) : null;
+        const coreData = isObject(payload)
+            ? unwrapMetadataSection(payload[coreKey] || payload['核心元数据'] || payload['Core Metadata'] || payload)
+            : null;
         const domainSectionMap = language === 'en'
             ? {
                 'Dataset Metadata': DOMAIN_SCHEMA_KEY_MAP['数据集元数据'],
@@ -1014,7 +1041,7 @@ function getSchemaKeyForMode(mode, payload, language = state.language) {
             : DOMAIN_SCHEMA_KEY_MAP;
 
         if (isObject(coreData)) {
-            const classificationKey = language === 'en' ? 'Domain Classification' : '领域判定';
+            const classificationKey = 'domain_metadata';
             const classification = findValueByKeyOrAlias(coreData, classificationKey);
             if (typeof classification === 'string' && classification.trim()) {
                 if (Object.prototype.hasOwnProperty.call(domainSectionMap, classification)) {
@@ -1025,6 +1052,11 @@ function getSchemaKeyForMode(mode, payload, language = state.language) {
                         'Ecological Science Data Metadata': '生态科学数据元数据',
                     }[classification] : classification;
                 }
+            }
+
+            const schemaKeyFromResourceType = getSchemaKeyFromResourceType(findValueByKeyOrAlias(coreData, 'resource_type'), language);
+            if (schemaKeyFromResourceType) {
+                return schemaKeyFromResourceType;
             }
 
             for (const [schemaKey, sectionKeys] of Object.entries(DOMAIN_SCHEMA_KEY_MAP)) {
@@ -1045,15 +1077,35 @@ function getEffectiveSectionPayload(payload, schemaKey) {
 
     const directSection = payload[schemaKey];
     if (isObject(directSection)) {
-        return directSection;
+        return unwrapMetadataSection(directSection);
     }
 
-    const coreSectionKey = schemaKey === '核心元数据' ? '核心元数据' : schemaKey;
-    if (isObject(payload[coreSectionKey])) {
-        return payload[coreSectionKey];
+    const sectionAliases = {
+        '核心元数据': ['核心元数据', 'Core Metadata'],
+        'Core Metadata': ['Core Metadata', '核心元数据'],
+        '数据集元数据': ['数据集元数据', 'Dataset Metadata'],
+        'Dataset Metadata': ['Dataset Metadata', '数据集元数据'],
+        '数据论文元数据': ['数据论文元数据', 'Data Paper Metadata'],
+        'Data Paper Metadata': ['Data Paper Metadata', '数据论文元数据'],
+        '标准文献元数据': ['标准文献元数据', 'Standard Literature Metadata'],
+        'Standard Literature Metadata': ['Standard Literature Metadata', '标准文献元数据'],
+        '生态科学数据元数据': ['生态科学数据元数据', 'Ecological Science Data Metadata'],
+        'Ecological Science Data Metadata': ['Ecological Science Data Metadata', '生态科学数据元数据'],
+    }[schemaKey] || [schemaKey];
+    for (const sectionKey of sectionAliases) {
+        if (isObject(payload[sectionKey])) {
+            return unwrapMetadataSection(payload[sectionKey]);
+        }
     }
 
     return payload;
+}
+
+function unwrapMetadataSection(section) {
+    if (isObject(section) && Array.isArray(section.metadatas) && isObject(section.metadatas[0])) {
+        return section.metadatas[0];
+    }
+    return section;
 }
 
 function findValueInPayload(payload, targetKey) {
@@ -1509,9 +1561,100 @@ async function requestMetadataForUploadedFile(mode) {
     });
 }
 
+function pickLocalizedItem(items, language = state.language) {
+    const list = Array.isArray(items) ? items : [];
+    return list.find((item) => isObject(item) && item.lang === language) || null;
+}
+
+function filterLocalizedTree(data, language = state.language) {
+    if (Array.isArray(data)) {
+        if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, 'lang'))) {
+            const localized = pickLocalizedItem(data, language);
+            return localized ? filterLocalizedTree(localized, language) : null;
+        }
+        const items = data
+            .map((item) => filterLocalizedTree(item, language))
+            .filter((item) => !isMissingDisplayValue(item));
+        return items.length ? items : null;
+    }
+    if (!isObject(data)) return data;
+    const result = {};
+    Object.entries(data).forEach(([key, value]) => {
+        if (key === 'lang') return;
+        const localized = filterLocalizedTree(value, language);
+        if (!isMissingDisplayValue(localized)) result[key] = localized;
+    });
+    return Object.keys(result).length ? result : null;
+}
+
+function normalizeDisplayValue(data, language = state.language) {
+    if (Array.isArray(data)) {
+        if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, 'lang'))) {
+            const localized = pickLocalizedItem(data, language);
+            if (!localized) return '';
+            if (Object.prototype.hasOwnProperty.call(localized, 'name')) return localized.name;
+            if (Object.prototype.hasOwnProperty.call(localized, 'description')) return localized.description;
+            if (Object.prototype.hasOwnProperty.call(localized, 'keyword')) {
+                return Array.isArray(localized.keyword) ? localized.keyword.join('；') : localized.keyword;
+            }
+        }
+        return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join('；');
+    }
+
+    if (!isObject(data)) return data;
+
+    if (Array.isArray(data.names)) return normalizeDisplayValue(data.names, language);
+    if (Array.isArray(data.keyword)) return data.keyword.join('；');
+    if (data.identifier && data.type) return `${data.type}: ${data.identifier}`;
+    if (data.person) {
+        const name = normalizeDisplayValue(data.person.names, language);
+        const affiliation = normalizeDisplayValue(data.person.affiliations, language);
+        return [name, affiliation].filter(Boolean).join(' / ');
+    }
+    if (data.affiliation) return normalizeDisplayValue(data.affiliation, language);
+    if (Array.isArray(data.standard_gbt) || Array.isArray(data.standard_oecd)) {
+        return [
+            ...(Array.isArray(data.standard_gbt) ? data.standard_gbt : []),
+            ...(Array.isArray(data.standard_oecd) ? data.standard_oecd : []),
+        ].join('；');
+    }
+    if (data.license || data.description || data.cert_num) {
+        return [data.license, data.description, data.cert_num].filter(Boolean).join('；');
+    }
+    if (data.name || data.proj_name || data.proj_num) {
+        return [data.name, data.proj_type, data.proj_num, data.proj_name].filter(Boolean).join('；');
+    }
+    return filterLocalizedTree(data, language);
+}
+
+function isMissingDisplayValue(value) {
+    if (value === null || typeof value === 'undefined') {
+        return true;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === ''
+            || normalized === '未提取到'
+            || normalized === '未提取到内容'
+            || normalized === 'not extracted'
+            || normalized === 'no content extracted';
+    }
+    if (Array.isArray(value)) {
+        return value.length === 0 || value.every((item) => isMissingDisplayValue(item));
+    }
+    if (isObject(value)) {
+        return Object.keys(value).length === 0;
+    }
+    return false;
+}
+
 function renderFieldValue(data) {
     const ui = getUIText();
-    if (data === null || typeof data === 'undefined') {
+    const displayValue = normalizeDisplayValue(data);
+    if (displayValue !== data) {
+        data = displayValue;
+    }
+    if (isMissingDisplayValue(data)) {
         return {
             text: ui.noContent,
             isEmpty: true,
@@ -1520,7 +1663,7 @@ function renderFieldValue(data) {
 
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, 'value')) {
         const rawValue = data.value;
-        if (rawValue === null || typeof rawValue === 'undefined' || rawValue === '') {
+        if (isMissingDisplayValue(rawValue)) {
             return {
                 text: ui.noContent,
                 isEmpty: true,
@@ -1656,7 +1799,9 @@ function extractExtensionText(payload, language = state.language) {
         return '';
     }
 
-    const extensionValue = payload[getExtensionKey(language)] ?? payload[getExtensionKey(language === 'en' ? 'zh' : 'en')];
+    const extensionValue = payload[getExtensionKey(language)]
+        ?? payload[language === 'en' ? 'Extension Info' : '扩展信息']
+        ?? payload[language === 'en' ? '扩展信息' : 'Extension Info'];
     if (typeof extensionValue === 'string') {
         return extensionValue.trim();
     }
@@ -1674,7 +1819,7 @@ function renderMode(mode) {
         applyIdentifierItemToCache();
     }
     const payloadBundle = state.resultCache[getCacheKey(mode)] || {};
-    const payload = isObject(payloadBundle[language]) ? payloadBundle[language] : {};
+    const payload = getDisplayPayload(payloadBundle, language);
     const schema = state.schemaCache[mode];
     const schemaKey = getSchemaKeyForMode(mode, payload, language);
     const rawSchemaRoot = schema ? (schema[schemaKey] || schema['核心元数据']) : null;
@@ -1716,28 +1861,45 @@ function renderMode(mode) {
     setUploadReanalyzeButtonVisibility();
 }
 
-function stripMetadataForDownload(schemaNode, valueNode) {
+function stripMetadataForDownload(schemaNode, valueNode, language = DOWNLOAD_LANGUAGE) {
     const result = {};
     Object.entries(schemaNode).forEach(([key, description]) => {
-        const currentValue = isObject(valueNode) ? valueNode[key] : undefined;
+        let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
+        if (typeof currentValue === 'undefined') {
+            for (const lookupKey of getFieldLookupKeys(key)) {
+                currentValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                if (typeof currentValue !== 'undefined') {
+                    break;
+                }
+            }
+        }
+        const outputKey = standardInterfaceKeyForLabel(key);
         if (isObject(description)) {
-            result[key] = stripMetadataForDownload(description, currentValue || {});
+            result[outputKey] = stripMetadataForDownload(description, currentValue || {}, language);
             return;
         }
 
         if (isObject(currentValue) && Object.prototype.hasOwnProperty.call(currentValue, 'value')) {
-            result[key] = currentValue.value ?? null;
+            result[outputKey] = filterLocalizedTree(currentValue.value, language) ?? null;
             return;
         }
 
-        if (Array.isArray(currentValue)) {
-            result[key] = currentValue;
-            return;
-        }
-
-        result[key] = currentValue ?? null;
+        result[outputKey] = filterLocalizedTree(currentValue, language) ?? null;
     });
     return result;
+}
+
+function standardInterfaceKeyForLabel(key) {
+    const directInterfaceKeys = new Set([
+        'titles', 'identifier', 'creators', 'publisher', 'publish_date', 'descriptions',
+        'keywords', 'subjects', 'language', 'contributors', 'alternative_identifiers',
+        'related_identifiers', 'rights', 'funders', 'version', 'urls', 'resource_type',
+    ]);
+    if (directInterfaceKeys.has(key)) {
+        return key;
+    }
+    const aliases = FIELD_VALUE_ALIASES[key] || [];
+    return aliases.find((alias) => directInterfaceKeys.has(alias)) || key;
 }
 
 function normalizeIdentifierToken(value) {
@@ -1783,16 +1945,27 @@ function getPayloadSectionKey(schemaKey, language) {
     }[schemaKey] || schemaKey;
 }
 
+function getDisplayPayload(payloadBundle, language = state.language) {
+    if (!isObject(payloadBundle)) {
+        return {};
+    }
+    if (isObject(payloadBundle[language])) {
+        return payloadBundle[language];
+    }
+    return payloadBundle;
+}
+
 function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
-    const payload = payloadBundle && payloadBundle[language];
-    if (!payload) {
+    const payload = getDisplayPayload(payloadBundle, language);
+    if (!isObject(payload)) {
         return null;
     }
-    const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
+    const schemaKey = getSchemaKeyForMode(mode, payload, language);
     const schemaRoot = schema[schemaKey] || schema['核心元数据'];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
     const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
-    return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+    const stripped = stripMetadataForDownload(localizedSchemaRoot, sectionPayload, language);
+    return schemaKey === '核心元数据' ? { metadatas: [stripped] } : stripped;
 }
 
 async function downloadJsonFile(mode) {

@@ -1,5 +1,30 @@
-const BACKEND_QUERY_URL = "http://127.0.0.1:4000/query";
-const BACKEND_REGISTER_URL = "http://127.0.0.1:4000/register";
+const SERVICE_PROXY_PREFIX = "/sso/proxy/mapping-tool";
+
+function getServiceBasePath() {
+    const pathname = window.location.pathname.replace(/\/+$/, "");
+    return pathname === SERVICE_PROXY_PREFIX || pathname.startsWith(`${SERVICE_PROXY_PREFIX}/`)
+        ? SERVICE_PROXY_PREFIX
+        : "";
+}
+
+function buildServiceUrl(path) {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const isLocalStaticFrontend = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)
+        && window.location.port
+        && window.location.port !== "4000";
+    if (window.location.protocol === "file:" || isLocalStaticFrontend) {
+        return `http://127.0.0.1:4000${normalizedPath}`;
+    }
+    return `${getServiceBasePath()}${normalizedPath}`;
+}
+
+function getServiceBasePathLabel() {
+    return getServiceBasePath() || "/";
+}
+
+const BACKEND_QUERY_URL = buildServiceUrl("/query");
+const BACKEND_REGISTER_URL = buildServiceUrl("/register");
+const BACKEND_USER_URL = buildServiceUrl("/user");
 const DOWNLOAD_LANGUAGE = "en";
 const CONVERSION_LOG_STORAGE_KEY = "metadata_web_conversion_logs_v1";
 const MAX_CONVERSION_LOGS = 50;
@@ -412,7 +437,7 @@ const UI_TEXT = {
         homeTitle: "返回主页",
         openApiDocsTitle: "接口文档",
         apiDocsTitle: "接口文档",
-        apiDocsSubtitle: "后端主服务地址：http://127.0.0.1:4000",
+        apiDocsSubtitle: "后端接口基址：",
         openLogsTitle: "转换日志",
         logTitle: "转换日志",
         logSubtitle: "查看最近的转换任务和完整结果",
@@ -422,6 +447,16 @@ const UI_TEXT = {
         logTaskInfoTitle: "任务信息",
         logInputPreviewTitle: "输入预览",
         logResultTitle: "转换结果",
+        userWelcome: "欢迎回来",
+        userFallbackName: "平台用户",
+        userLoading: "正在读取平台用户信息...",
+        userAnonymous: "暂未获取到平台用户信息",
+        totalQueryLabel: "累计查询",
+        urlQueryLabel: "URL 分析",
+        identifierQueryLabel: "标识符解析",
+        activityTitle: "近 7 次查询活跃度",
+        noQueryYet: "暂无查询",
+        lastQueryPrefix: "最近一次：",
         clearLogsTitle: "清空",
         closeLogsTitle: "返回主页",
         chooseUrlLabel: "输入 URL",
@@ -453,7 +488,7 @@ const UI_TEXT = {
         modeSwitcherLabel: "元数据模式切换",
         extensionTitle: "扩展信息",
         waiting: "等待提取结果",
-        noContent: "未提取到内容",
+        noContent: "未提取到",
         updatedAt: "更新于 ",
         loadingFile: "正在读取文件内容...",
         loadingIdentifier: "正在解析 DOI/CSTR...",
@@ -478,7 +513,7 @@ const UI_TEXT = {
         homeTitle: "Back To Home",
         openApiDocsTitle: "API Docs",
         apiDocsTitle: "API Docs",
-        apiDocsSubtitle: "Backend base URL: http://127.0.0.1:4000",
+        apiDocsSubtitle: "Backend API base path: ",
         openLogsTitle: "Conversion Logs",
         logTitle: "Conversion Logs",
         logSubtitle: "Review recent conversion tasks and complete results",
@@ -488,6 +523,16 @@ const UI_TEXT = {
         logTaskInfoTitle: "Task Info",
         logInputPreviewTitle: "Input Preview",
         logResultTitle: "Conversion Result",
+        userWelcome: "Welcome back",
+        userFallbackName: "Platform User",
+        userLoading: "Reading platform user...",
+        userAnonymous: "No platform user info received",
+        totalQueryLabel: "Total Queries",
+        urlQueryLabel: "URL Analyses",
+        identifierQueryLabel: "Identifier Resolves",
+        activityTitle: "Last 7 Query Activity",
+        noQueryYet: "No queries yet",
+        lastQueryPrefix: "Latest: ",
         clearLogsTitle: "Clear",
         closeLogsTitle: "Back To Home",
         chooseUrlLabel: "Enter URL",
@@ -519,7 +564,7 @@ const UI_TEXT = {
         modeSwitcherLabel: "Metadata mode switcher",
         extensionTitle: "Extension Info",
         waiting: "Waiting for results",
-        noContent: "No content extracted",
+        noContent: "Not extracted",
         updatedAt: "Updated at ",
         loadingFile: "Reading file content...",
         loadingIdentifier: "Resolving DOI/CSTR...",
@@ -536,13 +581,120 @@ const UI_TEXT = {
     }
 };
 
+const REGISTER_SUCCESS_RESPONSE = {
+    "核心元数据": {
+        "metadatas": [
+            {
+                "titles": [
+                    { "lang": "zh", "name": "全球气候观测数据论文示例" },
+                    { "lang": "en", "name": "Global Climate Observation Data Paper Example" }
+                ],
+                "identifier": "31253.11.CSTR.2026.000001",
+                "creators": [
+                    {
+                        "type": "Person",
+                        "person": {
+                            "names": [
+                                { "lang": "zh", "name": "张三" },
+                                { "lang": "en", "name": "San Zhang" }
+                            ],
+                            "emails": ["zhangsan@example.org"],
+                            "identifiers": null,
+                            "affiliations": [
+                                {
+                                    "names": [
+                                        { "lang": "zh", "name": "示例数据中心" },
+                                        { "lang": "en", "name": "Example Data Center" }
+                                    ],
+                                    "identifiers": null
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "publisher": {
+                    "names": [
+                        { "lang": "zh", "name": "示例数据中心" },
+                        { "lang": "en", "name": "Example Data Center" }
+                    ],
+                    "identifiers": null
+                },
+                "publish_date": "2026-06-20",
+                "descriptions": [
+                    { "lang": "zh", "description": "该资源描述全球气候观测数据的采集、处理、质量控制和使用方法。" },
+                    { "lang": "en", "description": "This resource describes collection, processing, quality control, and reuse guidance for global climate observation data." }
+                ],
+                "keywords": [
+                    { "lang": "zh", "keyword": ["气候观测", "数据论文", "元数据"] },
+                    { "lang": "en", "keyword": ["climate observation", "data paper", "metadata"] }
+                ],
+                "subjects": [{ "standard_gbt": ["大气科学", "地球科学"], "standard_oecd": ["Atmospheric Science", "Earth Science"] }],
+                "language": "zh",
+                "contributors": null,
+                "alternative_identifiers": [{ "type": "DOI", "identifier": "10.1234/example.paper" }],
+                "related_identifiers": [
+                    {
+                        "relation": "RelatedPaper",
+                        "type": "DOI",
+                        "identifier": { "type": "DOI", "identifier": "10.1234/example.dataset" }
+                    }
+                ],
+                "rights": [{ "license_type": "Creative", "license": "CCBY4", "type": "Copyright", "description": "CC BY 4.0", "cert_num": null }],
+                "funders": [{ "name": "国家自然科学基金项目 62300001", "proj_type": null, "proj_num": "62300001", "proj_name": null }],
+                "version": "v1.0",
+                "urls": ["https://example.org/papers/metadata-example"],
+                "resource_type": "Data Paper"
+            }
+        ]
+    },
+    "数据论文元数据": {
+        "数据论文内容信息": {
+            "标识符": { "type": "DOI", "identifier": "10.1234/example.paper" },
+            "标题": [
+                { "lang": "zh", "name": "全球气候观测数据论文示例" },
+                { "lang": "en", "name": "Global Climate Observation Data Paper Example" }
+            ],
+            "摘要": [
+                { "lang": "zh", "description": "本文介绍全球气候观测数据集的来源、处理流程、质量控制方法和复用建议。" },
+                { "lang": "en", "description": "This paper introduces source data, processing workflow, quality control, and reuse recommendations." }
+            ],
+            "关键词": [
+                { "lang": "zh", "keyword": ["气候观测", "质量控制", "开放数据"] },
+                { "lang": "en", "keyword": ["climate observation", "quality control", "open data"] }
+            ]
+        },
+        "数据论文出版信息": {
+            "出版日期": "2026-06-20",
+            "版本信息": "v1.0"
+        },
+        "数据论文服务信息": {
+            "数据论文下载地址": "https://example.org/papers/metadata-example/download",
+            "数据论文共享许可协议": "CC BY 4.0"
+        }
+    }
+};
+
+const QUERY_SUCCESS_RESPONSE = {
+    items: [
+        {
+            identifier: "10.1000/xyz123",
+            type: "doi",
+            resolved_url: "https://doi.org/10.1000/xyz123",
+            source: "doi.org",
+            status: "ok",
+            payload: REGISTER_SUCCESS_RESPONSE,
+            updated_at: "2026-06-21T00:00:00Z"
+        }
+    ]
+};
+
 const API_DOCS_TEXT = {
     zh: {
         descriptionLabel: "接口说明",
         requestLabel: "请求体",
         successLabel: "成功响应（200）",
         errorLabel: "失败响应",
-        responseNote: "说明：后端固定返回 zh/en 双语结构，中文字段位于 zh，英文字段位于 en。",
+        responseNote: "说明：后端返回统一 JSON；核心元数据按规范使用 核心元数据.metadatas，多语言值在字段内部用 lang 区分。",
         endpoints: [
             {
                 method: "POST",
@@ -555,37 +707,10 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     url: "https://example.com/paper",
                     text: "页面文本内容",
-                    html: "<html>...</html>",
+                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
                     title: "页面标题"
                 },
-                success: {
-                    zh: {
-                        "核心元数据": {
-                            "标题": "示例标题",
-                            "资源类型": "数据论文",
-                            "领域判定": "数据论文元数据",
-                            "扩展信息": "未提取到"
-                        },
-                        "数据论文元数据": {
-                            "数据论文内容信息": {
-                                "摘要": "..."
-                            }
-                        }
-                    },
-                    en: {
-                        "Core Metadata": {
-                            Title: "Example Title",
-                            ResourceType: "Data Paper",
-                            "Domain Classification": "Data Paper Metadata",
-                            "Extension Info": "Not extracted"
-                        },
-                        "Data Paper Metadata": {
-                            "Data Paper Content Information": {
-                                Abstract: "..."
-                            }
-                        }
-                    }
-                },
+                success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "Missing text"
@@ -603,26 +728,7 @@ const API_DOCS_TEXT = {
                         "12345.12.ABCD-2024"
                     ]
                 },
-                success: {
-                    items: [
-                        {
-                            identifier: "10.1000/xyz123",
-                            type: "doi",
-                            resolved_url: "https://doi.org/10.1000/xyz123",
-                            source: "doi.org",
-                            status: "ok",
-                            payload: {
-                                zh: {
-                                    "核心元数据": {}
-                                },
-                                en: {
-                                    "Core Metadata": {}
-                                }
-                            },
-                            updated_at: "2026-06-21T00:00:00Z"
-                        }
-                    ]
-                },
+                success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "No DOI or CSTR identifier found"
@@ -635,7 +741,7 @@ const API_DOCS_TEXT = {
         requestLabel: "Request Body",
         successLabel: "Success Response (200)",
         errorLabel: "Error Response",
-        responseNote: "Note: the backend always returns a bilingual zh/en payload. Chinese fields live under zh, and English fields live under en.",
+        responseNote: "Note: the backend returns one JSON payload. Core metadata uses Core Metadata-compatible metadatas shape, and multilingual values are selected by lang inside each value.",
         endpoints: [
             {
                 method: "POST",
@@ -648,37 +754,10 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     url: "https://example.com/paper",
                     text: "Page text content",
-                    html: "<html>...</html>",
+                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
                     title: "Page title"
                 },
-                success: {
-                    zh: {
-                        "核心元数据": {
-                            "标题": "中文标题示例",
-                            "资源类型": "数据论文",
-                            "领域判定": "数据论文元数据",
-                            "扩展信息": "未提取到"
-                        },
-                        "数据论文元数据": {
-                            "数据论文内容信息": {
-                                "摘要": "中文摘要示例"
-                            }
-                        }
-                    },
-                    en: {
-                        "Core Metadata": {
-                            Title: "Example Title",
-                            ResourceType: "Data Paper",
-                            "Domain Classification": "Data Paper Metadata",
-                            "Extension Info": "Not extracted"
-                        },
-                        "Data Paper Metadata": {
-                            "Data Paper Content Information": {
-                                Abstract: "..."
-                            }
-                        }
-                    }
-                },
+                success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "Missing text"
@@ -696,26 +775,7 @@ const API_DOCS_TEXT = {
                         "12345.12.ABCD-2024"
                     ]
                 },
-                success: {
-                    items: [
-                        {
-                            identifier: "10.1000/xyz123",
-                            type: "doi",
-                            resolved_url: "https://doi.org/10.1000/xyz123",
-                            source: "doi.org",
-                            status: "ok",
-                            payload: {
-                                zh: {
-                                    "核心元数据": {}
-                                },
-                                en: {
-                                    "Core Metadata": {}
-                                }
-                            },
-                            updated_at: "2026-06-21T00:00:00Z"
-                        }
-                    ]
-                },
+                success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
                     message: "No DOI or CSTR identifier found"
@@ -749,9 +809,45 @@ const FIELD_VALUE_ALIASES = {
     "funders": ["Funders", "Funding Project", "基金项目", "资助者"],
     "version": ["Version", "Version Information", "版本", "版本信息"],
     "urls": ["Resource URL", "Resource Access URL", "Dataset Download URL", "Data Paper Download URL", "资源链接"],
-    "ResourceType": ["ResourceType", "Resource Type Classification", "资源类型"],
-    "Domain Classification": ["领域判定"],
-    "Extension Info": ["扩展信息"]
+    "resource_type": ["ResourceType", "Resource Type Classification", "资源类型", "资源类型判定"],
+    "ResourceType": ["resource_type", "Resource Type Classification", "资源类型"],
+    "domain_metadata": ["Domain Classification", "领域判定"],
+    "Domain Classification": ["domain_metadata", "领域判定"],
+    "extension_info": ["Extension Info", "扩展信息"],
+    "Extension Info": ["extension_info", "扩展信息"],
+    "标题": ["titles", "Title", "Resource Name"],
+    "CSTR标识符": ["identifier", "Identifier", "标识符"],
+    "创建者": ["creators", "Creators", "Authors", "Author Name", "Data Paper Authors", "Dataset Authors"],
+    "发布机构": ["publisher", "Publisher", "出版机构", "出版单位"],
+    "发布日期": ["publish_date", "Publication Date", "Generation Date", "Received Date", "publication_date"],
+    "描述": ["descriptions", "Description", "Abstract", "摘要"],
+    "关键词": ["keywords", "Keywords"],
+    "学科": ["subjects", "Subjects", "Discipline Classification", "Subject Classification", "学科分类"],
+    "语言": ["language", "Language", "语种"],
+    "贡献者": ["contributors", "Contributors"],
+    "替代标识符": ["alternative_identifiers", "Alternative Identifiers"],
+    "关联标识符": ["related_identifiers", "Related Identifiers"],
+    "权限": ["rights", "Rights", "Usage License", "资源使用许可"],
+    "资助者": ["funders", "Funders", "Funding Project", "基金项目"],
+    "版本": ["version", "Version", "Version Information", "版本信息"],
+    "资源链接": ["urls", "Resource URL", "Resource Access URL", "Dataset Download URL", "Data Paper Download URL"],
+    "资源类型": ["resource_type", "ResourceType", "Resource Type Classification", "资源类型判定"],
+    "领域判定": ["domain_metadata", "Domain Classification"],
+    "扩展信息": ["extension_info", "Extension Info"],
+    "Title": ["titles", "标题", "Resource Name"],
+    "Identifier": ["identifier", "CSTR标识符", "标识符"],
+    "Creators": ["creators", "创建者", "Authors", "Author Name"],
+    "Publisher": ["publisher", "发布机构"],
+    "Publication Date": ["publish_date", "发布日期", "publication_date"],
+    "Description": ["descriptions", "描述", "Abstract"],
+    "Keywords": ["keywords", "关键词"],
+    "Subjects": ["subjects", "学科", "学科分类"],
+    "Contributors": ["contributors", "贡献者"],
+    "Alternative Identifiers": ["alternative_identifiers", "替代标识符"],
+    "Related Identifiers": ["related_identifiers", "关联标识符"],
+    "Rights": ["rights", "权限", "资源使用许可"],
+    "Funders": ["funders", "资助者", "基金项目"],
+    "Resource URL": ["urls", "资源链接", "Resource Access URL"]
 };
 
 const state = {
@@ -776,7 +872,8 @@ const state = {
     conversionLogs: [],
     selectedLogId: null,
     logResultLanguage: "zh",
-    previousWorkspace: "analysis"
+    previousWorkspace: "analysis",
+    user: { id: "", name: "", email: "" }
 };
 
 function isObject(value) {
@@ -827,6 +924,258 @@ function saveConversionLogs() {
     localStorage.setItem(CONVERSION_LOG_STORAGE_KEY, JSON.stringify(state.conversionLogs));
 }
 
+function getDisplayUserName() {
+    return state.user.name || state.user.email || state.user.id || getUIText().userFallbackName;
+}
+
+function getUserInitial() {
+    const displayName = getDisplayUserName();
+    return Array.from(displayName.trim())[0] || "U";
+}
+
+function formatLocalDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString(state.language === "en" ? "en-US" : "zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+function getDashboardStats() {
+    const logs = state.conversionLogs || [];
+    return {
+        total: logs.length,
+        url: logs.filter((item) => item.source === "url").length,
+        identifier: logs.filter((item) => item.source === "identifier").length,
+        upload: logs.filter((item) => item.source === "upload").length,
+        latest: logs[0] || null,
+        recent: logs.slice(0, 7).reverse()
+    };
+}
+
+function renderUserDashboard() {
+    const ui = getUIText();
+    const stats = getDashboardStats();
+    const displayName = getDisplayUserName();
+
+    document.getElementById("userWelcome").textContent = ui.userWelcome;
+    document.getElementById("userDisplayName").textContent = displayName;
+    document.getElementById("userAvatar").textContent = getUserInitial();
+
+    const identityParts = [state.user.email, state.user.id].filter(Boolean);
+    document.getElementById("userIdentity").textContent = identityParts.join(" · ") || ui.userAnonymous;
+    document.getElementById("totalQueryLabel").textContent = ui.totalQueryLabel;
+    document.getElementById("urlQueryLabel").textContent = ui.urlQueryLabel;
+    document.getElementById("identifierQueryLabel").textContent = ui.identifierQueryLabel;
+    document.getElementById("totalQueryCount").textContent = stats.total;
+    document.getElementById("urlQueryCount").textContent = stats.url;
+    document.getElementById("identifierQueryCount").textContent = stats.identifier;
+    document.getElementById("activityTitle").textContent = ui.activityTitle;
+    document.getElementById("lastQueryLabel").textContent = stats.latest
+        ? `${ui.lastQueryPrefix}${formatLocalDateTime(stats.latest.createdAt)}`
+        : ui.noQueryYet;
+
+    const bars = document.getElementById("activityBars");
+    bars.innerHTML = "";
+    const maxIndex = Math.max(stats.recent.length - 1, 1);
+    for (let index = 0; index < 7; index += 1) {
+        const entry = stats.recent[index];
+        const bar = document.createElement("span");
+        const height = entry ? 34 + Math.round((index / maxIndex) * 42) : 16;
+        bar.className = `activity-bar ${entry ? `source-${entry.source || "text"}` : "empty"}`;
+        bar.style.height = `${height}px`;
+        bar.title = entry ? `${getSourceLabel(entry.source)} · ${formatLocalDateTime(entry.createdAt)}` : ui.noQueryYet;
+        bars.appendChild(bar);
+    }
+    renderOperationsDashboard();
+}
+
+async function loadGatewayUser() {
+    try {
+        const response = await fetch(BACKEND_USER_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload && payload.user) {
+            state.user = {
+                id: payload.user.id || "",
+                name: payload.user.name || "",
+                email: payload.user.email || ""
+            };
+        }
+    } catch (error) {
+        state.user = { id: "", name: "", email: "" };
+    } finally {
+        renderUserDashboard();
+    }
+}
+
+function setAppShellVisible(visible) {
+    document.querySelector(".top-nav").hidden = !visible;
+    document.getElementById("pageHero").hidden = !visible;
+    document.getElementById("pageMain").hidden = !visible;
+    document.querySelector(".page-footer").hidden = !visible;
+}
+
+function showDashboard() {
+    if (window.location.hash === "#api-docs") {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    setAppShellVisible(false);
+    document.getElementById("dashboardScreen").hidden = false;
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
+    document.querySelectorAll(".admin-nav-item").forEach((item) => item.classList.remove("active"));
+    document.getElementById("dashboardOverviewButton").classList.add("active");
+    renderOperationsDashboard();
+}
+
+function showToolHome() {
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
+    document.getElementById("pageHero").hidden = false;
+    document.getElementById("startScreen").hidden = false;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
+    state.previousWorkspace = "start";
+    updateStatus("", "info");
+    updateStaticText();
+}
+
+function getRecentDayBuckets(dayCount = 10) {
+    const buckets = [];
+    const now = new Date();
+    for (let index = dayCount - 1; index >= 0; index -= 1) {
+        const date = new Date(now);
+        date.setDate(now.getDate() - index);
+        const key = date.toISOString().slice(0, 10);
+        buckets.push({
+            key,
+            label: `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+            value: 0
+        });
+    }
+    const byKey = new Map(buckets.map((item) => [item.key, item]));
+    state.conversionLogs.forEach((entry) => {
+        const date = new Date(entry.createdAt);
+        if (Number.isNaN(date.getTime())) return;
+        const key = date.toISOString().slice(0, 10);
+        if (byKey.has(key)) byKey.get(key).value += 1;
+    });
+    return buckets;
+}
+
+function createTrendSvg(buckets) {
+    const width = 860;
+    const height = 430;
+    const left = 74;
+    const right = 30;
+    const top = 28;
+    const bottom = 58;
+    const chartWidth = width - left - right;
+    const chartHeight = height - top - bottom;
+    const maxValue = Math.max(5, ...buckets.map((item) => item.value));
+    const xStep = buckets.length > 1 ? chartWidth / (buckets.length - 1) : chartWidth;
+    const points = buckets.map((item, index) => {
+        const x = left + index * xStep;
+        const y = top + chartHeight - (item.value / maxValue) * chartHeight;
+        return { x, y, ...item };
+    });
+    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+    const circles = points.map((point) => (
+        `<circle cx="${point.x}" cy="${point.y}" r="4.5" fill="#FFFFFF" stroke="#4098FF" stroke-width="3"/>`
+    )).join("");
+    const labels = points.map((point, index) => (
+        index % 2 === 0 || index === points.length - 1
+            ? `<text class="admin-chart-label" x="${point.x}" y="${height - 18}" text-anchor="middle">${point.label}</text>`
+            : ""
+    )).join("");
+    const grids = [0, 1, 2, 3, 4].map((index) => {
+        const value = Math.round((maxValue / 4) * (4 - index));
+        const y = top + (chartHeight / 4) * index;
+        return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#D8DDE6"/>
+            <text class="admin-chart-label" x="${left - 12}" y="${y + 5}" text-anchor="end">${value}</text>`;
+    }).join("");
+
+    return `<svg class="admin-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="近期趋势">
+        ${grids}
+        <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" stroke="#737982"/>
+        <polyline points="${polyline}" fill="none" stroke="#4098FF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        ${circles}
+        ${labels}
+    </svg>`;
+}
+
+function describeArc(cx, cy, r, startAngle, endAngle) {
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+
+function polarToCartesian(cx, cy, r, angleInDegrees) {
+    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
+    return {
+        x: cx + (r * Math.cos(angleInRadians)),
+        y: cy + (r * Math.sin(angleInRadians))
+    };
+}
+
+function createDonutSvg(stats) {
+    const total = Math.max(1, stats.url + stats.upload + stats.identifier);
+    const slices = [
+        { label: "URL", value: stats.url, color: "#4F6FD8" },
+        { label: "JSON/XML", value: stats.upload, color: "#B7DD28" },
+        { label: "DOI/CSTR", value: stats.identifier, color: "#555A7D" },
+        { label: "通用", value: Math.max(0, stats.total - stats.url - stats.upload - stats.identifier), color: "#22A9D1" }
+    ].filter((item) => item.value > 0);
+    const visibleSlices = slices.length ? slices : [{ label: "暂无数据", value: 1, color: "#DCE2EC" }];
+    let angle = 0;
+    const paths = visibleSlices.map((slice) => {
+        const delta = (slice.value / total) * 360;
+        const path = describeArc(210, 210, 122, angle, angle + delta);
+        angle += delta;
+        return `<path d="${path}" fill="none" stroke="${slice.color}" stroke-width="64"/>`;
+    }).join("");
+    const legend = visibleSlices.map((slice, index) => {
+        const x = index % 2 === 0 ? 42 : 292;
+        const y = index < 2 ? 58 : 360;
+        return `<circle cx="${x}" cy="${y}" r="7" fill="${slice.color}"/>
+            <text class="admin-donut-label" x="${x + 14}" y="${y + 5}">${slice.label}</text>`;
+    }).join("");
+    return `<svg class="admin-chart-svg" viewBox="0 0 420 420" role="img" aria-label="领域占比">
+        ${paths}
+        <circle cx="210" cy="210" r="72" fill="#FFFFFF"/>
+        <text class="admin-chart-label" x="210" y="204" text-anchor="middle">总量</text>
+        <text x="210" y="238" text-anchor="middle" fill="#4098FF" font-size="34" font-weight="800">${stats.total}</text>
+        ${legend}
+    </svg>`;
+}
+
+function renderOperationsDashboard() {
+    const stats = getDashboardStats();
+    const resolvedObjects = state.identifierResults.filter((item) => item && item.status === "ok").length;
+    const mappingCount = stats.url + stats.upload;
+    const mappingTotal = stats.total + resolvedObjects;
+    const displayName = getDisplayUserName();
+
+    const userNameNode = document.getElementById("dashboardUserName");
+    if (!userNameNode) return;
+    userNameNode.textContent = displayName;
+    document.getElementById("dashboardFlowCount").textContent = stats.total;
+    document.getElementById("dashboardObjectCount").textContent = mappingTotal;
+    document.getElementById("dashboardMappingCount").textContent = mappingCount;
+    document.getElementById("dashboardMappingTotal").textContent = stats.total;
+    document.getElementById("dashboardTrendChart").innerHTML = createTrendSvg(getRecentDayBuckets());
+    document.getElementById("dashboardDonutChart").innerHTML = createDonutSvg(stats);
+}
+
 function getSourceLabel(source) {
     return {
         url: "URL",
@@ -872,7 +1221,7 @@ function renderApiDocs() {
     const docs = API_DOCS_TEXT[state.language] || API_DOCS_TEXT.zh;
     const ui = getUIText();
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
 
     const root = document.getElementById("apiDocsContent");
@@ -931,11 +1280,14 @@ function recordConversionLog({ source, mode, strategy, title, url, inputText, pa
     state.conversionLogs = [entry, ...state.conversionLogs].slice(0, MAX_CONVERSION_LOGS);
     state.selectedLogId = entry.id;
     saveConversionLogs();
+    renderUserDashboard();
 }
 
 function showLogs() {
     state.previousWorkspace = document.getElementById("analysisWorkspace").hidden ? "start" : "analysis";
     state.logResultLanguage = state.language === "en" ? "en" : "zh";
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
@@ -947,6 +1299,8 @@ function showLogs() {
 function showApiDocs() {
     window.location.hash = "api-docs";
     updateStaticText();
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
@@ -959,16 +1313,7 @@ function showApiDocs() {
 }
 
 function goHome() {
-    if (window.location.hash === "#api-docs") {
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    }
-    document.getElementById("pageHero").hidden = false;
-    document.getElementById("logWorkspace").hidden = true;
-    document.getElementById("apiDocsWorkspace").hidden = true;
-    document.getElementById("analysisWorkspace").hidden = true;
-    document.getElementById("startScreen").hidden = false;
-    state.previousWorkspace = "start";
-    updateStatus("", "info");
+    showDashboard();
 }
 
 function appendLogDetailSection(container, title, value) {
@@ -984,18 +1329,19 @@ function appendLogDetailSection(container, title, value) {
 
 function pickLanguagePayload(payload, language) {
     if (!isObject(payload)) return payload || {};
-    if (isObject(payload[language])) return payload[language];
+    if (isObject(payload[language])) return filterLocalizedTree(payload[language], language) || {};
     if (Array.isArray(payload.items)) {
         return {
             ...payload,
             items: payload.items.map((item) => {
                 if (!isObject(item) || !isObject(item.payload)) return item;
-                const localizedPayload = isObject(item.payload[language]) ? item.payload[language] : item.payload;
+                const rawPayload = isObject(item.payload[language]) ? item.payload[language] : item.payload;
+                const localizedPayload = filterLocalizedTree(rawPayload, language) || {};
                 return { ...item, payload: localizedPayload };
             })
         };
     }
-    return payload;
+    return filterLocalizedTree(payload, language) || {};
 }
 
 function appendLogResultSection(container, entry) {
@@ -1171,6 +1517,13 @@ function findValueByKeyOrAlias(payload, key) {
         if (isObject(value)) {
             const found = findValueByKeyOrAlias(value, key);
             if (typeof found !== "undefined") return found;
+        } else if (Array.isArray(value)) {
+            for (const item of value) {
+                if (isObject(item)) {
+                    const found = findValueByKeyOrAlias(item, key);
+                    if (typeof found !== "undefined") return found;
+                }
+            }
         }
     }
     return undefined;
@@ -1189,7 +1542,9 @@ function translateTree(node, language = state.language) {
 function getSchemaKeyForMode(mode, payload, language = state.language) {
     if (mode === "domain") {
         const coreKey = language === "en" ? "Core Metadata" : "核心元数据";
-        const coreData = isObject(payload) ? (payload[coreKey] || payload) : null;
+        const coreData = isObject(payload)
+            ? unwrapMetadataSection(payload[coreKey] || payload["核心元数据"] || payload["Core Metadata"] || payload)
+            : null;
         const domainSectionMap = language === "en"
             ? {
                 "Dataset Metadata": DOMAIN_SCHEMA_KEY_MAP["数据集元数据"],
@@ -1199,7 +1554,7 @@ function getSchemaKeyForMode(mode, payload, language = state.language) {
             }
             : DOMAIN_SCHEMA_KEY_MAP;
         if (isObject(coreData)) {
-            const classificationKey = language === "en" ? "Domain Classification" : "领域判定";
+            const classificationKey = "domain_metadata";
             const classification = findValueByKeyOrAlias(coreData, classificationKey);
             if (typeof classification === "string" && Object.prototype.hasOwnProperty.call(domainSectionMap, classification)) {
                 return language === "en" ? {
@@ -1209,6 +1564,18 @@ function getSchemaKeyForMode(mode, payload, language = state.language) {
                     "Ecological Science Data Metadata": "生态科学数据元数据"
                 }[classification] : classification;
             }
+            const resourceType = findValueByKeyOrAlias(coreData, "resource_type");
+            const resourceSchemaKey = {
+                "Dataset": "数据集元数据",
+                "Data Paper": "数据论文元数据",
+                "Standard Literature": "标准文献元数据",
+                "Ecological Data": "生态科学数据元数据",
+                "数据集": "数据集元数据",
+                "数据论文": "数据论文元数据",
+                "标准文献": "标准文献元数据",
+                "生态科学数据": "生态科学数据元数据"
+            }[String(resourceType || "").trim()];
+            if (resourceSchemaKey) return resourceSchemaKey;
             for (const [schemaKey, sectionKeys] of Object.entries(DOMAIN_SCHEMA_KEY_MAP)) {
                 if (sectionKeys.some((sectionKey) => Object.prototype.hasOwnProperty.call(coreData, sectionKey))) return schemaKey;
             }
@@ -1220,10 +1587,30 @@ function getSchemaKeyForMode(mode, payload, language = state.language) {
 function getEffectiveSectionPayload(payload, schemaKey) {
     if (!isObject(payload)) return {};
     const directSection = payload[schemaKey];
-    if (isObject(directSection)) return directSection;
-    const coreSectionKey = schemaKey === "核心元数据" ? "核心元数据" : schemaKey;
-    if (isObject(payload[coreSectionKey])) return payload[coreSectionKey];
+    if (isObject(directSection)) return unwrapMetadataSection(directSection);
+    const sectionAliases = {
+        "核心元数据": ["核心元数据", "Core Metadata"],
+        "Core Metadata": ["Core Metadata", "核心元数据"],
+        "数据集元数据": ["数据集元数据", "Dataset Metadata"],
+        "Dataset Metadata": ["Dataset Metadata", "数据集元数据"],
+        "数据论文元数据": ["数据论文元数据", "Data Paper Metadata"],
+        "Data Paper Metadata": ["Data Paper Metadata", "数据论文元数据"],
+        "标准文献元数据": ["标准文献元数据", "Standard Literature Metadata"],
+        "Standard Literature Metadata": ["Standard Literature Metadata", "标准文献元数据"],
+        "生态科学数据元数据": ["生态科学数据元数据", "Ecological Science Data Metadata"],
+        "Ecological Science Data Metadata": ["Ecological Science Data Metadata", "生态科学数据元数据"]
+    }[schemaKey] || [schemaKey];
+    for (const sectionKey of sectionAliases) {
+        if (isObject(payload[sectionKey])) return unwrapMetadataSection(payload[sectionKey]);
+    }
     return payload;
+}
+
+function unwrapMetadataSection(section) {
+    if (isObject(section) && Array.isArray(section.metadatas) && isObject(section.metadatas[0])) {
+        return section.metadatas[0];
+    }
+    return section;
 }
 
 function updateStatus(message, type = "info") {
@@ -1396,12 +1783,89 @@ async function requestMetadataForUploadedFile(mode) {
     return requestMetadataFromText(mode, normalizedText, { title: file.name, url: "", strategy: "upload_rule", source: "upload" });
 }
 
+function pickLocalizedItem(items, language = state.language) {
+    const list = Array.isArray(items) ? items : [];
+    return list.find((item) => isObject(item) && item.lang === language) || null;
+}
+
+function filterLocalizedTree(data, language = state.language) {
+    if (Array.isArray(data)) {
+        if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, "lang"))) {
+            const localized = pickLocalizedItem(data, language);
+            return localized ? filterLocalizedTree(localized, language) : null;
+        }
+        const items = data.map((item) => filterLocalizedTree(item, language)).filter((item) => !isMissingDisplayValue(item));
+        return items.length ? items : null;
+    }
+    if (!isObject(data)) return data;
+    const result = {};
+    Object.entries(data).forEach(([key, value]) => {
+        if (key === "lang") return;
+        const localized = filterLocalizedTree(value, language);
+        if (!isMissingDisplayValue(localized)) result[key] = localized;
+    });
+    return Object.keys(result).length ? result : null;
+}
+
+function normalizeDisplayValue(data, language = state.language) {
+    if (Array.isArray(data)) {
+        if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, "lang"))) {
+            const localized = pickLocalizedItem(data, language);
+            if (!localized) return "";
+            if (Object.prototype.hasOwnProperty.call(localized, "name")) return localized.name;
+            if (Object.prototype.hasOwnProperty.call(localized, "description")) return localized.description;
+            if (Object.prototype.hasOwnProperty.call(localized, "keyword")) {
+                return Array.isArray(localized.keyword) ? localized.keyword.join("；") : localized.keyword;
+            }
+        }
+        return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join("；");
+    }
+
+    if (!isObject(data)) return data;
+
+    if (Array.isArray(data.names)) return normalizeDisplayValue(data.names, language);
+    if (Array.isArray(data.keyword)) return data.keyword.join("；");
+    if (data.identifier && data.type) return `${data.type}: ${data.identifier}`;
+    if (data.person) {
+        const name = normalizeDisplayValue(data.person.names, language);
+        const affiliation = normalizeDisplayValue(data.person.affiliations, language);
+        return [name, affiliation].filter(Boolean).join(" / ");
+    }
+    if (data.affiliation) return normalizeDisplayValue(data.affiliation, language);
+    if (Array.isArray(data.standard_gbt) || Array.isArray(data.standard_oecd)) {
+        return [
+            ...(Array.isArray(data.standard_gbt) ? data.standard_gbt : []),
+            ...(Array.isArray(data.standard_oecd) ? data.standard_oecd : [])
+        ].join("；");
+    }
+    if (data.license || data.description || data.cert_num) {
+        return [data.license, data.description, data.cert_num].filter(Boolean).join("；");
+    }
+    if (data.name || data.proj_name || data.proj_num) {
+        return [data.name, data.proj_type, data.proj_num, data.proj_name].filter(Boolean).join("；");
+    }
+    return filterLocalizedTree(data, language);
+}
+
+function isMissingDisplayValue(value) {
+    if (value === null || typeof value === "undefined") return true;
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "" || normalized === "未提取到" || normalized === "未提取到内容" || normalized === "not extracted" || normalized === "no content extracted";
+    }
+    if (Array.isArray(value)) return value.length === 0 || value.every((item) => isMissingDisplayValue(item));
+    if (isObject(value)) return Object.keys(value).length === 0;
+    return false;
+}
+
 function renderFieldValue(data) {
     const ui = getUIText();
-    if (data === null || typeof data === "undefined" || data === "") return { text: ui.noContent, isEmpty: true };
+    const displayValue = normalizeDisplayValue(data);
+    if (displayValue !== data) data = displayValue;
+    if (isMissingDisplayValue(data)) return { text: ui.noContent, isEmpty: true };
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
         const rawValue = data.value;
-        if (rawValue === null || typeof rawValue === "undefined" || rawValue === "") return { text: ui.noContent, isEmpty: true };
+        if (isMissingDisplayValue(rawValue)) return { text: ui.noContent, isEmpty: true };
         if (Array.isArray(rawValue)) return { text: rawValue.map((item) => (isObject(item) ? JSON.stringify(item) : String(item))).join("；"), isEmpty: false };
         return { text: String(rawValue), isEmpty: false };
     }
@@ -1458,7 +1922,7 @@ function renderSchemaNode(container, schemaNode, valueNode) {
 
 function extractExtensionText(payload, language = state.language) {
     if (!isObject(payload)) return "";
-    const extensionKey = language === "en" ? "Extension Info" : "扩展信息";
+    const extensionKey = "extension_info";
     const fallbackKey = language === "en" ? "扩展信息" : "Extension Info";
     const extensionValue = payload[extensionKey] ?? payload[fallbackKey];
     if (typeof extensionValue === "string") return extensionValue.trim();
@@ -1520,7 +1984,7 @@ function renderMode(mode) {
     if (state.sourceMode === "identifier" && state.identifierResults.length > 0) applyIdentifierItemToCache();
 
     const payloadBundle = state.resultCache[mode] || {};
-    const payload = isObject(payloadBundle[language]) ? payloadBundle[language] : {};
+    const payload = getDisplayPayload(payloadBundle, language);
     const schema = state.schemaCache[mode];
     const schemaKey = getSchemaKeyForMode(mode, payload, language);
     const rawSchemaRoot = schema ? (schema[schemaKey] || schema["核心元数据"]) : null;
@@ -1553,21 +2017,39 @@ function renderMode(mode) {
     updateStaticText();
 }
 
-function stripMetadataForDownload(schemaNode, valueNode) {
+function stripMetadataForDownload(schemaNode, valueNode, language = DOWNLOAD_LANGUAGE) {
     const result = {};
     Object.entries(schemaNode).forEach(([key, description]) => {
-        const currentValue = isObject(valueNode) ? valueNode[key] : undefined;
+        let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
+        if (typeof currentValue === "undefined") {
+            for (const lookupKey of getFieldLookupKeys(key)) {
+                currentValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                if (typeof currentValue !== "undefined") break;
+            }
+        }
+        const outputKey = standardInterfaceKeyForLabel(key);
         if (isObject(description)) {
-            result[key] = stripMetadataForDownload(description, currentValue || {});
+            result[outputKey] = stripMetadataForDownload(description, currentValue || {}, language);
             return;
         }
         if (isObject(currentValue) && Object.prototype.hasOwnProperty.call(currentValue, "value")) {
-            result[key] = currentValue.value ?? null;
+            result[outputKey] = filterLocalizedTree(currentValue.value, language) ?? null;
             return;
         }
-        result[key] = Array.isArray(currentValue) ? currentValue : (currentValue ?? null);
+        result[outputKey] = filterLocalizedTree(currentValue, language) ?? null;
     });
     return result;
+}
+
+function standardInterfaceKeyForLabel(key) {
+    const directInterfaceKeys = new Set([
+        "titles", "identifier", "creators", "publisher", "publish_date", "descriptions",
+        "keywords", "subjects", "language", "contributors", "alternative_identifiers",
+        "related_identifiers", "rights", "funders", "version", "urls", "resource_type"
+    ]);
+    if (directInterfaceKeys.has(key)) return key;
+    const aliases = FIELD_VALUE_ALIASES[key] || [];
+    return aliases.find((alias) => directInterfaceKeys.has(alias)) || key;
 }
 
 function normalizeIdentifierToken(value) {
@@ -1601,14 +2083,21 @@ function getPayloadSectionKey(schemaKey, language) {
     }[schemaKey] || schemaKey;
 }
 
+function getDisplayPayload(payloadBundle, language = state.language) {
+    if (!isObject(payloadBundle)) return {};
+    if (isObject(payloadBundle[language])) return payloadBundle[language];
+    return payloadBundle;
+}
+
 function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
-    const payload = payloadBundle && payloadBundle[language];
-    if (!payload) return null;
-    const schemaKey = getSchemaKeyForMode(mode, payloadBundle[language], language);
+    const payload = getDisplayPayload(payloadBundle, language);
+    if (!isObject(payload)) return null;
+    const schemaKey = getSchemaKeyForMode(mode, payload, language);
     const schemaRoot = schema[schemaKey] || schema["核心元数据"];
     const localizedSchemaRoot = translateTree(schemaRoot, language);
     const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
-    return stripMetadataForDownload(localizedSchemaRoot, sectionPayload);
+    const stripped = stripMetadataForDownload(localizedSchemaRoot, sectionPayload, language);
+    return schemaKey === "核心元数据" ? { metadatas: [stripped] } : stripped;
 }
 
 async function downloadJsonFile(mode) {
@@ -1675,6 +2164,7 @@ function updateStaticText() {
     document.getElementById("startTitle").textContent = ui.startTitle;
     document.getElementById("startDescription").textContent = ui.startDescription;
     document.getElementById("brandHomeButton").textContent = ui.startTitle;
+    renderUserDashboard();
     document.getElementById("domainToCoreTitle").textContent = ui.domainToCoreTitle;
     document.getElementById("domainToCoreHint").textContent = ui.domainToCoreHint;
     document.getElementById("coreToDomainTitle").textContent = ui.coreToDomainTitle;
@@ -1707,7 +2197,7 @@ function updateStaticText() {
     document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
     document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = ui.apiDocsSubtitle;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
     document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
     document.getElementById("closeLogsButton").textContent = ui.closeLogsTitle;
@@ -1804,6 +2294,8 @@ function setMode(mode) {
 
 function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
@@ -1905,6 +2397,14 @@ function bindEvents() {
     document.getElementById("homeButton").addEventListener("click", goHome);
     document.getElementById("brandHomeButton").addEventListener("click", goHome);
     document.getElementById("analysisHomeButton").addEventListener("click", goHome);
+    document.getElementById("dashboardOverviewButton").addEventListener("click", showDashboard);
+    document.getElementById("dashboardServiceButton").addEventListener("click", showToolHome);
+    document.getElementById("dashboardLogsButton").addEventListener("click", showLogs);
+    document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
+    document.getElementById("dashboardRefreshButton").addEventListener("click", renderOperationsDashboard);
+    document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
+        window.location.href = "/";
+    });
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -1926,6 +2426,7 @@ function bindEvents() {
         state.conversionLogs = [];
         state.selectedLogId = null;
         saveConversionLogs();
+        renderUserDashboard();
         renderLogs();
     });
     document.getElementById("uploadButton").addEventListener("click", () => {
@@ -1976,6 +2477,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadConversionLogs();
     bindEvents();
     updateStaticText();
+    loadGatewayUser();
     try {
         await loadModeSchema("common");
         await loadModeSchema("domain");

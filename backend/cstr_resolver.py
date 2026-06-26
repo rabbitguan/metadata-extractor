@@ -1,7 +1,8 @@
-import requests
 import json
 import re
 from urllib.parse import quote, urljoin
+
+import requests
 
 
 FETCH_HEADERS = {
@@ -72,9 +73,7 @@ def _get_content_type(response):
 
 
 def _fetch_page(url, source, clean_html, redirect_depth=0):
-    print(url, FETCH_HEADERS)
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
-    print(response.text[:5000])
     response.raise_for_status()
     final_url = response.url if isinstance(response.url, str) and response.url else url
 
@@ -95,17 +94,41 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
     }
 
 
+def build_escience_metadata_url(cstr):
+    normalized = re.sub(r'^CSTR\s*:\s*', '', str(cstr or '').strip(), flags=re.IGNORECASE)
+    if not normalized:
+        return None
+
+    prefixed = f'CSTR:{normalized}'
+    resource_id = f'9bc0652f0dce29823c0c9842001ae890:{prefixed}'
+    return (
+        'https://www.escience.org.cn/metadata/detail'
+        f'?id={quote(resource_id, safe="")}'
+        f'&cstrId={quote(prefixed, safe="")}'
+    )
+
+
 def resolve_cstr(cstr, clean_html=None):
     quoted_cstr = quote(cstr, safe='._;()/:A-Z0-9-')
     candidates = [
-        ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
         ('cstr.cn', f'https://cstr.cn/{quoted_cstr}'),
+        ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
     ]
     errors = []
 
     for source, url in candidates:
         try:
-            return _fetch_page(url, source, clean_html)
+            result = _fetch_page(url, source, clean_html)
+            escience_url = build_escience_metadata_url(cstr)
+            if escience_url:
+                result['supplemental_urls'] = [
+                    {
+                        'source': 'escience.org.cn',
+                        'url': escience_url,
+                        'priority': 'fallback',
+                    }
+                ]
+            return result
         except Exception as error:
             errors.append(f'{source}: {error}')
             print(f"[WARNING] CSTR resolver {source} failed for {cstr}: {error}")
