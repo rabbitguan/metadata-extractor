@@ -562,7 +562,7 @@ const UI_TEXT = {
         totalQueryLabel: "累计查询",
         urlQueryLabel: "URL 分析",
         identifierQueryLabel: "标识符解析",
-        activityTitle: "近 7 次查询活跃度",
+        activityTitle: "近 7 天查询活跃度",
         noQueryYet: "暂无查询",
         lastQueryPrefix: "最近一次：",
         clearLogsTitle: "清空",
@@ -643,7 +643,7 @@ const UI_TEXT = {
         totalQueryLabel: "Total Queries",
         urlQueryLabel: "URL Analyses",
         identifierQueryLabel: "Identifier Resolves",
-        activityTitle: "Last 7 Query Activity",
+        activityTitle: "Last 7 Days Activity",
         noQueryYet: "No queries yet",
         lastQueryPrefix: "Latest: ",
         clearLogsTitle: "Clear",
@@ -928,7 +928,7 @@ const FIELD_VALUE_ALIASES = {
     "Domain Classification": ["domain_metadata", "领域判定"],
     "extension_info": ["Extension Info", "扩展信息"],
     "Extension Info": ["extension_info", "扩展信息"],
-    "标题": ["titles", "Title", "Resource Name"],
+    "标题": ["titles", "Title", "Resource Name", "资源名称"],
     "CSTR标识符": ["identifier", "Identifier", "标识符"],
     "创建者": ["creators", "Creators", "Authors", "Author Name", "Data Paper Authors", "Dataset Authors"],
     "发布机构": ["publisher", "Publisher", "出版机构", "出版单位"],
@@ -947,7 +947,7 @@ const FIELD_VALUE_ALIASES = {
     "资源类型": ["resource_type", "ResourceType", "Resource Type Classification", "资源类型判定"],
     "领域判定": ["domain_metadata", "Domain Classification"],
     "扩展信息": ["extension_info", "Extension Info"],
-    "Title": ["titles", "标题", "Resource Name"],
+    "Title": ["titles", "标题", "Resource Name", "资源名称"],
     "Identifier": ["identifier", "CSTR标识符", "标识符"],
     "Creators": ["creators", "创建者", "Authors", "Author Name"],
     "Publisher": ["publisher", "发布机构"],
@@ -1066,6 +1066,14 @@ function formatLocalDateTime(value) {
     });
 }
 
+function getLocalDateKey(date) {
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0")
+    ].join("-");
+}
+
 function getDashboardStats() {
     const logs = state.conversionLogs || [];
     return {
@@ -1073,9 +1081,72 @@ function getDashboardStats() {
         url: logs.filter((item) => item.source === "url").length,
         identifier: logs.filter((item) => item.source === "identifier").length,
         upload: logs.filter((item) => item.source === "upload").length,
-        latest: logs[0] || null,
-        recent: logs.slice(0, 7).reverse()
+        latest: logs[0] || null
     };
+}
+
+function getWeeklyActivityBuckets(dayCount = 7) {
+    const buckets = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let index = dayCount - 1; index >= 0; index -= 1) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - index);
+        buckets.push({
+            key: getLocalDateKey(date),
+            dayLabel: String(date.getDate()).padStart(2, "0"),
+            label: `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`,
+            value: 0
+        });
+    }
+    const byKey = new Map(buckets.map((item) => [item.key, item]));
+    (state.conversionLogs || []).forEach((entry) => {
+        const date = new Date(entry.createdAt);
+        if (Number.isNaN(date.getTime())) return;
+        const key = getLocalDateKey(date);
+        if (byKey.has(key)) byKey.get(key).value += 1;
+    });
+    return buckets;
+}
+
+function createActivityLineChart(buckets) {
+    const width = 520;
+    const height = 112;
+    const left = 26;
+    const right = 18;
+    const top = 16;
+    const bottom = 26;
+    const chartWidth = width - left - right;
+    const chartHeight = height - top - bottom;
+    const maxValue = Math.max(1, ...buckets.map((item) => item.value));
+    const xStep = buckets.length > 1 ? chartWidth / (buckets.length - 1) : chartWidth;
+    const points = buckets.map((bucket, index) => {
+        const x = left + index * xStep;
+        const y = top + chartHeight - (bucket.value / maxValue) * chartHeight;
+        return { ...bucket, x, y };
+    });
+    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+    const area = [
+        `${points[0].x},${top + chartHeight}`,
+        ...points.map((point) => `${point.x},${point.y}`),
+        `${points[points.length - 1].x},${top + chartHeight}`
+    ].join(" ");
+
+    return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="近 7 天查询折线图">
+            <line x1="${left}" y1="${top + chartHeight}" x2="${width - right}" y2="${top + chartHeight}" class="activity-axis" />
+            <polyline points="${area}" class="activity-area" />
+            <polyline points="${polyline}" class="activity-line" />
+            ${points.map((point) => `
+                <g>
+                    <circle cx="${point.x}" cy="${point.y}" r="4.5" class="activity-point" />
+                    <text x="${point.x}" y="${Math.max(10, point.y - 8)}" class="activity-value">${point.value}</text>
+                    <text x="${point.x}" y="${height - 5}" class="activity-label">${point.label}</text>
+                    <title>${point.label} · ${point.value}</title>
+                </g>
+            `).join("")}
+        </svg>
+    `;
 }
 
 function renderUserDashboard() {
@@ -1100,18 +1171,9 @@ function renderUserDashboard() {
         ? `${ui.lastQueryPrefix}${formatLocalDateTime(stats.latest.createdAt)}`
         : ui.noQueryYet;
 
-    const bars = document.getElementById("activityBars");
-    bars.innerHTML = "";
-    const maxIndex = Math.max(stats.recent.length - 1, 1);
-    for (let index = 0; index < 7; index += 1) {
-        const entry = stats.recent[index];
-        const bar = document.createElement("span");
-        const height = entry ? 34 + Math.round((index / maxIndex) * 42) : 16;
-        bar.className = `activity-bar ${entry ? `source-${entry.source || "text"}` : "empty"}`;
-        bar.style.height = `${height}px`;
-        bar.title = entry ? `${getSourceLabel(entry.source)} · ${formatLocalDateTime(entry.createdAt)}` : ui.noQueryYet;
-        bars.appendChild(bar);
-    }
+    const chart = document.getElementById("activityLineChart");
+    const buckets = getWeeklyActivityBuckets();
+    chart.innerHTML = createActivityLineChart(buckets);
     renderOperationsDashboard();
 }
 
@@ -1691,9 +1753,9 @@ function getFieldLookupKeys(fieldKey) {
 
 function findValueByKeyOrAlias(payload, key) {
     if (!isObject(payload)) return undefined;
-    if (Object.prototype.hasOwnProperty.call(payload, key)) return payload[key];
+    if (Object.prototype.hasOwnProperty.call(payload, key) && !isMissingDisplayValue(payload[key])) return payload[key];
     for (const alias of getFieldLookupKeys(key)) {
-        if (Object.prototype.hasOwnProperty.call(payload, alias)) return payload[alias];
+        if (Object.prototype.hasOwnProperty.call(payload, alias) && !isMissingDisplayValue(payload[alias])) return payload[alias];
     }
     for (const value of Object.values(payload)) {
         if (isObject(value)) {
@@ -1864,7 +1926,8 @@ async function requestMetadataFromUrl(mode) {
     const payload = await requestBackend(BACKEND_REGISTER_URL, {
         source: "url",
         url,
-        mode
+        mode,
+        force_reanalyze: /https?:\/\/([^/]+\.)?nmdc\.cn\/metadata\/detail/i.test(url)
     }, getUIText().loadingUrl);
 
     state.resultCache.common = payload;
@@ -2089,10 +2152,13 @@ function createFieldRow(label, data) {
 function renderSchemaNode(container, schemaNode, valueNode) {
     Object.entries(schemaNode).forEach(([key, description]) => {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
-        if (typeof currentValue === "undefined") {
+        if (typeof currentValue === "undefined" || isMissingDisplayValue(currentValue)) {
             for (const lookupKey of getFieldLookupKeys(key)) {
-                currentValue = findValueByKeyOrAlias(valueNode, lookupKey);
-                if (typeof currentValue !== "undefined") break;
+                const aliasValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                if (typeof aliasValue !== "undefined" && !isMissingDisplayValue(aliasValue)) {
+                    currentValue = aliasValue;
+                    break;
+                }
             }
         }
         if (isObject(description)) {

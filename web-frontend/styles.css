@@ -561,35 +561,51 @@ body {
     white-space: nowrap;
 }
 
-.activity-bars {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(12px, 1fr));
-    align-items: end;
-    gap: 8px;
+.activity-line-chart {
     min-height: 76px;
 }
 
-.activity-bar {
+.activity-line-chart svg {
     display: block;
-    min-height: 14px;
-    border-radius: 6px 6px 3px 3px;
-    background: #2185D0;
+    width: 100%;
+    height: 86px;
 }
 
-.activity-bar.source-url {
-    background: #086EC1;
+.activity-axis {
+    stroke: #D9DEE8;
+    stroke-width: 1;
 }
 
-.activity-bar.source-upload {
-    background: #C97900;
+.activity-area {
+    fill: rgba(29, 141, 68, 0.12);
+    stroke: none;
 }
 
-.activity-bar.source-identifier {
-    background: #1D8D44;
+.activity-line {
+    fill: none;
+    stroke: #1D8D44;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
-.activity-bar.empty {
-    background: #E5E9F2;
+.activity-point {
+    fill: #FFFFFF;
+    stroke: #1D8D44;
+    stroke-width: 3;
+}
+
+.activity-value {
+    fill: #1D8D44;
+    font-size: 12px;
+    font-weight: 800;
+    text-anchor: middle;
+}
+
+.activity-label {
+    fill: var(--text-sub);
+    font-size: 10px;
+    text-anchor: middle;
 }
 
 .start-actions {

@@ -95,13 +95,29 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
     }
 
 
-def build_escience_metadata_url(cstr):
-    normalized = re.sub(r'^CSTR\s*:\s*', '', str(cstr or '').strip(), flags=re.IGNORECASE)
+ESCIENCE_ORG_IDS = {
+    'ncdc': '9bc0652f0dce29823c0c9842001ae890',
+    'tpdc': 'da0e21dd01bcbea6d33bd0c6ce9c2c33',
+    'micro': '774e79461ac511e980780242ac120006',
+}
+
+KNOWN_CSTR_RESOURCE_URLS = {
+    '13913.12.micro.ncov.sequence': 'https://nmdc.cn/resource/ncov/globalsequence/',
+}
+
+
+def _normalize_cstr(cstr):
+    return re.sub(r'^CSTR\s*:\s*', '', str(cstr or '').strip(), flags=re.IGNORECASE)
+
+
+def build_escience_metadata_url(cstr, org_id=None):
+    normalized = _normalize_cstr(cstr)
     if not normalized:
         return None
 
+    org_id = org_id or ESCIENCE_ORG_IDS['ncdc']
     prefixed = f'CSTR:{normalized}'
-    resource_id = f'9bc0652f0dce29823c0c9842001ae890:{prefixed}'
+    resource_id = f'{org_id}:{prefixed}'
     return (
         'https://www.escience.org.cn/metadata/detail'
         f'?id={quote(resource_id, safe="")}'
@@ -109,18 +125,36 @@ def build_escience_metadata_url(cstr):
     )
 
 
+def _select_escience_org_id(cstr, resolved_url=''):
+    normalized_cstr = str(cstr or '').lower()
+    normalized_url = str(resolved_url or '').lower()
+    if 'ncdc.ac.cn' in normalized_url or '.ncdc.' in normalized_cstr:
+        return ESCIENCE_ORG_IDS['ncdc']
+    if 'data.tpdc.ac.cn' in normalized_url or '.tpdc.' in normalized_cstr:
+        return ESCIENCE_ORG_IDS['tpdc']
+    if 'nmdc.cn' in normalized_url or '.micro.' in normalized_cstr:
+        return ESCIENCE_ORG_IDS['micro']
+    return None
+
+
 def resolve_cstr(cstr, clean_html=None):
-    quoted_cstr = quote(cstr, safe='._;()/:A-Z0-9-')
+    normalized_cstr = _normalize_cstr(cstr)
+    quoted_cstr = quote(normalized_cstr, safe='._;()/:A-Z0-9-')
     candidates = [
+        ('known-resource', KNOWN_CSTR_RESOURCE_URLS[normalized_cstr.lower()]),
+    ] if normalized_cstr.lower() in KNOWN_CSTR_RESOURCE_URLS else []
+    candidates.extend([
         ('cstr.cn', f'https://cstr.cn/{quoted_cstr}'),
         ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
-    ]
+    ])
     errors = []
 
     for source, url in candidates:
         try:
             result = _fetch_page(url, source, clean_html)
-            escience_url = build_escience_metadata_url(cstr)
+            result_url = str(result.get('url') or '').lower()
+            escience_org_id = _select_escience_org_id(cstr, result_url)
+            escience_url = build_escience_metadata_url(cstr, escience_org_id) if escience_org_id else None
             if escience_url:
                 result['supplemental_urls'] = [
                     {

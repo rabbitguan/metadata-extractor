@@ -740,7 +740,7 @@ const FIELD_VALUE_ALIASES = {
     'Domain Classification': ['domain_metadata', '领域判定'],
     extension_info: ['Extension Info', '扩展信息'],
     'Extension Info': ['extension_info', '扩展信息'],
-    标题: ['资源名称', 'Title', 'Resource Name'],
+    标题: ['titles', '资源名称', 'Title', 'Resource Name'],
     CSTR标识符: ['标识符', 'Identifier'],
     创建者: ['作者姓名', 'Data Paper Authors', 'Author Name', 'creators'],
     发布机构: ['发布机构', 'Publisher', 'publisher'],
@@ -757,7 +757,7 @@ const FIELD_VALUE_ALIASES = {
     版本: ['版本信息', 'version'],
     资源链接: ['资源访问地址', '数据论文下载地址', 'Dataset Download URL', 'Data Paper Download URL', 'urls'],
     资源类型: ['resource_type', '资源类型判定', 'Resource Type Classification', 'ResourceType'],
-    Title: ['titles', 'Resource Name', '资源名称'],
+    Title: ['titles', '标题', 'Resource Name', '资源名称'],
     Identifier: ['identifier', 'CSTR标识符', '标识符'],
     Creators: ['creators', 'Authors', 'Author Name', 'Data Paper Authors', 'Dataset Authors', '创建者'],
     Publisher: ['publisher', '发布机构', '出版机构', '出版单位'],
@@ -803,13 +803,13 @@ function findValueByKeyOrAlias(payload, key) {
         return undefined;
     }
 
-    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+    if (Object.prototype.hasOwnProperty.call(payload, key) && !isMissingDisplayValue(payload[key])) {
         return payload[key];
     }
 
     const aliases = FIELD_VALUE_ALIASES[key] || [];
     for (const alias of aliases) {
-        if (Object.prototype.hasOwnProperty.call(payload, alias)) {
+        if (Object.prototype.hasOwnProperty.call(payload, alias) && !isMissingDisplayValue(payload[alias])) {
             return payload[alias];
         }
     }
@@ -1724,11 +1724,12 @@ function createFieldRow(label, data) {
 function renderSchemaNode(container, schemaNode, valueNode, language = state.language) {
     Object.entries(schemaNode).forEach(([key, description]) => {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
-        if (typeof currentValue === 'undefined') {
+        if (typeof currentValue === 'undefined' || isMissingDisplayValue(currentValue)) {
             // 回退：按标准字段别名在整个 payload 中查找，解决模型字段名不一致的问题
             for (const lookupKey of getFieldLookupKeys(key)) {
-                currentValue = findValueByKeyOrAlias(valueNode, lookupKey);
-                if (typeof currentValue !== 'undefined') {
+                const aliasValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                if (typeof aliasValue !== 'undefined' && !isMissingDisplayValue(aliasValue)) {
+                    currentValue = aliasValue;
                     break;
                 }
             }
