@@ -24,6 +24,7 @@ function getServiceBasePathLabel() {
 
 const BACKEND_QUERY_URL = buildServiceUrl("/query");
 const BACKEND_REGISTER_URL = buildServiceUrl("/register");
+const BACKEND_USER_URL = buildServiceUrl("/user");
 const DOWNLOAD_LANGUAGE = "en";
 const CONVERSION_LOG_STORAGE_KEY = "metadata_web_conversion_logs_v1";
 const MAX_CONVERSION_LOGS = 50;
@@ -375,6 +376,16 @@ const UI_TEXT = {
         logTaskInfoTitle: "任务信息",
         logInputPreviewTitle: "输入预览",
         logResultTitle: "转换结果",
+        userWelcome: "欢迎回来",
+        userFallbackName: "平台用户",
+        userLoading: "正在读取平台用户信息...",
+        userAnonymous: "暂未获取到平台用户信息",
+        totalQueryLabel: "累计查询",
+        urlQueryLabel: "URL 分析",
+        identifierQueryLabel: "标识符解析",
+        activityTitle: "近 7 次查询活跃度",
+        noQueryYet: "暂无查询",
+        lastQueryPrefix: "最近一次：",
         clearLogsTitle: "清空",
         closeLogsTitle: "返回主页",
         chooseUrlLabel: "输入 URL",
@@ -441,6 +452,16 @@ const UI_TEXT = {
         logTaskInfoTitle: "Task Info",
         logInputPreviewTitle: "Input Preview",
         logResultTitle: "Conversion Result",
+        userWelcome: "Welcome back",
+        userFallbackName: "Platform User",
+        userLoading: "Reading platform user...",
+        userAnonymous: "No platform user info received",
+        totalQueryLabel: "Total Queries",
+        urlQueryLabel: "URL Analyses",
+        identifierQueryLabel: "Identifier Resolves",
+        activityTitle: "Last 7 Query Activity",
+        noQueryYet: "No queries yet",
+        lastQueryPrefix: "Latest: ",
         clearLogsTitle: "Clear",
         closeLogsTitle: "Back To Home",
         chooseUrlLabel: "Enter URL",
@@ -780,7 +801,8 @@ const state = {
     conversionLogs: [],
     selectedLogId: null,
     logResultLanguage: "zh",
-    previousWorkspace: "analysis"
+    previousWorkspace: "analysis",
+    user: { id: "", name: "", email: "" }
 };
 
 function isObject(value) {
@@ -829,6 +851,258 @@ function loadConversionLogs() {
 
 function saveConversionLogs() {
     localStorage.setItem(CONVERSION_LOG_STORAGE_KEY, JSON.stringify(state.conversionLogs));
+}
+
+function getDisplayUserName() {
+    return state.user.name || state.user.email || state.user.id || getUIText().userFallbackName;
+}
+
+function getUserInitial() {
+    const displayName = getDisplayUserName();
+    return Array.from(displayName.trim())[0] || "U";
+}
+
+function formatLocalDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString(state.language === "en" ? "en-US" : "zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+function getDashboardStats() {
+    const logs = state.conversionLogs || [];
+    return {
+        total: logs.length,
+        url: logs.filter((item) => item.source === "url").length,
+        identifier: logs.filter((item) => item.source === "identifier").length,
+        upload: logs.filter((item) => item.source === "upload").length,
+        latest: logs[0] || null,
+        recent: logs.slice(0, 7).reverse()
+    };
+}
+
+function renderUserDashboard() {
+    const ui = getUIText();
+    const stats = getDashboardStats();
+    const displayName = getDisplayUserName();
+
+    document.getElementById("userWelcome").textContent = ui.userWelcome;
+    document.getElementById("userDisplayName").textContent = displayName;
+    document.getElementById("userAvatar").textContent = getUserInitial();
+
+    const identityParts = [state.user.email, state.user.id].filter(Boolean);
+    document.getElementById("userIdentity").textContent = identityParts.join(" · ") || ui.userAnonymous;
+    document.getElementById("totalQueryLabel").textContent = ui.totalQueryLabel;
+    document.getElementById("urlQueryLabel").textContent = ui.urlQueryLabel;
+    document.getElementById("identifierQueryLabel").textContent = ui.identifierQueryLabel;
+    document.getElementById("totalQueryCount").textContent = stats.total;
+    document.getElementById("urlQueryCount").textContent = stats.url;
+    document.getElementById("identifierQueryCount").textContent = stats.identifier;
+    document.getElementById("activityTitle").textContent = ui.activityTitle;
+    document.getElementById("lastQueryLabel").textContent = stats.latest
+        ? `${ui.lastQueryPrefix}${formatLocalDateTime(stats.latest.createdAt)}`
+        : ui.noQueryYet;
+
+    const bars = document.getElementById("activityBars");
+    bars.innerHTML = "";
+    const maxIndex = Math.max(stats.recent.length - 1, 1);
+    for (let index = 0; index < 7; index += 1) {
+        const entry = stats.recent[index];
+        const bar = document.createElement("span");
+        const height = entry ? 34 + Math.round((index / maxIndex) * 42) : 16;
+        bar.className = `activity-bar ${entry ? `source-${entry.source || "text"}` : "empty"}`;
+        bar.style.height = `${height}px`;
+        bar.title = entry ? `${getSourceLabel(entry.source)} · ${formatLocalDateTime(entry.createdAt)}` : ui.noQueryYet;
+        bars.appendChild(bar);
+    }
+    renderOperationsDashboard();
+}
+
+async function loadGatewayUser() {
+    try {
+        const response = await fetch(BACKEND_USER_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload && payload.user) {
+            state.user = {
+                id: payload.user.id || "",
+                name: payload.user.name || "",
+                email: payload.user.email || ""
+            };
+        }
+    } catch (error) {
+        state.user = { id: "", name: "", email: "" };
+    } finally {
+        renderUserDashboard();
+    }
+}
+
+function setAppShellVisible(visible) {
+    document.querySelector(".top-nav").hidden = !visible;
+    document.getElementById("pageHero").hidden = !visible;
+    document.getElementById("pageMain").hidden = !visible;
+    document.querySelector(".page-footer").hidden = !visible;
+}
+
+function showDashboard() {
+    if (window.location.hash === "#api-docs") {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    setAppShellVisible(false);
+    document.getElementById("dashboardScreen").hidden = false;
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
+    document.querySelectorAll(".admin-nav-item").forEach((item) => item.classList.remove("active"));
+    document.getElementById("dashboardOverviewButton").classList.add("active");
+    renderOperationsDashboard();
+}
+
+function showToolHome() {
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
+    document.getElementById("pageHero").hidden = false;
+    document.getElementById("startScreen").hidden = false;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
+    state.previousWorkspace = "start";
+    updateStatus("", "info");
+    updateStaticText();
+}
+
+function getRecentDayBuckets(dayCount = 10) {
+    const buckets = [];
+    const now = new Date();
+    for (let index = dayCount - 1; index >= 0; index -= 1) {
+        const date = new Date(now);
+        date.setDate(now.getDate() - index);
+        const key = date.toISOString().slice(0, 10);
+        buckets.push({
+            key,
+            label: `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+            value: 0
+        });
+    }
+    const byKey = new Map(buckets.map((item) => [item.key, item]));
+    state.conversionLogs.forEach((entry) => {
+        const date = new Date(entry.createdAt);
+        if (Number.isNaN(date.getTime())) return;
+        const key = date.toISOString().slice(0, 10);
+        if (byKey.has(key)) byKey.get(key).value += 1;
+    });
+    return buckets;
+}
+
+function createTrendSvg(buckets) {
+    const width = 860;
+    const height = 430;
+    const left = 74;
+    const right = 30;
+    const top = 28;
+    const bottom = 58;
+    const chartWidth = width - left - right;
+    const chartHeight = height - top - bottom;
+    const maxValue = Math.max(5, ...buckets.map((item) => item.value));
+    const xStep = buckets.length > 1 ? chartWidth / (buckets.length - 1) : chartWidth;
+    const points = buckets.map((item, index) => {
+        const x = left + index * xStep;
+        const y = top + chartHeight - (item.value / maxValue) * chartHeight;
+        return { x, y, ...item };
+    });
+    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+    const circles = points.map((point) => (
+        `<circle cx="${point.x}" cy="${point.y}" r="4.5" fill="#FFFFFF" stroke="#4098FF" stroke-width="3"/>`
+    )).join("");
+    const labels = points.map((point, index) => (
+        index % 2 === 0 || index === points.length - 1
+            ? `<text class="admin-chart-label" x="${point.x}" y="${height - 18}" text-anchor="middle">${point.label}</text>`
+            : ""
+    )).join("");
+    const grids = [0, 1, 2, 3, 4].map((index) => {
+        const value = Math.round((maxValue / 4) * (4 - index));
+        const y = top + (chartHeight / 4) * index;
+        return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#D8DDE6"/>
+            <text class="admin-chart-label" x="${left - 12}" y="${y + 5}" text-anchor="end">${value}</text>`;
+    }).join("");
+
+    return `<svg class="admin-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="近期趋势">
+        ${grids}
+        <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" stroke="#737982"/>
+        <polyline points="${polyline}" fill="none" stroke="#4098FF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        ${circles}
+        ${labels}
+    </svg>`;
+}
+
+function describeArc(cx, cy, r, startAngle, endAngle) {
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+
+function polarToCartesian(cx, cy, r, angleInDegrees) {
+    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
+    return {
+        x: cx + (r * Math.cos(angleInRadians)),
+        y: cy + (r * Math.sin(angleInRadians))
+    };
+}
+
+function createDonutSvg(stats) {
+    const total = Math.max(1, stats.url + stats.upload + stats.identifier);
+    const slices = [
+        { label: "URL", value: stats.url, color: "#4F6FD8" },
+        { label: "JSON/XML", value: stats.upload, color: "#B7DD28" },
+        { label: "DOI/CSTR", value: stats.identifier, color: "#555A7D" },
+        { label: "通用", value: Math.max(0, stats.total - stats.url - stats.upload - stats.identifier), color: "#22A9D1" }
+    ].filter((item) => item.value > 0);
+    const visibleSlices = slices.length ? slices : [{ label: "暂无数据", value: 1, color: "#DCE2EC" }];
+    let angle = 0;
+    const paths = visibleSlices.map((slice) => {
+        const delta = (slice.value / total) * 360;
+        const path = describeArc(210, 210, 122, angle, angle + delta);
+        angle += delta;
+        return `<path d="${path}" fill="none" stroke="${slice.color}" stroke-width="64"/>`;
+    }).join("");
+    const legend = visibleSlices.map((slice, index) => {
+        const x = index % 2 === 0 ? 42 : 292;
+        const y = index < 2 ? 58 : 360;
+        return `<circle cx="${x}" cy="${y}" r="7" fill="${slice.color}"/>
+            <text class="admin-donut-label" x="${x + 14}" y="${y + 5}">${slice.label}</text>`;
+    }).join("");
+    return `<svg class="admin-chart-svg" viewBox="0 0 420 420" role="img" aria-label="领域占比">
+        ${paths}
+        <circle cx="210" cy="210" r="72" fill="#FFFFFF"/>
+        <text class="admin-chart-label" x="210" y="204" text-anchor="middle">总量</text>
+        <text x="210" y="238" text-anchor="middle" fill="#4098FF" font-size="34" font-weight="800">${stats.total}</text>
+        ${legend}
+    </svg>`;
+}
+
+function renderOperationsDashboard() {
+    const stats = getDashboardStats();
+    const resolvedObjects = state.identifierResults.filter((item) => item && item.status === "ok").length;
+    const mappingCount = stats.url + stats.upload;
+    const mappingTotal = stats.total + resolvedObjects;
+    const displayName = getDisplayUserName();
+
+    const userNameNode = document.getElementById("dashboardUserName");
+    if (!userNameNode) return;
+    userNameNode.textContent = displayName;
+    document.getElementById("dashboardFlowCount").textContent = stats.total;
+    document.getElementById("dashboardObjectCount").textContent = mappingTotal;
+    document.getElementById("dashboardMappingCount").textContent = mappingCount;
+    document.getElementById("dashboardMappingTotal").textContent = stats.total;
+    document.getElementById("dashboardTrendChart").innerHTML = createTrendSvg(getRecentDayBuckets());
+    document.getElementById("dashboardDonutChart").innerHTML = createDonutSvg(stats);
 }
 
 function getSourceLabel(source) {
@@ -935,11 +1209,14 @@ function recordConversionLog({ source, mode, strategy, title, url, inputText, pa
     state.conversionLogs = [entry, ...state.conversionLogs].slice(0, MAX_CONVERSION_LOGS);
     state.selectedLogId = entry.id;
     saveConversionLogs();
+    renderUserDashboard();
 }
 
 function showLogs() {
     state.previousWorkspace = document.getElementById("analysisWorkspace").hidden ? "start" : "analysis";
     state.logResultLanguage = state.language === "en" ? "en" : "zh";
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
@@ -951,6 +1228,8 @@ function showLogs() {
 function showApiDocs() {
     window.location.hash = "api-docs";
     updateStaticText();
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
@@ -963,16 +1242,7 @@ function showApiDocs() {
 }
 
 function goHome() {
-    if (window.location.hash === "#api-docs") {
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    }
-    document.getElementById("pageHero").hidden = false;
-    document.getElementById("logWorkspace").hidden = true;
-    document.getElementById("apiDocsWorkspace").hidden = true;
-    document.getElementById("analysisWorkspace").hidden = true;
-    document.getElementById("startScreen").hidden = false;
-    state.previousWorkspace = "start";
-    updateStatus("", "info");
+    showDashboard();
 }
 
 function appendLogDetailSection(container, title, value) {
@@ -1823,6 +2093,7 @@ function updateStaticText() {
     document.getElementById("startTitle").textContent = ui.startTitle;
     document.getElementById("startDescription").textContent = ui.startDescription;
     document.getElementById("brandHomeButton").textContent = ui.startTitle;
+    renderUserDashboard();
     document.getElementById("domainToCoreTitle").textContent = ui.domainToCoreTitle;
     document.getElementById("domainToCoreHint").textContent = ui.domainToCoreHint;
     document.getElementById("coreToDomainTitle").textContent = ui.coreToDomainTitle;
@@ -1952,6 +2223,8 @@ function setMode(mode) {
 
 function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
@@ -2053,6 +2326,14 @@ function bindEvents() {
     document.getElementById("homeButton").addEventListener("click", goHome);
     document.getElementById("brandHomeButton").addEventListener("click", goHome);
     document.getElementById("analysisHomeButton").addEventListener("click", goHome);
+    document.getElementById("dashboardOverviewButton").addEventListener("click", showDashboard);
+    document.getElementById("dashboardServiceButton").addEventListener("click", showToolHome);
+    document.getElementById("dashboardLogsButton").addEventListener("click", showLogs);
+    document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
+    document.getElementById("dashboardRefreshButton").addEventListener("click", renderOperationsDashboard);
+    document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
+        window.location.href = "/";
+    });
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -2074,6 +2355,7 @@ function bindEvents() {
         state.conversionLogs = [];
         state.selectedLogId = null;
         saveConversionLogs();
+        renderUserDashboard();
         renderLogs();
     });
     document.getElementById("uploadButton").addEventListener("click", () => {
@@ -2124,6 +2406,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadConversionLogs();
     bindEvents();
     updateStaticText();
+    loadGatewayUser();
     try {
         await loadModeSchema("common");
         await loadModeSchema("domain");

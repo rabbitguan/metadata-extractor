@@ -5,7 +5,7 @@ import json
 import re
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
@@ -40,11 +40,21 @@ FETCH_HEADERS = {
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
 
 
+def _decode_gateway_header(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    try:
+        return unquote(text)
+    except Exception:
+        return text
+
+
 def get_gateway_user():
     return {
-        'id': request.headers.get('X-User-Id', ''),
-        'name': request.headers.get('X-User-Name', ''),
-        'email': request.headers.get('X-User-Email', ''),
+        'id': _decode_gateway_header(request.headers.get('X-User-Id', '')),
+        'name': _decode_gateway_header(request.headers.get('X-User-Name', '')),
+        'email': _decode_gateway_header(request.headers.get('X-User-Email', '')),
     }
 
 
