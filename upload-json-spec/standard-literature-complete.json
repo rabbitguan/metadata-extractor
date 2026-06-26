@@ -1,0 +1,114 @@
+{
+  "resource_type": "standard_literature",
+  "core": {
+    "title": "Technical Specification for Scientific Dataset Metadata Registration",
+    "cstr_identifier": "31253.14.CSTR.2026.100004",
+    "creators": [
+      "National Science Data Standards Committee"
+    ],
+    "publisher": "Standards Press of China",
+    "publication_date": "2026-02-01",
+    "description": "A recommended technical specification defining metadata registration elements, identifier rules, quality-control requirements, and exchange formats for scientific datasets.",
+    "keywords": [
+      "metadata",
+      "scientific dataset",
+      "registration",
+      "technical specification",
+      "CSTR"
+    ],
+    "subjects": [
+      "Information Science",
+      "Standardization"
+    ],
+    "language": "zh",
+    "contributors": [
+      "National Science and Technology Infrastructure Center"
+    ],
+    "alternative_identifiers": [
+      "GB/T 99999-2026"
+    ],
+    "related_identifiers": [
+      "GB/T 7714-2015",
+      "ISO 19115-1:2014"
+    ],
+    "rights": "Copyright, Standards Press of China",
+    "funders": [
+      "National Key Research and Development Program of China, 2024YFF0600100"
+    ],
+    "version": "First edition",
+    "resource_url": [
+      "https://standards.example.org/gbt-99999-2026"
+    ]
+  },
+  "domain": {
+    "standard_literature_information": {
+      "Record Status": "New",
+      "Record Identifier": "STD-META-2026-0001",
+      "Record Date": "2026-02-01",
+      "Standard Number": "GB/T 99999-2026",
+      "Publication Date": "2026-02-01",
+      "Issuing Agency": "State Administration for Market Regulation; Standardization Administration of China",
+      "Standard Status": "Current",
+      "Implementation or Trial Date": "2026-08-01",
+      "Confirmation Date": "2026-02-01",
+      "Replaced Standard": "None",
+      "Amendment": "None",
+      "Supplement": "None",
+      "Second Standard Number": "None",
+      "Approval Organization": "Standardization Administration of China",
+      "Chinese Standard Name": "科学数据集元数据注册技术规范",
+      "Original Standard Name": "Technical Specification for Scientific Dataset Metadata Registration",
+      "English Standard Name": "Technical Specification for Scientific Dataset Metadata Registration",
+      "Issuing Agency Code": "SAC",
+      "Chinese Classification for Standards": "A24",
+      "International Classification for Standards": "35.240.70",
+      "ISBN": "978-7-5066-9999-1",
+      "ISSN": "Not applicable",
+      "Version": "First edition",
+      "Effective Region": "China",
+      "Abolition Date": "Not applicable",
+      "Original Classification Number": "N79",
+      "Drafting Organization": "National Science Data Standards Committee; National Science and Technology Infrastructure Center; Institute of Scientific and Technical Information of China",
+      "Deadline": "Not applicable",
+      "Text Language": "Chinese",
+      "Publishing Organization": "Standards Press of China",
+      "Audit Item": "68 pages; A4 format",
+      "Translation": "English title and abstract available",
+      "Price": "CNY 68",
+      "Other Carrier": "PDF; online HTML",
+      "Chinese Abstract": "本标准规定了科学数据集元数据注册的核心元素、领域扩展元素、CSTR 标识符填写规则、数据质量声明和机器可读交换格式。",
+      "English Abstract": "This standard specifies core and domain metadata elements, CSTR identifier rules, quality statements, and machine-readable exchange formats for scientific dataset registration.",
+      "English Subject Terms": "scientific dataset; metadata; registration; persistent identifier",
+      "Note": "This sample is fictional and intended for interface testing.",
+      "Document Source": "Standards Press of China catalogue, 2026",
+      "Replacing Standard": "None",
+      "Cited Documents": "GB/T 7714-2015; ISO 19115-1:2014; DataCite Metadata Schema 4.5",
+      "Related Laws": "Science and Technology Progress Law of the People's Republic of China",
+      "Consistency Degree": "Modified adoption of selected ISO 19115-1 concepts",
+      "Modified Standard": "None",
+      "Supplemented Standard": "None",
+      "Chinese Subject Terms": "科学数据；元数据；注册；标识符",
+      "Chinese Free Terms": "CSTR；开放科学；数据出版",
+      "Original Subject Terms": "metadata registration",
+      "Call Number": "A24-65/99999",
+      "Holding Flag": "1",
+      "Sort Code": "99999",
+      "Standard Type": "Recommended national standard",
+      "Document Type": "Standard",
+      "Volume Issue Number": "Not applicable",
+      "Document Code": "GB/T",
+      "Publication Cycle": "One-time publication",
+      "Publication Place": "Beijing",
+      "Security Classification": "Public",
+      "Proposing Organization": "Ministry of Science and Technology",
+      "Technical Committee": "National Technical Committee for Science Data Standardization",
+      "Country": "CN",
+      "Indexing Basis": "Cataloguing record created from official standard metadata",
+      "Update Batch Number": "2602",
+      "Standard History": "First released in 2026",
+      "Participating Organization": "National Science Data Center; China National Institute of Standardization",
+      "Electronic File Name": "GBT99999-2026.pdf"
+    }
+  },
+  "extension_info": "The sample fills nearly all standard-literature fields in backend/standard.json for display regression testing."
+}
