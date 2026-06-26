@@ -570,7 +570,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     
     # 第一步：尝试检测并处理已知网站（不调用大模型）
     if strategy in ('auto', 'rule'):
-        print("DEBUG", url, title, rule_content)
+        print(f"[Extractor Debug] url={url}, title={title}, content_len={len(rule_content or '')}")
         website_result = extract_metadata(url=url, title=title, content=rule_content)
         if website_result is not None:
             return _normalize_inline_math_tree(website_result)

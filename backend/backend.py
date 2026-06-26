@@ -1,7 +1,9 @@
+import argparse
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
 import json
+import os
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -9,6 +11,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
+from dynamic_renderer import render_url_content
 from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
 from get_id import get_typed_identifiers
 from identifier import process_source_code
@@ -38,6 +41,13 @@ FETCH_HEADERS = {
 }
 
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
+
+DYNAMIC_RENDER_DOMAINS = {
+    item.strip().lower()
+    for item in os.environ.get('METADATA_DYNAMIC_RENDER_DOMAINS', 'ncdc.ac.cn,escience.org.cn').split(',')
+    if item.strip()
+}
+DYNAMIC_RENDER_MODE = os.environ.get('METADATA_DYNAMIC_RENDER_MODE', 'never').strip().lower()
 
 
 def _decode_gateway_header(value):
@@ -236,6 +246,42 @@ def _merge_missing_values(primary, fallback):
         return primary if primary else fallback
 
     return primary
+
+
+def _merge_metadata_payload_missing(primary, fallback):
+    """
+    Merge a secondary metadata payload into a primary payload.
+    Primary values win; fallback only fills missing fields.
+    """
+    if not isinstance(primary, dict):
+        return fallback if isinstance(fallback, dict) else primary
+    if not isinstance(fallback, dict):
+        return primary
+
+    merged = dict(primary)
+    for key, fallback_value in fallback.items():
+        if key not in merged:
+            merged[key] = fallback_value
+            continue
+
+        primary_value = merged[key]
+        if isinstance(primary_value, dict) and isinstance(fallback_value, dict):
+            if isinstance(primary_value.get('metadatas'), list) and isinstance(fallback_value.get('metadatas'), list):
+                primary_items = primary_value.get('metadatas') or []
+                fallback_items = fallback_value.get('metadatas') or []
+                if primary_items and fallback_items and isinstance(primary_items[0], dict) and isinstance(fallback_items[0], dict):
+                    next_section = dict(primary_value)
+                    next_items = list(primary_items)
+                    next_items[0] = _merge_missing_values(next_items[0], fallback_items[0])
+                    next_section['metadatas'] = next_items
+                    merged[key] = next_section
+                    continue
+            merged[key] = _merge_metadata_payload_missing(primary_value, fallback_value)
+            continue
+
+        merged[key] = _merge_missing_values(primary_value, fallback_value)
+
+    return merged
 
 
 def _normalize_whitespace(value):
@@ -779,16 +825,62 @@ def _extract_text_from_html(html):
     return '\n'.join(chunks), title
 
 
-def fetch_url_content(url):
+def _html_looks_client_rendered(html='', text='', title=''):
+    lowered_html = str(html or '').lower()
+    lowered_title = str(title or '').strip().lower()
+    normalized_text = _normalize_whitespace(text)
+    if len(normalized_text) < 600 and any(marker in lowered_html for marker in ('id="app"', 'id="root"', '__next', 'data-reactroot')):
+        return True
+    if lowered_title in {'', 'loading', '加载中', '请稍候', 'just a moment...'}:
+        return True
+    if len(normalized_text) < 200 and lowered_html.count('<script') >= 5:
+        return True
+    return False
+
+
+def _should_dynamic_render(url='', html='', text='', title='', dynamic_render='auto'):
+    requested = str(dynamic_render if dynamic_render is not None else 'auto').strip().lower()
+    if requested in {'0', 'false', 'no', 'off', 'never', 'disabled'}:
+        return False
+    if DYNAMIC_RENDER_MODE in {'never', 'off', 'disabled'}:
+        return False
+    if requested in {'1', 'true', 'yes', 'on', 'always', 'force'}:
+        return True
+    if DYNAMIC_RENDER_MODE in {'always', 'force'}:
+        return True
+
+    normalized_url = str(url or '').lower()
+    if any(domain in normalized_url for domain in DYNAMIC_RENDER_DOMAINS):
+        return True
+    return _html_looks_client_rendered(html=html, text=text, title=title)
+
+
+def fetch_url_content(url, dynamic_render='auto'):
     response = requests.get(url, headers=FETCH_HEADERS, timeout=15)
     response.raise_for_status()
     response.encoding = response.apparent_encoding or response.encoding
     html = response.text or ''
     text, title = _extract_text_from_html(html)
+    render_method = 'static'
+
+    if _should_dynamic_render(url=url, html=html, text=text, title=title, dynamic_render=dynamic_render):
+        try:
+            rendered = render_url_content(url, headers=FETCH_HEADERS)
+            rendered_html = rendered.get('html') or ''
+            rendered_text, rendered_title = _extract_text_from_html(rendered_html)
+            if len(rendered_text or '') >= len(text or '') or _html_looks_client_rendered(html=html, text=text, title=title):
+                html = rendered_html
+                text = rendered_text
+                title = rendered_title or rendered.get('title') or title
+                render_method = 'dynamic'
+        except Exception as error:
+            print(f"[Dynamic Render Warning] Falling back to static fetch for {url}: {error}")
+
     return {
         'html': html,
         'text': text,
         'title': title,
+        'render_method': render_method,
     }
 
 CORE_FIELD_ALIASES_ZH = {
@@ -886,7 +978,7 @@ def _resource_type_from_domain(domain_value, language='zh'):
     }.get(domain, '其他')
 
 
-def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto'):
+def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto', persist_history=True):
     if strategy == 'upload_rule':
         llm_answer = normalize_llm_answer(extract_upload_metadata(text, title=title))
     else:
@@ -940,7 +1032,7 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     elif domain_en:
         merged_answer[domain_section_zh] = domain_en
 
-    if url and html:
+    if persist_history and url and html:
         try:
             record_id = save_analysis_history(
                 requested_url=url,
@@ -976,7 +1068,56 @@ def handle_identifier_request(data):
             print(
                 f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
             )
-            payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+            payload = None
+            primary_error = None
+            try:
+                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                primary_error = error
+                print(f"[WARNING] Primary identifier metadata failed for {url}: {error}")
+
+            supplemental_results = []
+            for supplemental in item.get('supplemental_urls') or []:
+                supplemental_url = supplemental.get('url') if isinstance(supplemental, dict) else str(supplemental or '')
+                if not supplemental_url:
+                    continue
+                try:
+                    print(
+                        f"[Supplemental] Fetching {supplemental_url} "
+                        f"(dynamic_render={DYNAMIC_RENDER_MODE})"
+                    )
+                    supplemental_page = fetch_url_content(supplemental_url, dynamic_render='auto')
+                    supplemental_payload = build_metadata_payload(
+                        supplemental_page.get('text', ''),
+                        mode,
+                        url=supplemental_url,
+                        title=supplemental_page.get('title', ''),
+                        html=supplemental_page.get('html', ''),
+                        strategy='auto',
+                        persist_history=False,
+                    )
+                    if payload is None:
+                        payload = supplemental_payload
+                    else:
+                        payload = _merge_metadata_payload_missing(payload, supplemental_payload)
+                    supplemental_results.append({
+                        'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
+                        'url': supplemental_url,
+                        'status': 'ok',
+                        'render_method': supplemental_page.get('render_method'),
+                    })
+                except Exception as supplemental_error:
+                    print(f"[WARNING] Supplemental metadata failed for {supplemental_url}: {supplemental_error}")
+                    supplemental_results.append({
+                        'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
+                        'url': supplemental_url,
+                        'status': 'error',
+                        'message': str(supplemental_error),
+                    })
+
+            if payload is None:
+                raise primary_error or ValueError('No metadata payload generated')
+
             results.append({
                 'identifier': item.get('identifier'),
                 'type': item.get('type'),
@@ -984,6 +1125,7 @@ def handle_identifier_request(data):
                 'source': item.get('source'),
                 'status': 'ok',
                 'payload': payload,
+                'supplemental_sources': supplemental_results,
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
             })
         except (json.JSONDecodeError, ValueError, TypeError) as error:
@@ -1009,10 +1151,15 @@ def handle_register_request(data):
 
     if source == 'url':
         url = str(data.get('url') or '').strip()
+        dynamic_render = data.get('dynamic_render', data.get('render', 'auto'))
         if not url:
             return jsonify({"status": "error", "message": "Missing URL"}), 400
+        if not force_reanalyze:
+            history_payload = _lookup_history_payload(source=source, url=url, text='')
+            if history_payload:
+                return jsonify(history_payload)
         try:
-            data = fetch_url_content(url)
+            data = fetch_url_content(url, dynamic_render=dynamic_render)
             data['url'] = url
         except Exception as error:
             print(f"URL Fetch Error: {error}")
@@ -1157,6 +1304,7 @@ def resolve_identifier_content(data):
                 'resolved_url': resolved_url,
                 'source': source,
                 'content': content,
+                'supplemental_urls': resolved.get('supplemental_urls') or [],
                 'status': 'ok',
             })
         except Exception as error:
@@ -1186,4 +1334,21 @@ def resolve_identifier_content(data):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=4000, threaded=True)
+    parser = argparse.ArgumentParser(description='Run metadata extractor backend.')
+    parser.add_argument('--host', default='127.0.0.1', help='Flask bind host, default: 127.0.0.1')
+    parser.add_argument('--port', type=int, default=4000, help='Flask bind port, default: 4000')
+    parser.add_argument(
+        '-d',
+        action='store_true',
+        help='Enable browser dynamic rendering for URL fetches.',
+    )
+    args = parser.parse_args()
+
+    if args.d:
+        DYNAMIC_RENDER_MODE = 'auto'
+
+    print(
+        f"[Startup] dynamic_render={DYNAMIC_RENDER_MODE}, "
+        f"dynamic_render_domains={','.join(sorted(DYNAMIC_RENDER_DOMAINS)) or '(none)'}"
+    )
+    app.run(debug=True, host=args.host, port=args.port, threaded=True)

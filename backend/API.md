@@ -18,6 +18,7 @@
   "mode": "common",
   "strategy": "auto",
   "force_reanalyze": false,
+  "dynamic_render": "auto",
   "text": "页面文本内容",
   "html": "<html>...</html>",
   "url": "https://example.com/paper",
@@ -31,6 +32,7 @@
 - `mode`：前端模式标识，常见值：`common` / `domain`（后端会透传给模型流程）
 - `strategy`：提取策略，常见值：`auto` / `llm` / `rule`
 - `force_reanalyze`：是否跳过历史缓存并强制重新分析（支持 `true/false`、`"1"`、`"true"` 等）
+- `dynamic_render`：URL 直抓时是否使用浏览器动态渲染。支持 `auto` / `true` / `false`，默认 `auto`；只有后端启动时加了 `-d` 才会真正启用动态渲染
 - `text`：待分析文本；当 `source` 为 `text` 或 `web` 时不能为空
 - `html`：页面 HTML（用于规则提取与历史入库）
 - `url`：页面 URL
@@ -43,6 +45,22 @@
 1. 必须提供 `url`
 2. 后端会先抓取 URL 页面并提取文本，再进入分析流程
 3. `text/html/title` 以抓取结果为准
+4. CSTR 查询会继续访问配置好的补充源，例如 eScience；后端启动时加 `-d` 后，这些网页才会按规则尝试 Playwright 动态渲染
+
+动态渲染运行时说明：
+
+- 普通抓取先使用 `requests`，动态渲染作为兜底或指定域名增强。
+- 默认不启用动态渲染；本地启动后端时加 `-d` 只表示“访问网页后用浏览器渲染再解析”，不影响是否访问 NCDC/eScience 等数据源。
+- 环境变量 `METADATA_DYNAMIC_RENDER_MODE` 仍支持 `auto` / `always` / `never`，默认 `never`。
+- 环境变量 `METADATA_DYNAMIC_RENDER_DOMAINS` 可配置自动动态渲染域名，默认 `ncdc.ac.cn,escience.org.cn`。
+- 如果 Playwright/Chromium 不可用，后端会自动回退到静态抓取并打印 warning。
+
+本地直接运行 `backend.py` 时，需要动态渲染就加 `-d`：
+
+```bash
+python backend.py
+python backend.py -d
+```
 
 #### 策略行为（`strategy`）
 

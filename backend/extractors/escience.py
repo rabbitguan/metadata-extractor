@@ -5,6 +5,7 @@ from html import unescape
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
+import requests
 from bs4 import BeautifulSoup
 
 
@@ -35,6 +36,15 @@ FIELD_LABELS = [
     '服务机构电子信箱',
     '所属平台',
 ]
+
+API_HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+    ),
+    'Accept': 'application/json,text/plain,*/*',
+    'Referer': 'https://www.escience.org.cn/',
+}
 
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
@@ -97,6 +107,36 @@ def _extract_query_identifiers(url: str) -> tuple[Optional[str], Optional[str]]:
     return query_id, query_cstr
 
 
+def _fetch_detail_data(url: str) -> Optional[Dict[str, Any]]:
+    query_id, query_cstr = _extract_query_identifiers(url)
+    candidates = [query_id, query_cstr]
+    seen = set()
+
+    for cstr_id in candidates:
+        cstr_id = _clean_text(cstr_id)
+        if not cstr_id or cstr_id in seen:
+            continue
+        seen.add(cstr_id)
+        try:
+            response = requests.get(
+                'https://api.escience.org.cn/metadata/metadata/search/detail',
+                params={'cstrId': cstr_id},
+                headers=API_HEADERS,
+                timeout=12,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as error:
+            print(f"[WARNING] eScience detail API failed for {cstr_id}: {error}")
+            continue
+
+        data = payload.get('data') if isinstance(payload, dict) else None
+        if isinstance(data, dict) and data:
+            return data
+
+    return None
+
+
 def _extract_first_url(text: Optional[str]) -> Optional[str]:
     if not text:
         return None
@@ -136,7 +176,7 @@ def _extract_by_label(text: str, label: str, labels: list[str]) -> Optional[str]
 
 def _extract_cstr_identifier(text: str, url: str, query_cstr: Optional[str], query_id: Optional[str]) -> Optional[str]:
     labeled_pattern = re.compile(r'\bCSTR\s*[:：]\s*([A-Za-z0-9._-]+)\b', flags=re.IGNORECASE)
-    strict_pattern = re.compile(r'\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b')
+    strict_pattern = re.compile(r'\b\d{5}\.\d{2}\.[A-Za-z0-9._-]+\b')
 
     for source in (query_cstr or '', text or '', query_id or '', url or ''):
         if not source:
@@ -228,6 +268,179 @@ def _strip_inline_identifier_noise(value: Optional[str]) -> Optional[str]:
     return _clean_text(cleaned) or text
 
 
+def _list_from_api(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [item for item in (_clean_text(item) for item in value) if item]
+    return _split_terms(_clean_text(value))
+
+
+def _payload_from_api(data: Dict[str, Any], url: str) -> Dict[str, Any]:
+    title_text = _clean_text(data.get('title'))
+    title_en = _clean_text(data.get('titleEn'))
+    cstr_identifier = _normalize_cstr_candidate(data.get('cstrId'))
+    identifier = data.get('id') or cstr_identifier or url
+    keywords = _list_from_api(data.get('keywordsArr') or data.get('keywords'))
+    subject_terms = _list_from_api(data.get('subjectArr') or data.get('subject'))
+    theme_terms = _list_from_api(data.get('themeArr') or data.get('theme'))
+    theme_value = ' '.join(theme_terms) if theme_terms else None
+    description = _clean_text(data.get('descr'))
+    generated_date = _clean_text(data.get('generateDateStr') or data.get('generateDate'))
+    latest_release_date = _clean_text(data.get('utime'))
+    resource_url = _clean_text(data.get('link')) or url
+    service_org = _clean_text(data.get('serviceOrg') or data.get('serviceOrgAggr') or data.get('orgName'))
+    platform_name = _clean_text(data.get('orgName') or data.get('orgNameAggr'))
+    service_address = _clean_text(data.get('serviceOrgAddr'))
+    service_postal = _clean_text(data.get('serviceOrgPostCode'))
+    service_phone = _clean_text(data.get('serviceOrgPhone'))
+    service_email = _clean_text(data.get('serviceOrgEmail'))
+    sharing_channel = _clean_text(data.get('sharePathway'))
+    sharing_scope = _clean_text(data.get('shareScope'))
+    application_process = _clean_text(data.get('applicationProcess'))
+    subject_value = ' '.join(subject_terms) if subject_terms else platform_name
+
+    zh_payload: Dict[str, Any] = {
+        '资源类型判定': '数据集',
+        '领域判定': '数据集元数据',
+        '标识符': identifier,
+        'CSTR标识符': cstr_identifier,
+        '资源名称': title_text,
+        '标题': title_text,
+        '创建者': [service_org] if service_org else None,
+        '发布机构': service_org or platform_name,
+        '发布日期': latest_release_date or generated_date,
+        '描述': description,
+        '关键词': keywords or None,
+        '生成日期': generated_date,
+        '注册日期': _clean_text(data.get('ctime')),
+        '最新发布日期': latest_release_date,
+        '学科分类': subject_value,
+        '学科': subject_value,
+        '主题分类': theme_value,
+        '知识产权类别': None,
+        '资源使用许可': None,
+        '资源访问地址': resource_url,
+        '共享方式': {
+            '共享途径': sharing_channel,
+            '共享范围': sharing_scope,
+            '申请流程': application_process,
+        },
+        '提供方信息': None,
+        '服务方信息': {
+            '服务方名称': service_org,
+            '服务方详细地址': service_address,
+            '服务方邮政编码': service_postal,
+            '服务方联系电话': service_phone,
+            '服务方电子邮箱': service_email,
+        },
+        '数据集基本信息': {
+            '标识符': identifier,
+            '资源名称': title_text,
+            '描述': description,
+            '关键词': keywords or None,
+            '学科分类': subject_terms if subject_terms else None,
+            '主题分类': theme_value,
+            '资源名称（外文）': title_en,
+        },
+        '数据集出版信息': {
+            '生成日期': generated_date,
+            '注册日期': _clean_text(data.get('ctime')),
+            '最新发布日期': latest_release_date,
+        },
+        '数据集服务信息': {
+            '资源访问地址': resource_url,
+            '共享途径': sharing_channel,
+            '共享范围': sharing_scope,
+            '申请流程': application_process,
+        },
+        '扩展信息': {
+            '所属平台': platform_name,
+            '资源名称（外文）': title_en,
+        },
+    }
+
+    english_title = _english_text(title_en)
+    english_keywords = _english_terms(keywords)
+    en_payload: Dict[str, Any] = {
+        'Resource Type Classification': 'Dataset',
+        'Domain Classification': 'Dataset Metadata',
+        'Identifier': cstr_identifier or identifier,
+        'CSTR Identifier': cstr_identifier,
+        'titles': [{'lang': 'en', 'name': english_title}] if english_title else None,
+        'creators': None,
+        'publisher': None,
+        'publish_date': latest_release_date or generated_date,
+        'descriptions': None,
+        'keywords': [{'lang': 'en', 'keyword': english_keywords}] if english_keywords else None,
+        'subjects': None,
+        'language': None,
+        'contributors': None,
+        'alternative_identifiers': None,
+        'related_identifiers': None,
+        'rights': None,
+        'funders': None,
+        'version': None,
+        'urls': [resource_url] if resource_url else None,
+        'resource_type': 'Dataset',
+        'Resource Name': english_title,
+        'Title': english_title,
+        'Creators': None,
+        'Publisher': None,
+        'Publication Date': latest_release_date or generated_date,
+        'Description': None,
+        'Keywords': english_keywords,
+        'Generation Date': generated_date,
+        'Registration Date': _clean_text(data.get('ctime')),
+        'Latest Release Date': latest_release_date,
+        'Discipline Classification': None,
+        'Subject Classification': None,
+        'Intellectual Property Type': None,
+        'Usage License': None,
+        'Resource Access URL': resource_url,
+        'Sharing Details': {
+            'Sharing Channel': None,
+            'Sharing Scope': None,
+            'Application Process': None,
+        },
+        'Provider Information': None,
+        'Service Provider Information': {
+            'Service Provider Name': None,
+            'Service Provider Address': None,
+            'Service Provider Postal Code': service_postal,
+            'Service Provider Phone': service_phone,
+            'Service Provider Email': service_email,
+        },
+        'Dataset Basic Information': {
+            'Identifier': cstr_identifier or identifier,
+            'Resource Name': english_title,
+            'Description': None,
+            'Keywords': english_keywords,
+            'Discipline Classification': None,
+            'Subject Classification': None,
+            'Resource Name (Foreign Language)': english_title,
+        },
+        'Dataset Publication Information': {
+            'Generation Date': generated_date,
+            'Registration Date': _clean_text(data.get('ctime')),
+            'Latest Release Date': latest_release_date,
+        },
+        'Dataset Service Information': {
+            'Resource Access URL': resource_url,
+            'Sharing Channel': None,
+            'Sharing Scope': None,
+            'Application Process': None,
+        },
+        'Extension Info': {
+            'Platform': None,
+            'Resource Name (Foreign Language)': english_title,
+        },
+    }
+
+    return {
+        'zh': zh_payload,
+        'en': en_payload,
+    }
+
+
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').lower().strip()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
@@ -242,6 +455,11 @@ def matches(url: str, title: str, content: str) -> bool:
 def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, Any]]:
     if not content:
         return None
+
+    if 'escience.org.cn' in (url or '').lower() and 'metadata/detail' in (url or '').lower():
+        api_data = _fetch_detail_data(url)
+        if api_data:
+            return _payload_from_api(api_data, url)
 
     soup = BeautifulSoup(content, 'html.parser')
     plain_text = _clean_text(soup.get_text(' ', strip=True)) or _clean_text(content) or ''
