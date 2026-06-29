@@ -19,7 +19,7 @@
 <body>
     <section id="dashboardScreen" class="admin-dashboard">
         <header class="admin-topbar">
-            <h1>多模态典型科技资源标识编码工具</h1>
+            <h1>元数据双向映射工具</h1>
             <div class="admin-user-box">
                 <span class="admin-user-icon">●</span>
                 <span id="dashboardUserName">平台用户</span>
@@ -35,6 +35,10 @@
                 <button id="dashboardServiceButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">⌁</span>
                     <span>服务功能接口</span>
+                </button>
+                <button id="dashboardFormatButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">◇</span>
+                    <span>网页格式化支持</span>
                 </button>
                 <button id="dashboardLogsButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">□</span>
@@ -85,12 +89,13 @@
         </div>
     </section>
 
-    <header class="top-nav" hidden>
-        <div class="container nav-inner">
-            <button id="brandHomeButton" class="brand" type="button">元数据双向映射工具</button>
-            <div class="nav-actions">
-                <button id="openApiDocsButton" class="nav-log-button" type="button">接口文档</button>
-                <button id="openLogsButton" class="nav-log-button" type="button">转换日志</button>
+    <section id="toolShell" class="tool-shell" hidden>
+        <header class="admin-topbar tool-topbar">
+            <h1>元数据双向映射工具</h1>
+            <button id="brandHomeButton" class="brand" type="button" hidden>元数据双向映射工具</button>
+            <button id="openApiDocsButton" class="nav-log-button" type="button" hidden>接口文档</button>
+            <button id="openLogsButton" class="nav-log-button" type="button" hidden>转换日志</button>
+            <div class="tool-topbar-actions">
                 <div class="lang-toggle" role="group" aria-label="Language switcher">
                     <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
                     <button id="langEnButton" class="lang-button" type="button" data-language="en">EN</button>
@@ -101,8 +106,31 @@
                     </svg>
                 </button>
             </div>
-        </div>
-    </header>
+        </header>
+        <div class="admin-layout tool-layout">
+            <aside class="admin-sidebar tool-sidebar">
+                <button id="toolOverviewButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">▣</span>
+                    <span>系统运行总览</span>
+                </button>
+                <button id="toolServiceButton" class="admin-nav-item active" type="button">
+                    <span class="admin-nav-icon">⌁</span>
+                    <span>服务功能接口</span>
+                </button>
+                <button id="toolFormatButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">◇</span>
+                    <span>网页格式化支持</span>
+                </button>
+                <button id="toolLogsButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">□</span>
+                    <span>历史任务记录</span>
+                </button>
+                <button id="toolApiButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">◫</span>
+                    <span>接口配置文档</span>
+                </button>
+            </aside>
+            <div class="tool-content">
 
     <section id="pageHero" class="page-hero" hidden>
         <div class="container hero-inner">
@@ -274,6 +302,17 @@
             </div>
         </section>
 
+        <section id="formatSupportWorkspace" class="format-support-workspace" hidden>
+            <div class="log-header">
+                <button id="closeFormatSupportButton" class="btn secondary" type="button">返回主页</button>
+                <div>
+                    <h2 id="formatSupportTitle">网页格式化支持</h2>
+                    <p id="formatSupportSubtitle">后端已内置专门格式化处理的网站规则</p>
+                </div>
+            </div>
+            <div id="formatSupportList" class="format-support-list"></div>
+        </section>
+
         <section id="apiDocsWorkspace" class="api-docs-workspace" hidden>
             <div class="log-header">
                 <button id="closeApiDocsButton" class="btn secondary" type="button">返回主页</button>
@@ -292,6 +331,9 @@
             <span>元数据双向映射工具 Web Frontend</span>
         </div>
     </footer>
+            </div>
+        </div>
+    </section>
 
     <script src="app.js"></script>
 </body>
