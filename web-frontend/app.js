@@ -426,6 +426,109 @@ const MODE_LABELS = {
     domain: { zh: "领域专用元数据项目表", en: "Domain Metadata" }
 };
 
+const WEBSITE_FORMAT_SUPPORT = [
+    {
+        name: "arXiv",
+        rule: "arxiv",
+        domains: ["arxiv.org/abs"],
+        resourceType: { zh: "数据论文", en: "Data Paper" },
+        summary: {
+            zh: "识别 arXiv 摘要页，格式化题名、作者、摘要、分类、版本、PDF/DOI 等信息。",
+            en: "Handles arXiv abstract pages and formats title, authors, abstract, subject, version, PDF/DOI details."
+        }
+    },
+    {
+        name: "CSTR 标识资源",
+        rule: "cstr",
+        domains: ["scids.bdware.cn", "cstr.cn"],
+        resourceType: { zh: "数据集 / 数据论文 / 其他科技资源", en: "Dataset / Data Paper / Other" },
+        summary: {
+            zh: "识别 CSTR 资源 JSON/页面结构，按 resourceType 映射核心元数据和领域元数据。",
+            en: "Handles CSTR resource JSON/page structures and maps resourceType into core/domain metadata."
+        }
+    },
+    {
+        name: "eScience 中国科技资源共享网",
+        rule: "escience",
+        domains: ["escience.org.cn/metadata/detail", "api.escience.org.cn"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 eScience 元数据详情页，并优先调用详情 API 补齐 CSTR、标题、摘要、关键词、空间时间范围等字段。",
+            en: "Handles eScience metadata detail pages and enriches fields through the detail API where possible."
+        }
+    },
+    {
+        name: "NCDC 国家冰川冻土沙漠科学数据中心",
+        rule: "ncdc",
+        domains: ["ncdc.ac.cn/portal/metadata"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NCDC 元数据页，格式化数据集标题、CSTR/DOI、摘要、关键词、地理范围、数据量和引用信息。",
+            en: "Handles NCDC metadata pages and formats dataset title, identifiers, abstract, keywords, coverage, volume, and citation."
+        }
+    },
+    {
+        name: "NMDC 国家海洋科学数据中心",
+        rule: "nmdc",
+        domains: ["mds.nmdis.org.cn/pages/dataViewDetail.html"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NMDC 数据集详情页，调用详情接口格式化标题、标识符、摘要、关键词、数据时间、共享级别和引用方式。",
+            en: "Handles NMDC dataset detail pages and formats title, identifiers, abstract, keywords, data time, sharing level, and citation."
+        }
+    },
+    {
+        name: "NEDC 国家地震科学数据中心",
+        rule: "nedc",
+        domains: ["data.earthquake.cn/datashare/report.shtml"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NEDC 数据共享详情页，格式化数据名称、分类、时空范围、联系信息、共享方式和中英文引用规范。",
+            en: "Handles NEDC data sharing detail pages and formats name, category, coverage, contact details, sharing mode, and bilingual citation guidance."
+        }
+    },
+    {
+        name: "CMA 中国气象数据网",
+        rule: "cma",
+        domains: ["data.cma.cn/data/cdcdetail/dataCode"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 CMA 数据详情页，格式化数据名称、登记编号、关键词、摘要、时空范围、共享级别和服务入口。",
+            en: "Handles CMA data detail pages and formats dataset name, registration number, keywords, abstract, coverage, sharing level, and service URL."
+        }
+    },
+    {
+        name: "北京大学学位论文",
+        rule: "pku_thesis",
+        domains: ["thesis.lib.pku.edu.cn/detail"],
+        resourceType: { zh: "数据论文", en: "Data Paper" },
+        summary: {
+            zh: "识别北大学位论文详情页，格式化中英文题名、作者、摘要、关键词、学位信息等。",
+            en: "Handles PKU thesis detail pages and formats bilingual title, author, abstract, keywords, and degree metadata."
+        }
+    },
+    {
+        name: "PubMed",
+        rule: "pubmed",
+        domains: ["pubmed.ncbi.nlm.nih.gov"],
+        resourceType: { zh: "数据论文", en: "Data Paper" },
+        summary: {
+            zh: "识别 PubMed 页面，作为医学文献网页的专门规则入口。",
+            en: "Handles PubMed pages as a dedicated biomedical literature rule."
+        }
+    },
+    {
+        name: "VSSO 空间科学数据",
+        rule: "vsso",
+        domains: ["vsso.nssdc.ac.cn/nssdc_zh/html/vssoinfo.html"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 VSSO 资源详情页，格式化 CSTR/DOI、项目、数据集说明、下载/访问地址等。",
+            en: "Handles VSSO resource detail pages and formats identifiers, projects, dataset description, and access/download URLs."
+        }
+    }
+];
+
 const UI_TEXT = {
     zh: {
         startTitle: "元数据双向映射工具",
@@ -439,6 +542,11 @@ const UI_TEXT = {
         apiDocsTitle: "接口文档",
         apiDocsSubtitle: "后端接口基址：",
         openLogsTitle: "转换日志",
+        formatSupportTitle: "网页格式化支持",
+        formatSupportSubtitle: "后端已内置专门格式化处理的网站规则",
+        formatSupportRuleLabel: "后端规则",
+        formatSupportDomainLabel: "匹配网页",
+        formatSupportTypeLabel: "格式化类型",
         logTitle: "转换日志",
         logSubtitle: "查看最近的转换任务和完整结果",
         logDetailTitle: "转换详情",
@@ -515,6 +623,11 @@ const UI_TEXT = {
         apiDocsTitle: "API Docs",
         apiDocsSubtitle: "Backend API base path: ",
         openLogsTitle: "Conversion Logs",
+        formatSupportTitle: "Website Formatting Support",
+        formatSupportSubtitle: "Dedicated backend formatting rules are enabled for these websites",
+        formatSupportRuleLabel: "Backend rule",
+        formatSupportDomainLabel: "Matched pages",
+        formatSupportTypeLabel: "Formatted type",
         logTitle: "Conversion Logs",
         logSubtitle: "Review recent conversion tasks and complete results",
         logDetailTitle: "Conversion Detail",
@@ -906,6 +1019,14 @@ function getSourceResultCache() {
     return state.resultCacheBySource[sourceKey];
 }
 
+function setSidebarActive(target) {
+    document.querySelectorAll(".admin-nav-item").forEach((item) => item.classList.remove("active"));
+    const dashboardButton = document.getElementById(`dashboard${target}Button`);
+    const toolButton = document.getElementById(`tool${target}Button`);
+    if (dashboardButton) dashboardButton.classList.add("active");
+    if (toolButton) toolButton.classList.add("active");
+}
+
 function activateSourceMode(sourceMode) {
     state.sourceMode = sourceMode;
     state.resultCache = getSourceResultCache();
@@ -1014,7 +1135,7 @@ async function loadGatewayUser() {
 }
 
 function setAppShellVisible(visible) {
-    document.querySelector(".top-nav").hidden = !visible;
+    document.getElementById("toolShell").hidden = !visible;
     document.getElementById("pageHero").hidden = !visible;
     document.getElementById("pageMain").hidden = !visible;
     document.querySelector(".page-footer").hidden = !visible;
@@ -1029,9 +1150,9 @@ function showDashboard() {
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = true;
-    document.querySelectorAll(".admin-nav-item").forEach((item) => item.classList.remove("active"));
-    document.getElementById("dashboardOverviewButton").classList.add("active");
+    setSidebarActive("Overview");
     renderOperationsDashboard();
 }
 
@@ -1042,9 +1163,11 @@ function showToolHome() {
     document.getElementById("startScreen").hidden = false;
     document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = true;
     state.previousWorkspace = "start";
     updateStatus("", "info");
+    setSidebarActive("Service");
     updateStaticText();
 }
 
@@ -1291,13 +1414,28 @@ function showLogs() {
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = false;
+    setSidebarActive("Logs");
     renderLogs();
 }
 
+function showFormatSupport() {
+    document.getElementById("dashboardScreen").hidden = true;
+    setAppShellVisible(true);
+    document.getElementById("pageHero").hidden = true;
+    document.getElementById("startScreen").hidden = true;
+    document.getElementById("analysisWorkspace").hidden = true;
+    document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("apiDocsWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = false;
+    setSidebarActive("Format");
+    renderFormatSupport();
+}
+
 function showApiDocs() {
-    window.location.hash = "api-docs";
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#api-docs`);
     updateStaticText();
     document.getElementById("dashboardScreen").hidden = true;
     setAppShellVisible(true);
@@ -1305,10 +1443,54 @@ function showApiDocs() {
     document.getElementById("startScreen").hidden = true;
     document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = false;
+    setSidebarActive("Api");
     renderApiDocs();
-    requestAnimationFrame(() => {
-        document.getElementById("apiDocsWorkspace").scrollIntoView({ block: "start" });
+}
+
+function renderFormatSupport() {
+    const language = state.language;
+    const ui = getUIText(language);
+    const container = document.getElementById("formatSupportList");
+    container.innerHTML = "";
+
+    WEBSITE_FORMAT_SUPPORT.forEach((item) => {
+        const card = document.createElement("article");
+        card.className = "format-support-card";
+
+        const head = document.createElement("div");
+        head.className = "format-support-head";
+        const title = document.createElement("h3");
+        title.textContent = item.name;
+        const badge = document.createElement("span");
+        badge.className = "format-support-badge";
+        badge.textContent = item.resourceType[language] || item.resourceType.zh;
+        head.appendChild(title);
+        head.appendChild(badge);
+
+        const summary = document.createElement("p");
+        summary.textContent = item.summary[language] || item.summary.zh;
+
+        const meta = document.createElement("dl");
+        meta.className = "format-support-meta";
+        [
+            [ui.formatSupportRuleLabel, item.rule],
+            [ui.formatSupportDomainLabel, item.domains.join(" / ")],
+            [ui.formatSupportTypeLabel, item.resourceType[language] || item.resourceType.zh]
+        ].forEach(([label, value]) => {
+            const term = document.createElement("dt");
+            term.textContent = label;
+            const detail = document.createElement("dd");
+            detail.textContent = value;
+            meta.appendChild(term);
+            meta.appendChild(detail);
+        });
+
+        card.appendChild(head);
+        card.appendChild(summary);
+        card.appendChild(meta);
+        container.appendChild(card);
     });
 }
 
@@ -1783,9 +1965,22 @@ async function requestMetadataForUploadedFile(mode) {
     return requestMetadataFromText(mode, normalizedText, { title: file.name, url: "", strategy: "upload_rule", source: "upload" });
 }
 
+function getFallbackLanguage(language = state.language) {
+    return language === "en" ? "zh" : "en";
+}
+
+function hasUsableLocalizedContent(item) {
+    if (!isObject(item)) return false;
+    return Object.entries(item).some(([key, value]) => key !== "lang" && !isMissingDisplayValue(value));
+}
+
 function pickLocalizedItem(items, language = state.language) {
     const list = Array.isArray(items) ? items : [];
-    return list.find((item) => isObject(item) && item.lang === language) || null;
+    const preferred = list.find((item) => isObject(item) && item.lang === language) || null;
+    if (preferred && hasUsableLocalizedContent(preferred)) return preferred;
+    const fallbackLanguage = getFallbackLanguage(language);
+    const fallback = list.find((item) => isObject(item) && item.lang === fallbackLanguage && hasUsableLocalizedContent(item)) || null;
+    return fallback || preferred;
 }
 
 function filterLocalizedTree(data, language = state.language) {
@@ -2083,9 +2278,27 @@ function getPayloadSectionKey(schemaKey, language) {
     }[schemaKey] || schemaKey;
 }
 
+function mergeDisplayFallback(preferred, fallback) {
+    if (isMissingDisplayValue(preferred)) return fallback;
+    if (isMissingDisplayValue(fallback)) return preferred;
+    if (Array.isArray(preferred)) return preferred;
+    if (isObject(preferred) && isObject(fallback)) {
+        const result = { ...fallback, ...preferred };
+        Object.keys(result).forEach((key) => {
+            result[key] = mergeDisplayFallback(preferred[key], fallback[key]);
+        });
+        return result;
+    }
+    return preferred;
+}
+
 function getDisplayPayload(payloadBundle, language = state.language) {
     if (!isObject(payloadBundle)) return {};
-    if (isObject(payloadBundle[language])) return payloadBundle[language];
+    const preferred = payloadBundle[language];
+    const fallback = payloadBundle[getFallbackLanguage(language)];
+    if (isObject(preferred) && isObject(fallback)) return mergeDisplayFallback(preferred, fallback);
+    if (isObject(preferred)) return preferred;
+    if (isObject(fallback)) return fallback;
     return payloadBundle;
 }
 
@@ -2199,6 +2412,9 @@ function updateStaticText() {
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
     document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
+    document.getElementById("formatSupportTitle").textContent = ui.formatSupportTitle;
+    document.getElementById("formatSupportSubtitle").textContent = ui.formatSupportSubtitle;
+    document.getElementById("closeFormatSupportButton").textContent = ui.closeLogsTitle;
     document.getElementById("openLogsButton").textContent = ui.openLogsTitle;
     document.getElementById("closeLogsButton").textContent = ui.closeLogsTitle;
     document.getElementById("homeButton").setAttribute("aria-label", ui.homeTitle);
@@ -2236,6 +2452,7 @@ function updateStaticText() {
     langEnButton.classList.toggle("active", language === "en");
     langEnButton.textContent = ui.languageEn;
     if (!document.getElementById("apiDocsWorkspace").hidden) renderApiDocs();
+    if (!document.getElementById("formatSupportWorkspace").hidden) renderFormatSupport();
     if (!document.getElementById("logWorkspace").hidden) renderLogs();
 }
 
@@ -2299,6 +2516,7 @@ function selectSourceMode(sourceMode) {
     document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
+    document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("analysisWorkspace").hidden = false;
     state.uploadResultReady = false;
@@ -2310,6 +2528,7 @@ function selectSourceMode(sourceMode) {
     state.uploadedText = "";
     state.uploadedTitle = "";
 
+    setSidebarActive("Service");
     updateStaticText();
     clearAnalysisView();
 
@@ -2399,12 +2618,18 @@ function bindEvents() {
     document.getElementById("analysisHomeButton").addEventListener("click", goHome);
     document.getElementById("dashboardOverviewButton").addEventListener("click", showDashboard);
     document.getElementById("dashboardServiceButton").addEventListener("click", showToolHome);
+    document.getElementById("dashboardFormatButton").addEventListener("click", showFormatSupport);
     document.getElementById("dashboardLogsButton").addEventListener("click", showLogs);
     document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
     document.getElementById("dashboardRefreshButton").addEventListener("click", renderOperationsDashboard);
     document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
         window.location.href = "/";
     });
+    document.getElementById("toolOverviewButton").addEventListener("click", showDashboard);
+    document.getElementById("toolServiceButton").addEventListener("click", showToolHome);
+    document.getElementById("toolFormatButton").addEventListener("click", showFormatSupport);
+    document.getElementById("toolLogsButton").addEventListener("click", showLogs);
+    document.getElementById("toolApiButton").addEventListener("click", showApiDocs);
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -2420,6 +2645,7 @@ function bindEvents() {
     document.getElementById("downloadButton").addEventListener("click", async () => downloadJsonFile(state.mode));
     document.getElementById("openApiDocsButton").addEventListener("click", showApiDocs);
     document.getElementById("closeApiDocsButton").addEventListener("click", goHome);
+    document.getElementById("closeFormatSupportButton").addEventListener("click", goHome);
     document.getElementById("openLogsButton").addEventListener("click", showLogs);
     document.getElementById("closeLogsButton").addEventListener("click", goHome);
     document.getElementById("clearLogsButton").addEventListener("click", () => {
