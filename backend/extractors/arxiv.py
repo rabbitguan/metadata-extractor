@@ -109,7 +109,13 @@ def _extract_arxiv_version(html: str, url: str) -> Optional[str]:
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
-    return bool(ARXIV_ABS_PATTERN.search(normalized_url) or ARXIV_INLINE_PATTERN.search(normalized_url) or 'arxiv' in combined)
+    return bool(
+        ARXIV_ABS_PATTERN.search(normalized_url)
+        or ARXIV_INLINE_PATTERN.search(normalized_url)
+        or 'citation_arxiv_id' in combined
+        or 'arxiv.org/abs/' in combined
+        or 'arxiv.org/pdf/' in combined
+    )
 
 
 def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
