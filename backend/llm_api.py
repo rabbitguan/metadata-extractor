@@ -385,6 +385,8 @@ def _normalize_inline_math_text(value):
 
     text = value
     text = unicodedata.normalize('NFC', text)
+    if re.search(r'https?://', text, flags=re.IGNORECASE):
+        return text
     text = re.sub(r'\\"\{([^{}]+)\}', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
     text = re.sub(r'\\"([A-Za-z])', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
     text = re.sub(r"\\'\{([^{}]+)\}", lambda match: _to_diacritic(match.group(1), 'acute'), text)
@@ -401,7 +403,7 @@ def _normalize_inline_math_text(value):
     text = re.sub(r'\^\{([^{}]+)\}', lambda match: _to_superscript(match.group(1)), text)
     text = re.sub(r'_\{([^{}]+)\}', lambda match: _to_subscript(match.group(1)), text)
     text = re.sub(r'\^([A-Za-z0-9+-])', lambda match: _to_superscript(match.group(1)), text)
-    text = re.sub(r'_([A-Za-z0-9+-])', lambda match: _to_subscript(match.group(1)), text)
+    text = re.sub(r'(?<=[A-Za-z\)\]])_([A-Za-z0-9+-])', lambda match: _to_subscript(match.group(1)), text)
     text = text.replace('\\$', '$')
     text = text.replace('\\', '\\')
     return text
