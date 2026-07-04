@@ -284,6 +284,66 @@ def _merge_metadata_payload_missing(primary, fallback):
     return merged
 
 
+def _iter_url_values(value):
+    if _is_missing_value(value):
+        return
+
+    if isinstance(value, str):
+        for match in URL_PATTERN.finditer(value):
+            yield match.group(0)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_url_values(item)
+        return
+
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_url_values(item)
+
+
+def _extract_core_resource_urls(payload, current_url=''):
+    if not isinstance(payload, dict):
+        return []
+
+    candidates = []
+    seen = set()
+    current_normalized = _normalize_url_candidate(current_url)
+
+    def add_url(candidate):
+        normalized = _normalize_url_candidate(candidate)
+        if not normalized or normalized == current_normalized or normalized in seen:
+            return
+        candidates.append(normalized)
+        seen.add(normalized)
+
+    zh_core = ((payload.get('zh') or {}).get('核心元数据') or {})
+    en_core = ((payload.get('en') or {}).get('Core Metadata') or {})
+    merged_core = payload.get('核心元数据') or {}
+
+    for core, field_names in (
+        (zh_core, ('资源链接', 'urls')),
+        (en_core, ('Resource URL', 'urls')),
+        (merged_core, ('资源链接', 'Resource URL', 'urls')),
+    ):
+        if not isinstance(core, dict):
+            continue
+        metadatas = core.get('metadatas')
+        if isinstance(metadatas, list):
+            for item in metadatas:
+                if isinstance(item, dict):
+                    for field_name in field_names:
+                        for url in _iter_url_values(item.get(field_name)):
+                            add_url(url)
+            continue
+        for field_name in field_names:
+            for url in _iter_url_values(core.get(field_name)):
+                add_url(url)
+
+    return candidates
+
+
 def _normalize_whitespace(value):
     return re.sub(r'\s+', ' ', str(value or '')).strip()
 
@@ -1049,6 +1109,41 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
+def build_url_metadata_payload(url, mode, strategy='auto'):
+    data = fetch_url_content(url, dynamic_render='auto')
+    return build_metadata_payload(
+        data.get('text', ''),
+        mode,
+        url=url,
+        title=data.get('title', ''),
+        html=data.get('html', ''),
+        strategy=strategy,
+        persist_history=False,
+    )
+
+
+def supplement_payload_from_resource_url(payload, mode, current_url=''):
+    for url in _extract_core_resource_urls(payload, current_url=current_url)[:1]:
+        try:
+            print(f"[Supplemental] Fetching resource URL {url} (dynamic_render={DYNAMIC_RENDER_MODE})")
+            fallback_payload = build_url_metadata_payload(url, mode, strategy='auto')
+            return _merge_metadata_payload_missing(payload, fallback_payload), {
+                'source': 'resource_url',
+                'url': url,
+                'status': 'ok',
+            }
+        except Exception as error:
+            print(f"[WARNING] Failed to supplement metadata from resource URL {url}: {error}")
+            return payload, {
+                'source': 'resource_url',
+                'url': url,
+                'status': 'error',
+                'message': str(error),
+            }
+
+    return payload, None
+
+
 def handle_identifier_request(data):
     mode = data.get('mode', 'common')
     items, error_payload = resolve_identifier_content(data)
@@ -1117,6 +1212,11 @@ def handle_identifier_request(data):
 
             if payload is None:
                 raise primary_error or ValueError('No metadata payload generated')
+
+            if payload is not None:
+                payload, resource_result = supplement_payload_from_resource_url(payload, mode, current_url=url)
+                if resource_result:
+                    supplemental_results.append(resource_result)
 
             results.append({
                 'identifier': item.get('identifier'),
