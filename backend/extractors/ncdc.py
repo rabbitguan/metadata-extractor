@@ -446,11 +446,14 @@ def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip().lower()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
 
+    if 'nmdis.org.cn' in normalized_url or '国家海洋科学数据中心' in combined:
+        return False
+
     return bool(
         'ncdc.ac.cn/portal/metadata/' in normalized_url
         or '国家冰川冻土沙漠科学数据中心' in combined
-        or '数据共享方式' in combined
-        or '数据集摘要' in combined
+        or ('数据共享方式' in combined and '国家冰川' in combined)
+        or ('数据集摘要' in combined and '国家冰川' in combined)
     )
 
 

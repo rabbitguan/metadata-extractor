@@ -44,7 +44,7 @@ URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
 
 DYNAMIC_RENDER_DOMAINS = {
     item.strip().lower()
-    for item in os.environ.get('METADATA_DYNAMIC_RENDER_DOMAINS', 'ncdc.ac.cn,escience.org.cn').split(',')
+    for item in os.environ.get('METADATA_DYNAMIC_RENDER_DOMAINS', 'ncdc.ac.cn,escience.org.cn,mds.nmdis.org.cn').split(',')
     if item.strip()
 }
 DYNAMIC_RENDER_MODE = os.environ.get('METADATA_DYNAMIC_RENDER_MODE', 'never').strip().lower()
@@ -902,10 +902,10 @@ def _should_dynamic_render(url='', html='', text='', title='', dynamic_render='a
     requested = str(dynamic_render if dynamic_render is not None else 'auto').strip().lower()
     if requested in {'0', 'false', 'no', 'off', 'never', 'disabled'}:
         return False
-    if DYNAMIC_RENDER_MODE in {'never', 'off', 'disabled'}:
-        return False
     if requested in {'1', 'true', 'yes', 'on', 'always', 'force'}:
         return True
+    if DYNAMIC_RENDER_MODE in {'never', 'off', 'disabled'}:
+        return False
     if DYNAMIC_RENDER_MODE in {'always', 'force'}:
         return True
 
@@ -925,7 +925,8 @@ def fetch_url_content(url, dynamic_render='auto'):
 
     if _should_dynamic_render(url=url, html=html, text=text, title=title, dynamic_render=dynamic_render):
         try:
-            rendered = render_url_content(url, headers=FETCH_HEADERS)
+            settle_ms = 5000 if 'mds.nmdis.org.cn' in str(url or '').lower() else 800
+            rendered = render_url_content(url, headers=FETCH_HEADERS, settle_ms=settle_ms)
             rendered_html = rendered.get('html') or ''
             rendered_text, rendered_title = _extract_text_from_html(rendered_html)
             if len(rendered_text or '') >= len(text or '') or _html_looks_client_rendered(html=html, text=text, title=title):
