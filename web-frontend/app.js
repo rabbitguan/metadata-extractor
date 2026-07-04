@@ -526,6 +526,66 @@ const WEBSITE_FORMAT_SUPPORT = [
             zh: "识别 VSSO 资源详情页，格式化 CSTR/DOI、项目、数据集说明、下载/访问地址等。",
             en: "Handles VSSO resource detail pages and formats identifiers, projects, dataset description, and access/download URLs."
         }
+    },
+    {
+        name: "NHEPSDC 国家高能物理科学数据中心",
+        rule: "nhepsdc",
+        domains: ["nhepsdc.cn/resource"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家高能物理科学数据中心资源详情页，格式化题名、CSTR、摘要、关键词、学科分类和访问策略等信息。",
+            en: "Handles NHEPSDC resource detail pages and formats title, CSTR, abstract, keywords, subject, and access policy details."
+        }
+    },
+    {
+        name: "CNCB 国家生物信息中心",
+        rule: "cncb",
+        domains: ["cncb.ac.cn/resource/detail/id", "cncb.ac.cn/api/biodb"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家生物信息中心数据库详情页，通过 biodb 接口格式化数据库题名、描述、分类、版本、发布日期、维护者和服务入口。",
+            en: "Handles CNCB database detail pages through the biodb API and formats database title, description, categories, version, release date, maintainer, and service URLs."
+        }
+    },
+    {
+        name: "NADC 国家天文科学数据中心",
+        rule: "nadc",
+        domains: ["nadc.china-vo.org/res/r"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家天文科学数据中心资源详情页，格式化题名、CSTR、DOI、VO 标识符、摘要、关键词、数据量、访问链接、共享许可和天文标签等信息。",
+            en: "Handles NADC resource detail pages and formats title, CSTR, DOI, VO identifier, abstract, keywords, data volume, access URLs, license, and astronomy tags."
+        }
+    },
+    {
+        name: "NODA 国家对地观测科学数据中心",
+        rule: "noda",
+        domains: ["noda.ac.cn/datasharing/datasetDetails", "noda.ac.cn/datasharing/getDataInfo"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家对地观测科学数据中心数据集详情页，通过 getDataInfo 接口格式化题名、CSTR、DOI、摘要、关键词、学科主题、时空范围、格式、版本、联系人和共享方式。",
+            en: "Handles NODA dataset detail pages through the getDataInfo endpoint and formats title, CSTR, DOI, abstract, keywords, subjects, temporal/spatial coverage, formats, version, contacts, and sharing terms."
+        }
+    },
+    {
+        name: "CHINARE 国家极地科学数据中心",
+        rule: "chinare",
+        domains: ["datacenter.chinare.org.cn/data-center/metadata", "datacenter.chinare.org.cn/api/dif"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家极地科学数据中心数据集详情页，通过 dif 接口格式化题名、CSTR、DOI、摘要、关键词、极地时空范围、格式、数据量、引用和共享方式。",
+            en: "Handles CHINARE dataset detail pages through the dif endpoint and formats title, CSTR, DOI, abstract, keywords, polar temporal/spatial coverage, format, volume, citation, and sharing terms."
+        }
+    },
+    {
+        name: "NESDC 国家生态科学数据中心",
+        rule: "nesdc",
+        domains: ["nesdc.org.cn/sdo/detail", "nesdc.org.cn/sdo/visitSdo"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别国家生态科学数据中心数据集详情页，通过 visitSdo 元数据接口格式化题名、CSTR、DOI、摘要、关键词、时空范围、格式、版本、引用、联系人和共享方式。",
+            en: "Handles NESDC dataset detail pages through the visitSdo metadata endpoint and formats title, CSTR, DOI, abstract, keywords, temporal/spatial coverage, format, version, citation, contacts, and sharing terms."
+        }
     }
 ];
 
