@@ -7,8 +7,8 @@ from openai import OpenAI
 from extractors.manager import extract_metadata, list_extractors
 
 client = OpenAI(
-    api_key="sk-48c71abcf3a34104ad4870cd2c382b7a",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key="sk-gyvpgktxzelhglvjcekzypyfyssbjgpivrtvbeviufzfjaxz",
+    base_url="https://api.siliconflow.cn/v1",
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -385,6 +385,8 @@ def _normalize_inline_math_text(value):
 
     text = value
     text = unicodedata.normalize('NFC', text)
+    if re.search(r'https?://', text, flags=re.IGNORECASE):
+        return text
     text = re.sub(r'\\"\{([^{}]+)\}', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
     text = re.sub(r'\\"([A-Za-z])', lambda match: _to_diacritic(match.group(1), 'diaeresis'), text)
     text = re.sub(r"\\'\{([^{}]+)\}", lambda match: _to_diacritic(match.group(1), 'acute'), text)
@@ -401,7 +403,7 @@ def _normalize_inline_math_text(value):
     text = re.sub(r'\^\{([^{}]+)\}', lambda match: _to_superscript(match.group(1)), text)
     text = re.sub(r'_\{([^{}]+)\}', lambda match: _to_subscript(match.group(1)), text)
     text = re.sub(r'\^([A-Za-z0-9+-])', lambda match: _to_superscript(match.group(1)), text)
-    text = re.sub(r'_([A-Za-z0-9+-])', lambda match: _to_subscript(match.group(1)), text)
+    text = re.sub(r'(?<=[A-Za-z\)\]])_([A-Za-z0-9+-])', lambda match: _to_subscript(match.group(1)), text)
     text = text.replace('\\$', '$')
     text = text.replace('\\', '\\')
     return text
@@ -587,7 +589,7 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
     prompt = _build_prompt(content, standard, url=url, title=title, preclassified_type=pre_type_zh)
 
     completion = client.chat.completions.create(
-        model="qwen3-8b",
+        model="Qwen/Qwen3-8B",
         messages=[
             {"role": "system", "content": "You are a strict JSON-output assistant. Only output the requested JSON."},
             {"role": "user", "content": prompt},

@@ -58,8 +58,9 @@ def _response_to_content(response, clean_html):
             return response.text
 
     content = response.text
-    if clean_html is not None:
-        content = clean_html(content)
+    # if clean_html is not None:
+    #     content = clean_html(content)
+    # 这里 clean_html 的逻辑可以去除，因为 extractor 用的是原始 html
     return content
 
 

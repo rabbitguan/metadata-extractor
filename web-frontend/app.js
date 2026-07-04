@@ -468,6 +468,36 @@ const WEBSITE_FORMAT_SUPPORT = [
         }
     },
     {
+        name: "NMDC 国家海洋科学数据中心",
+        rule: "nmdc",
+        domains: ["mds.nmdis.org.cn/pages/dataViewDetail.html"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NMDC 数据集详情页，调用详情接口格式化标题、标识符、摘要、关键词、数据时间、共享级别和引用方式。",
+            en: "Handles NMDC dataset detail pages and formats title, identifiers, abstract, keywords, data time, sharing level, and citation."
+        }
+    },
+    {
+        name: "NEDC 国家地震科学数据中心",
+        rule: "nedc",
+        domains: ["data.earthquake.cn/datashare/report.shtml"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NEDC 数据共享详情页，格式化数据名称、分类、时空范围、联系信息、共享方式和中英文引用规范。",
+            en: "Handles NEDC data sharing detail pages and formats name, category, coverage, contact details, sharing mode, and bilingual citation guidance."
+        }
+    },
+    {
+        name: "CMA 中国气象数据网",
+        rule: "cma",
+        domains: ["data.cma.cn/data/cdcdetail/dataCode"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 CMA 数据详情页，格式化数据名称、登记编号、关键词、摘要、时空范围、共享级别和服务入口。",
+            en: "Handles CMA data detail pages and formats dataset name, registration number, keywords, abstract, coverage, sharing level, and service URL."
+        }
+    },
+    {
         name: "北京大学学位论文",
         rule: "pku_thesis",
         domains: ["thesis.lib.pku.edu.cn/detail"],

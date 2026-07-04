@@ -48,8 +48,13 @@ def detect_extractor(url: str, title: str, content: str) -> Optional[ExtractorRu
 
 
 def extract_metadata(url: str, title: str, content: str) -> Optional[MetadataDict]:
-    rule = detect_extractor(url, title, content)
-    if not rule:
-        return None
-
-    return rule.extract(content, url, title)
+    for rule in _RULES:
+        try:
+            if not rule.matches(url, title, content):
+                continue
+            result = rule.extract(content, url, title)
+            if result is not None:
+                return result
+        except Exception:
+            continue
+    return None
