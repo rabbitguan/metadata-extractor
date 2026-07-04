@@ -498,6 +498,16 @@ const WEBSITE_FORMAT_SUPPORT = [
         }
     },
     {
+        name: "NCMI 国家人口健康科学数据中心",
+        rule: "ncmi",
+        domains: ["ncmi.cn/phda/dataDetails.do"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NCMI/PHDA 数据详情页，格式化 CSTR/DOI、数据集名称、关键词、描述、创建者、共享方式、许可协议和引用格式。",
+            en: "Handles NCMI/PHDA data detail pages and formats CSTR/DOI, dataset name, keywords, description, creators, sharing mode, license, and citation."
+        }
+    },
+    {
         name: "NEDC 国家地震科学数据中心",
         rule: "nedc",
         domains: ["data.earthquake.cn/datashare/report.shtml"],
