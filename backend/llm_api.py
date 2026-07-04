@@ -7,7 +7,7 @@ from openai import OpenAI
 from extractors.manager import extract_metadata, list_extractors
 
 client = OpenAI(
-    api_key="sk-gyvpgktxzelhglvjcekzypyfyssbjgpivrtvbeviufzfjaxz",
+    api_key="sk-zqjbgganlfffxxynfyumlzdbdnpjezmuouuearsqwavipsrb",
     base_url="https://api.siliconflow.cn/v1",
 )
 

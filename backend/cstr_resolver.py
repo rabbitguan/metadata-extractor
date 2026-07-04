@@ -1,6 +1,6 @@
 import json
 import re
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlsplit
 
 import requests
 
@@ -49,6 +49,16 @@ def _extract_redirect_target(response):
     return _extract_html_redirect(response.text)
 
 
+def _same_netloc(left, right):
+    return urlsplit(left or '').netloc.lower() == urlsplit(right or '').netloc.lower()
+
+
+def _should_extract_embedded_redirect(request_url, final_url):
+    # After a resolver HTTP redirect reaches the real resource page, do not
+    # treat arbitrary page JavaScript as another redirect.
+    return _same_netloc(request_url, final_url)
+
+
 def _response_to_content(response, clean_html):
     content_type = _get_content_type(response)
     if 'json' in content_type:
@@ -78,7 +88,9 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
     response.raise_for_status()
     final_url = response.url if isinstance(response.url, str) and response.url else url
 
-    redirect_target = _extract_redirect_target(response)
+    redirect_target = None
+    if _should_extract_embedded_redirect(url, final_url):
+        redirect_target = _extract_redirect_target(response)
     if redirect_target and redirect_depth < 3:
         next_url = urljoin(final_url, redirect_target)
         if next_url != final_url:
