@@ -488,6 +488,16 @@ const WEBSITE_FORMAT_SUPPORT = [
         }
     },
     {
+        name: "GEODATA 国家地球系统科学数据中心",
+        rule: "geodata",
+        domains: ["geodata.cn/main/face_science_detail"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 GEODATA 科学数据详情页，调用详情接口格式化标题、DOI、摘要、关键词、时空范围、数据文件、联系方式和固定引用方式。",
+            en: "Handles GEODATA science detail pages and formats title, DOI, abstract, keywords, coverage, files, contact details, and fixed citation text."
+        }
+    },
+    {
         name: "NEDC 国家地震科学数据中心",
         rule: "nedc",
         domains: ["data.earthquake.cn/datashare/report.shtml"],
