@@ -151,14 +151,7 @@ def _alternative_identifiers(doi: Optional[str]) -> Optional[list[Dict[str, str]
 
 
 def _related_identifiers(ivo: Optional[str]) -> Optional[list[Dict[str, Any]]]:
-    values: list[Dict[str, Any]] = []
-    if ivo:
-        values.append({
-            'relation': 'IsIdenticalTo',
-            'type': 'IVOID',
-            'identifier': {'type': 'IVOID', 'identifier': ivo},
-        })
-    return values or None
+    return None
 
 
 def matches(url: str, title: str, content: str) -> bool:
@@ -288,7 +281,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '工作贡献': '数据集建设、发布与服务',
         '作者简介': None,
     }
-    domain_identifier = cstr_identifier or doi or ivo_identifier or resource_id
+    domain_identifier = f'CSTR: {cstr_identifier}' if cstr_identifier else (f'DOI: {doi}' if doi else None)
 
     zh: Dict[str, Any] = {
         '核心元数据': {'metadatas': [core_zh]},

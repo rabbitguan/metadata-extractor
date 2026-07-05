@@ -299,13 +299,6 @@ def _related_identifiers(values: Dict[str, Any]) -> Optional[list[Dict[str, Any]
             'type': 'DOI',
             'identifier': {'type': 'DOI', 'identifier': paper_doi},
         })
-    paper_address = _clean_text(values.get('paperAddress'))
-    if paper_address and paper_address.startswith(('http://', 'https://')):
-        related.append({
-            'relation': 'IsReferencedBy',
-            'type': 'URL',
-            'identifier': {'type': 'URL', 'identifier': paper_address},
-        })
     return related or None
 
 

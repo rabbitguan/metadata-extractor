@@ -1135,12 +1135,12 @@ def _core_with_extra_fields(core_metadata, zh_source, en_source):
     zh_extra = {
         key: value
         for key, value in (zh_source or {}).items()
-        if key not in known_keys and key not in known_aliases
+        if key not in known_keys and key not in known_aliases and key not in EXTRA_METADATA_EXCLUDE_KEYS_ZH
     }
     en_extra = {
         _map_key_to_zh(key): value
         for key, value in (en_source or {}).items()
-        if key not in known_keys and key not in known_aliases
+        if key not in known_keys and key not in known_aliases and key not in EXTRA_METADATA_EXCLUDE_KEYS_EN
     }
     extra = _merge_language_nodes(zh_extra, en_extra)
     if isinstance(extra, dict):

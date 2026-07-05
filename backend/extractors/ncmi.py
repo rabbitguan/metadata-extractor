@@ -183,6 +183,19 @@ def _format_date(value: Optional[Any]) -> Optional[str]:
     return match.group(0) if match else text
 
 
+def _identifier_item(value: Optional[Any]) -> Optional[Dict[str, str]]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    doi_match = re.search(r'10\.\d{4,9}/[^\s<>"\']+', text, flags=re.IGNORECASE)
+    if doi_match:
+        return {'type': 'DOI', 'identifier': doi_match.group(0).rstrip('.,;。；')}
+    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    if cstr_match:
+        return {'type': 'CSTR', 'identifier': cstr_match.group(1).strip().strip('.,;，；')}
+    return None
+
+
 def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataDict]:
     soup = BeautifulSoup(content or '', 'html.parser')
     labels = _label_map(soup)
@@ -230,7 +243,9 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     if doi:
         alternative_identifiers.append({'type': 'DOI', 'identifier': doi})
     for item in _split_terms(labels.get('其他标识符')):
-        alternative_identifiers.append({'type': 'Other', 'identifier': item})
+        identifier_item = _identifier_item(item)
+        if identifier_item:
+            alternative_identifiers.append(identifier_item)
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',
