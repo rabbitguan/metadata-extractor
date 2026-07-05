@@ -318,7 +318,7 @@ python backend.py -d
 
 ### `GET /history/lookup`
 
-按 URL（或文本中抽取 URL）查最新一条历史分析结果。
+按 URL（或文本中抽取 URL）查当前用户最新一条历史分析结果。用户由网关透传的 `X-User-Id` 请求头识别。
 
 #### Query 参数
 
@@ -350,11 +350,11 @@ python backend.py -d
 
 ---
 
-## 4. 历史列表
+## 4. 用户查询记录
 
 ### `GET /history`
 
-分页返回历史记录摘要（不包含完整结果 JSON）。
+分页返回当前用户的查询/转换记录，包含前端日志页需要展示的完整结果 JSON。用户由网关透传的 `X-User-Id` 请求头识别。
 
 #### Query 参数
 
@@ -373,20 +373,64 @@ python backend.py -d
   "records": [
     {
       "id": 15,
-      "requested_url": "https://example.com/paper",
-      "page_title": "Example Paper",
-      "html_sha256": "abc123...",
+      "source": "url",
       "mode": "common",
-      "strategy": "auto",
-      "resource_type_zh": "数据论文",
-      "resource_type_en": "Data Paper",
-      "domain_classification_zh": "数据论文元数据",
-      "domain_classification_en": "Data Paper Metadata",
+      "strategy": "url",
+      "title": "Example Paper",
+      "requested_url": "https://example.com/paper",
+      "identifier_input": "",
+      "input_preview": "https://example.com/paper",
+      "payload": {
+        "核心元数据": {}
+      },
       "created_at": "2026-06-09 12:00:00"
     }
   ],
   "limit": 20,
   "offset": 0
+}
+```
+
+### `POST /history`
+
+保存一条当前用户的查询/转换记录。
+
+#### 请求体
+
+```json
+{
+  "source": "url",
+  "mode": "common",
+  "strategy": "url",
+  "title": "Example Paper",
+  "url": "https://example.com/paper",
+  "identifierInput": "",
+  "inputPreview": "https://example.com/paper",
+  "payload": {
+    "核心元数据": {}
+  }
+}
+```
+
+#### 成功响应（200）
+
+```json
+{
+  "status": "ok",
+  "id": 16
+}
+```
+
+### `DELETE /history`
+
+清空当前用户的查询/转换记录。
+
+#### 成功响应（200）
+
+```json
+{
+  "status": "ok",
+  "deleted": 3
 }
 ```
 
