@@ -8,7 +8,8 @@
         (function () {
             var servicePrefix = "/sso/proxy/mapping-tool";
             window.METADATA_EXTRACTOR_CONFIG = {
-                serviceProxyPrefix: servicePrefix
+                serviceProxyPrefix: servicePrefix,
+                publicApiBaseUrl: "http://8.130.186.178:21005"
             };
             var prefix = servicePrefix.replace(/\/+$/, "") + "/";
             var path = window.location.pathname;

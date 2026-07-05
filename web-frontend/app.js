@@ -9,6 +9,11 @@ const SERVICE_PROXY_PREFIX = normalizeServiceProxyPrefix(
         ? window.METADATA_EXTRACTOR_CONFIG.serviceProxyPrefix
         : "/sso/proxy/mapping-tool"
 );
+const PUBLIC_API_BASE_URL = (
+    window.METADATA_EXTRACTOR_CONFIG && window.METADATA_EXTRACTOR_CONFIG.publicApiBaseUrl
+        ? String(window.METADATA_EXTRACTOR_CONFIG.publicApiBaseUrl)
+        : ""
+).replace(/\/+$/, "");
 
 function getServiceBasePath() {
     const pathname = window.location.pathname.replace(/\/+$/, "");
@@ -30,6 +35,10 @@ function buildServiceUrl(path) {
 
 function getServiceBasePathLabel() {
     return getServiceBasePath() || "/";
+}
+
+function getApiDocsBaseLabel() {
+    return PUBLIC_API_BASE_URL || getServiceBasePathLabel();
 }
 
 function getServiceHomePath() {
@@ -961,7 +970,7 @@ const API_DOCS_TEXT = {
                     html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
                     title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
                 },
-                example: `curl -X POST http://127.0.0.1:4000/register \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -999,7 +1008,7 @@ const API_DOCS_TEXT = {
                     text: "当 identifiers 不传时，后端会从 text 中自动识别 DOI/CSTR。",
                     html: "当 identifiers 和 text 都不传时，后端会从 html 中自动识别 DOI/CSTR。"
                 },
-                example: `curl -X POST http://127.0.0.1:4000/query \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/query \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1060,7 +1069,7 @@ const API_DOCS_TEXT = {
                     html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
                     title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
                 },
-                example: `curl -X POST http://127.0.0.1:4000/register \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1098,7 +1107,7 @@ const API_DOCS_TEXT = {
                     text: "When identifiers is omitted, the backend extracts DOI/CSTR values from text.",
                     html: "When identifiers and text are omitted, the backend extracts DOI/CSTR values from html."
                 },
-                example: `curl -X POST http://127.0.0.1:4000/query \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/query \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1672,7 +1681,7 @@ function renderApiDocs() {
     const docs = API_DOCS_TEXT[state.language] || API_DOCS_TEXT.zh;
     const ui = getUIText();
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getApiDocsBaseLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
 
     const root = document.getElementById("apiDocsContent");
@@ -2800,7 +2809,7 @@ function updateStaticText() {
     document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
     document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getApiDocsBaseLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
     document.getElementById("formatSupportTitle").textContent = ui.formatSupportTitle;
     document.getElementById("formatSupportSubtitle").textContent = ui.formatSupportSubtitle;
