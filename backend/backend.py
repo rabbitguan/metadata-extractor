@@ -43,7 +43,8 @@ FETCH_HEADERS = {
 }
 
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
-CSTR_IDENTIFIER_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
+CSTR_IDENTIFIER_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
 
 DYNAMIC_RENDER_DOMAINS = {
     item.strip().lower()
@@ -155,7 +156,36 @@ def _normalize_queried_cstr(value):
     return f'CSTR:{match.group(1).strip().strip(".,;，；")}'
 
 
-def _replace_cstr_identifier_value(value, cstr):
+def _normalize_cstr_identifier(value):
+    match = CSTR_IDENTIFIER_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    return match.group(1) if match else None
+
+
+def _normalize_doi_identifier(value):
+    match = DOI_PATTERN.search(str(value or '').strip().strip('.,;，；'))
+    return match.group(0) if match else None
+
+
+def _normalize_allowed_identifier(value, preferred_type=None):
+    type_hint = str(preferred_type or '').strip().upper()
+    checks = []
+    if type_hint in {'CSTR', 'DOI'}:
+        checks.append(type_hint)
+    checks.extend(item for item in ('CSTR', 'DOI') if item not in checks)
+
+    for identifier_type in checks:
+        if identifier_type == 'CSTR':
+            normalized = _normalize_cstr_identifier(value)
+        else:
+            normalized = _normalize_doi_identifier(value)
+        if normalized:
+            return {'type': identifier_type, 'identifier': normalized}
+    return None
+
+
+def _replace_cstr_identifier_value(key, value, cstr):
+    if key in {'标识符', 'Identifier'}:
+        return {'type': 'CSTR', 'identifier': cstr}
     if isinstance(value, dict):
         updated = dict(value)
         updated['type'] = 'CSTR'
@@ -165,7 +195,7 @@ def _replace_cstr_identifier_value(value, cstr):
 
 
 def _apply_queried_cstr_to_payload(payload, queried_cstr):
-    cstr = _normalize_queried_cstr(queried_cstr)
+    cstr = _normalize_cstr_identifier(queried_cstr)
     if not cstr or not isinstance(payload, dict):
         return payload
 
@@ -178,7 +208,7 @@ def _apply_queried_cstr_to_payload(payload, queried_cstr):
         patched = {}
         for key, value in node.items():
             if key in {'CSTR标识符', '标识符', 'Identifier', 'CSTR Identifier'}:
-                patched[key] = _replace_cstr_identifier_value(value, cstr)
+                patched[key] = _replace_cstr_identifier_value(key, value, cstr)
             else:
                 patched[key] = patch_node(value)
         return patched
@@ -422,14 +452,8 @@ def _clean_scalar(value):
 
 
 def _infer_identifier_type(value):
-    text = str(value or '').strip()
-    if re.search(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', text, re.IGNORECASE):
-        return 'DOI'
-    if re.search(r'\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+', text, re.IGNORECASE):
-        return 'CSTR'
-    if text.lower().startswith(('http://', 'https://')):
-        return 'URL'
-    return 'Other'
+    normalized = _normalize_allowed_identifier(value)
+    return normalized.get('type') if normalized else None
 
 
 def _language_name_list(value, lang, field='name'):
@@ -455,17 +479,15 @@ def _language_name_list(value, lang, field='name'):
 
 def _normalize_identifier(value):
     if isinstance(value, dict):
-        if 'identifier' in value and 'type' in value:
-            return value
         identifier = value.get('identifier') or value.get('value') or value.get('id')
         if identifier:
-            return {'type': value.get('type') or _infer_identifier_type(identifier), 'identifier': identifier}
-        return value
+            return _normalize_allowed_identifier(identifier, preferred_type=value.get('type'))
+        return None
 
     text = _clean_scalar(value)
     if not text:
         return None
-    return {'type': _infer_identifier_type(text), 'identifier': text}
+    return _normalize_allowed_identifier(text)
 
 
 def _normalize_identifier_list(value):
@@ -614,14 +636,21 @@ def _normalize_related_identifiers(value):
     for item in _as_list(value):
         if isinstance(item, dict):
             if isinstance(item.get('identifier'), dict):
-                related.append(item)
+                identifier = _normalize_identifier(item.get('identifier'))
+                if identifier:
+                    related.append({
+                        **item,
+                        'type': identifier.get('type'),
+                        'identifier': identifier,
+                    })
                 continue
             identifier = _normalize_identifier(item.get('identifier') or item.get('value') or item)
-            related.append({
-                'relation': item.get('relation') or 'Related',
-                'type': item.get('type') or (identifier or {}).get('type') or 'Other',
-                'identifier': identifier,
-            })
+            if identifier:
+                related.append({
+                    'relation': item.get('relation') or 'Related',
+                    'type': identifier.get('type'),
+                    'identifier': identifier,
+                })
             continue
         identifier = _normalize_identifier(item)
         if identifier:
@@ -679,7 +708,13 @@ def _normalize_core_metadata_shape(core, lang):
     normalized['keywords'] = _normalize_keywords(core.get('keywords'), lang)
     normalized['subjects'] = _normalize_subjects(core.get('subjects'))
     normalized['contributors'] = _normalize_agents(core.get('contributors'), lang, contribution_type='Other')
-    normalized['alternative_identifiers'] = _normalize_identifier_list(core.get('alternative_identifiers'))
+    identifier = _normalize_allowed_identifier(core.get('identifier'))
+    normalized['identifier'] = identifier.get('identifier') if identifier and identifier.get('type') == 'CSTR' else None
+
+    alternative_identifiers = _normalize_identifier_list(core.get('alternative_identifiers'))
+    if identifier and identifier.get('type') != 'CSTR':
+        alternative_identifiers = _merge_lists(alternative_identifiers, [identifier]) or None
+    normalized['alternative_identifiers'] = alternative_identifiers
     normalized['related_identifiers'] = _normalize_related_identifiers(core.get('related_identifiers'))
     normalized['rights'] = _normalize_rights(core.get('rights'))
     normalized['funders'] = _normalize_funders(core.get('funders'))
@@ -697,8 +732,8 @@ def _normalize_domain_metadata_shape(obj, lang):
     for key, value in obj.items():
         if key in {'数据集作者', '数据论文作者', 'Dataset Authors', 'Data Paper Authors'}:
             normalized[key] = _normalize_agents(value, lang)
-        elif key in {'标识符', 'Identifier'}:
-            normalized[key] = _normalize_identifier(value) or value
+        elif key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
+            normalized[key] = _normalize_identifier(value)
         elif key in {'标题', 'Title'}:
             normalized[key] = _language_name_list(value, lang) or value
         elif key in {'摘要', 'Abstract'}:

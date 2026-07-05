@@ -6,8 +6,8 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict, Iterable, Optional
 
 
-DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b', re.IGNORECASE)
-CSTR_PATTERN = re.compile(r'^\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+$', re.IGNORECASE)
+DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
+CSTR_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
 
 DOMAIN_KEY_TRANSLATIONS_ZH = {
     'Dataset Basic Information': '数据集基本信息',
@@ -222,11 +222,38 @@ def _unique_list(values: Iterable[Any]) -> list:
 
 
 def _is_doi(value: Any) -> bool:
-    return bool(DOI_PATTERN.search(str(value or '').strip()))
+    return bool(_normalize_doi_identifier(value))
 
 
 def _is_cstr(value: Any) -> bool:
-    return bool(CSTR_PATTERN.match(str(value or '').strip()))
+    return bool(_normalize_cstr_identifier(value))
+
+
+def _normalize_cstr_identifier(value: Any) -> Optional[str]:
+    match = CSTR_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    return match.group(1) if match else None
+
+
+def _normalize_doi_identifier(value: Any) -> Optional[str]:
+    match = DOI_PATTERN.search(str(value or '').strip().strip('.,;，；'))
+    return match.group(0) if match else None
+
+
+def _normalize_identifier_item(value: Any, preferred_type: Any = None) -> Optional[Dict[str, str]]:
+    type_hint = str(preferred_type or '').strip().upper()
+    checks = []
+    if type_hint in {'CSTR', 'DOI'}:
+        checks.append(type_hint)
+    checks.extend(item for item in ('CSTR', 'DOI') if item not in checks)
+
+    for identifier_type in checks:
+        if identifier_type == 'CSTR':
+            normalized = _normalize_cstr_identifier(value)
+        else:
+            normalized = _normalize_doi_identifier(value)
+        if normalized:
+            return {'type': identifier_type, 'identifier': normalized}
+    return None
 
 
 def _is_missing_value(value: Any) -> bool:
@@ -501,6 +528,57 @@ def _structured_scalar_field(data: Dict[str, Any], *keys: str) -> Any:
     return _clean_text(value)
 
 
+def _identifier_candidates(value: Any) -> Iterable[tuple[Any, Any]]:
+    for item in _ensure_list(value):
+        if isinstance(item, dict):
+            yield item.get('identifier') or item.get('value') or item.get('id'), item.get('type')
+        else:
+            yield item, None
+
+
+def _normalize_identifier_list(value: Any) -> Optional[list]:
+    items = []
+    seen = set()
+    for candidate, preferred_type in _identifier_candidates(value):
+        normalized = _normalize_identifier_item(candidate, preferred_type=preferred_type)
+        if not normalized:
+            continue
+        marker = (normalized['type'], normalized['identifier'].lower())
+        if marker in seen:
+            continue
+        seen.add(marker)
+        items.append(normalized)
+    return items or None
+
+
+def _normalize_related_identifier_list(value: Any) -> Optional[list]:
+    items = []
+    for item in _ensure_list(value):
+        if isinstance(item, dict):
+            raw_identifier = item.get('identifier')
+            if isinstance(raw_identifier, dict):
+                identifier = _normalize_identifier_item(
+                    raw_identifier.get('identifier') or raw_identifier.get('value') or raw_identifier.get('id'),
+                    preferred_type=raw_identifier.get('type'),
+                )
+            else:
+                identifier = _normalize_identifier_item(
+                    raw_identifier or item.get('value') or item.get('id'),
+                    preferred_type=item.get('type'),
+                )
+            if identifier:
+                items.append({
+                    'relation': item.get('relation') or 'Related',
+                    'type': identifier['type'],
+                    'identifier': identifier,
+                })
+            continue
+        identifier = _normalize_identifier_item(item)
+        if identifier:
+            items.append({'relation': 'Related', 'type': identifier['type'], 'identifier': identifier})
+    return items or None
+
+
 def _scalar_field(data: Dict[str, Any], *keys: str) -> Optional[str]:
     value = _first(data, *keys)
     if isinstance(value, list):
@@ -511,30 +589,29 @@ def _scalar_field(data: Dict[str, Any], *keys: str) -> Optional[str]:
 def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Optional[list]]:
     raw_cstr = _scalar_field(core, 'cstr_identifier', 'cstrIdentifier', 'CSTR标识符', 'identifier', 'Identifier')
     alternative_raw = _structured_field(core, 'alternative_identifiers', 'alternativeIdentifiers', '替代标识符', 'Alternative Identifiers')
-    alternative = _ensure_list(alternative_raw)
+    alternative = _normalize_identifier_list(alternative_raw) or []
     doi = _scalar_field(core, 'doi', 'DOI')
-    if doi:
-        alternative.append(doi)
+    doi_identifier = _normalize_identifier_item(doi, preferred_type='DOI') if doi else None
+    if doi_identifier:
+        alternative.append(doi_identifier)
 
-    if raw_cstr and _is_cstr(raw_cstr):
-        cstr_identifier = raw_cstr
+    normalized_cstr = _normalize_cstr_identifier(raw_cstr)
+    if normalized_cstr:
+        cstr_identifier = normalized_cstr
     else:
         cstr_identifier = None
-        if raw_cstr and (_is_doi(raw_cstr) or raw_cstr not in [str(item) for item in alternative]):
-            alternative.append(raw_cstr)
+        identifier = _normalize_identifier_item(raw_cstr)
+        if identifier:
+            alternative.append(identifier)
 
-    return cstr_identifier, (alternative or None)
+    return cstr_identifier, _normalize_identifier_list(alternative)
 
 
 def _format_domain_identifier(identifier: Optional[str], language: str = 'zh') -> Optional[str]:
     cleaned = _clean_text(identifier)
     if not cleaned:
         return None
-    if _is_cstr(cleaned):
-        return cleaned
-    if _is_doi(cleaned):
-        return f'{cleaned}（doi）' if language == 'zh' else f'{cleaned} (doi)'
-    return cleaned
+    return _normalize_identifier_item(cleaned)
 
 
 def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifiers: Optional[list], language: str = 'zh') -> Optional[str]:
@@ -542,14 +619,20 @@ def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifi
         return _format_domain_identifier(cstr_identifier, language=language)
 
     for identifier in alternative_identifiers or []:
-        cleaned = _clean_text(identifier)
-        if cleaned and _is_cstr(cleaned):
-            return _format_domain_identifier(cleaned, language=language)
+        normalized = _normalize_identifier_item(
+            identifier.get('identifier') if isinstance(identifier, dict) else identifier,
+            preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
+        )
+        if normalized and normalized.get('type') == 'CSTR':
+            return normalized
 
     for identifier in alternative_identifiers or []:
-        cleaned = _clean_text(identifier)
-        if cleaned:
-            return _format_domain_identifier(cleaned, language=language)
+        normalized = _normalize_identifier_item(
+            identifier.get('identifier') if isinstance(identifier, dict) else identifier,
+            preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
+        )
+        if normalized:
+            return normalized
 
     return None
 
@@ -560,6 +643,24 @@ def _fill_missing_identifier(section: Any, key: str, value: Optional[str]) -> An
     if _is_missing_value(section.get(key)):
         section[key] = value
     return section
+
+
+def _filter_domain_identifiers(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_filter_domain_identifiers(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    filtered = {}
+    for key, item in value.items():
+        if key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
+            filtered[key] = _normalize_identifier_item(
+                item.get('identifier') if isinstance(item, dict) else item,
+                preferred_type=item.get('type') if isinstance(item, dict) else None,
+            )
+        else:
+            filtered[key] = _filter_domain_identifiers(item)
+    return filtered
 
 
 def _domain_sections(
@@ -581,6 +682,8 @@ def _domain_sections(
         service = _first(domain, 'dataset_service_information', 'Dataset Service Information', '数据集服务信息')
         basic_zh = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(basic, dict) else {}
         basic_en = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(basic, dict) else {}
+        basic_zh = _filter_domain_identifiers(basic_zh)
+        basic_en = _filter_domain_identifiers(basic_en)
         _fill_missing_identifier(basic_zh, '标识符', identifier_zh)
         _fill_missing_identifier(basic_en, 'Identifier', identifier_en)
         return (
@@ -605,6 +708,8 @@ def _domain_sections(
         service = _first(domain, 'data_paper_service_information', 'Data Paper Service Information', '数据论文服务信息')
         content_zh = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(content, dict) else {}
         content_en = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(content, dict) else {}
+        content_zh = _filter_domain_identifiers(content_zh)
+        content_en = _filter_domain_identifiers(content_en)
         _fill_missing_identifier(content_zh, '标识符', identifier_zh)
         _fill_missing_identifier(content_en, 'Identifier', identifier_en)
         return (
@@ -630,8 +735,8 @@ def _domain_sections(
         info_zh = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(info, dict) else {}
         info_en = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(info, dict) else {}
         return (
-            {'标准文献信息': info_zh},
-            {'Standard Literature Information': info_en},
+            {'标准文献信息': _filter_domain_identifiers(info_zh)},
+            {'Standard Literature Information': _filter_domain_identifiers(info_en)},
         )
 
     if resource_type_en == 'Ecological Data':
@@ -651,8 +756,10 @@ def _domain_sections(
         en_sections: Dict[str, Any] = {}
         for zh_key, en_key, aliases in section_pairs:
             section = _first(domain, *aliases)
-            zh_sections[zh_key] = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(section, dict) else {}
-            en_sections[en_key] = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(section, dict) else {}
+            zh_section = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(section, dict) else {}
+            en_section = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(section, dict) else {}
+            zh_sections[zh_key] = _filter_domain_identifiers(zh_section)
+            en_sections[en_key] = _filter_domain_identifiers(en_section)
         return zh_sections, en_sections
 
     return {}, {}
@@ -687,7 +794,7 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
         'language': _scalar_field(core, 'language', '语言', 'Language'),
         'contributors': _structured_field(core, 'contributors', '贡献者', 'Contributors'),
         'alternative_identifiers': alternative_identifiers,
-        'related_identifiers': _structured_field(core, 'related_identifiers', '关联标识符', 'Related Identifiers'),
+        'related_identifiers': _normalize_related_identifier_list(_structured_field(core, 'related_identifiers', '关联标识符', 'Related Identifiers')),
         'rights': _structured_field(core, 'rights', '权限', 'Rights'),
         'funders': _structured_field(core, 'funders', '资助者', 'Funders'),
         'version': _scalar_field(core, 'version', '版本', 'Version'),
