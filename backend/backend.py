@@ -908,12 +908,363 @@ def _merge_core_language_variants(core_zh, core_en):
     return {key: merged.get(key) for key in CORE_FIELD_ALIASES_ZH.keys()}
 
 
+LABEL_TRANSLATIONS_ZH = {value: key for key, value in LABEL_TRANSLATIONS_EN.items()}
+
+DOMAIN_WRAPPER_KEYS_ZH = {
+    '领域元数据',
+    '数据集元数据',
+    '数据论文元数据',
+    '标准文献元数据',
+    '生态科学数据元数据',
+}
+
+DOMAIN_WRAPPER_KEYS_EN = {
+    'Domain Metadata',
+    'Dataset Metadata',
+    'Data Paper Metadata',
+    'Standard Literature Metadata',
+    'Ecological Science Data Metadata',
+}
+
+DOMAIN_FIELD_KEYS_ZH = {
+    '数据论文内容信息',
+    '数据论文出版信息',
+    '数据论文服务信息',
+    '数据集基本信息',
+    '数据集出版信息',
+    '数据集服务信息',
+    '标准文献信息',
+    '标准文献内容信息',
+    '标准文献出版信息',
+    '标准文献服务信息',
+    '生态科学数据基本信息',
+    '生态科学数据出版信息',
+    '生态科学数据服务信息',
+}
+
+DOMAIN_FIELD_KEYS_EN = {
+    'Data Paper Content Information',
+    'Data Paper Publication Information',
+    'Data Paper Service Information',
+    'Dataset Basic Information',
+    'Dataset Publication Information',
+    'Dataset Service Information',
+    'Standard Literature Information',
+    'Standard Literature Content Information',
+    'Standard Literature Publication Information',
+    'Standard Literature Service Information',
+    'Ecological Science Data Basic Information',
+    'Ecological Science Data Publication Information',
+    'Ecological Science Data Service Information',
+}
+
+EXTRA_METADATA_EXCLUDE_KEYS_ZH = {
+    '核心元数据',
+    '领域判定',
+    *DOMAIN_WRAPPER_KEYS_ZH,
+    *DOMAIN_FIELD_KEYS_ZH,
+}
+
+EXTRA_METADATA_EXCLUDE_KEYS_EN = {
+    'Core Metadata',
+    'Domain Classification',
+    *DOMAIN_WRAPPER_KEYS_EN,
+    *DOMAIN_FIELD_KEYS_EN,
+}
+
+
+def _map_key_to_zh(key):
+    return LABEL_TRANSLATIONS_ZH.get(str(key), str(key))
+
+
+def _map_keys_to_zh_recursive(obj):
+    return _map_keys_recursive(obj, LABEL_TRANSLATIONS_ZH)
+
+
+def _is_lang_object(value):
+    return isinstance(value, dict) and isinstance(value.get('lang'), str)
+
+
+def _is_lang_list(value):
+    return isinstance(value, list) and value and all(_is_lang_object(item) for item in value)
+
+
+def _json_equal(left, right):
+    try:
+        return json.dumps(left, ensure_ascii=False, sort_keys=True) == json.dumps(right, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return left == right
+
+
+def _language_item(language, value):
+    if _is_lang_object(value):
+        return value
+    return {'lang': language, 'value': value}
+
+
+def _merge_lang_lists(primary, secondary):
+    items = []
+    for value in _as_list(primary) + _as_list(secondary):
+        if _is_missing_value(value):
+            continue
+        if _is_lang_list(value):
+            items.extend(value)
+        elif _is_lang_object(value):
+            items.append(value)
+    return _dedupe_jsonable(items)
+
+
+def _merge_language_nodes(zh_value, en_value):
+    zh_missing = _is_domain_missing_value(zh_value)
+    en_missing = _is_domain_missing_value(en_value)
+    if zh_missing and en_missing:
+        return None
+    if zh_missing:
+        if isinstance(en_value, dict) and not _is_lang_object(en_value):
+            return {
+                _map_key_to_zh(key): _merge_language_nodes(None, value)
+                for key, value in en_value.items()
+                if not _is_domain_missing_value(value)
+            }
+        return en_value if _is_lang_list(en_value) else [_language_item('en', en_value)]
+    if en_missing:
+        if isinstance(zh_value, dict) and not _is_lang_object(zh_value):
+            return {
+                _map_key_to_zh(key): _merge_language_nodes(value, None)
+                for key, value in zh_value.items()
+                if not _is_domain_missing_value(value)
+            }
+        return zh_value if _is_lang_list(zh_value) else [_language_item('zh', zh_value)]
+
+    if isinstance(zh_value, dict) and isinstance(en_value, dict) and not _is_lang_object(zh_value) and not _is_lang_object(en_value):
+        en_by_zh_key = {_map_key_to_zh(key): value for key, value in en_value.items()}
+        keys = []
+        for key in list(zh_value.keys()) + list(en_by_zh_key.keys()):
+            zh_key = _map_key_to_zh(key)
+            if zh_key not in keys:
+                keys.append(zh_key)
+
+        merged = {}
+        for key in keys:
+            value = _merge_language_nodes(zh_value.get(key), en_by_zh_key.get(key))
+            if not _is_domain_missing_value(value):
+                merged[key] = value
+        return merged
+
+    if _is_lang_list(zh_value) or _is_lang_list(en_value):
+        merged = _merge_lang_lists(zh_value, en_value)
+        return merged or None
+
+    if _json_equal(zh_value, en_value):
+        return zh_value
+
+    return _dedupe_jsonable([
+        _language_item('zh', zh_value),
+        _language_item('en', en_value),
+    ])
+
+
+def _extra_answer_fields(answer, language='zh'):
+    if not isinstance(answer, dict):
+        return {}
+
+    exclude = EXTRA_METADATA_EXCLUDE_KEYS_EN if language == 'en' else EXTRA_METADATA_EXCLUDE_KEYS_ZH
+    result = {}
+    for key, value in answer.items():
+        if key in exclude or key in {'zh', 'en'}:
+            continue
+        result[key] = value
+    return result
+
+
+def _core_with_extra_fields(core_metadata, zh_source, en_source):
+    merged = dict(core_metadata)
+    known_keys = set(CORE_FIELD_ALIASES_ZH.keys())
+    known_aliases = set()
+    for aliases in CORE_FIELD_ALIASES_ZH.values():
+        known_aliases.update(aliases)
+    for aliases in CORE_FIELD_ALIASES_EN.values():
+        known_aliases.update(aliases)
+
+    zh_extra = {
+        key: value
+        for key, value in (zh_source or {}).items()
+        if key not in known_keys and key not in known_aliases
+    }
+    en_extra = {
+        _map_key_to_zh(key): value
+        for key, value in (en_source or {}).items()
+        if key not in known_keys and key not in known_aliases
+    }
+    extra = _merge_language_nodes(zh_extra, en_extra)
+    if isinstance(extra, dict):
+        merged.update(extra)
+    return merged
+
+
+def _section_as_metadatas(section):
+    if isinstance(section, dict) and isinstance(section.get('metadatas'), list):
+        return section
+    if isinstance(section, dict):
+        return {'metadatas': [section]}
+    return {'metadatas': [{}]}
+
+
+def _domain_type_from_answer(answer, core_data):
+    domain_root = answer.get('领域元数据') or answer.get('Domain Metadata')
+    if isinstance(domain_root, dict) and isinstance(domain_root.get('metadata_type'), str):
+        return normalize_domain_type(domain_root.get('metadata_type'))
+
+    for key in (*DOMAIN_WRAPPER_KEYS_ZH, *DOMAIN_WRAPPER_KEYS_EN):
+        if key in {'领域元数据', 'Domain Metadata'}:
+            continue
+        if isinstance(answer.get(key), dict):
+            return normalize_domain_type(key)
+
+    resource_type = _first_present_value(
+        core_data,
+        'resource_type',
+        '资源类型',
+        '资源类型判定',
+        'ResourceType',
+        'Resource Type Classification',
+    )
+    return _infer_domain_section(resource_type, 'zh')
+
+
+def normalize_domain_type(value):
+    text = str(value or '').strip()
+    return {
+        'Domain Metadata': '领域元数据',
+        'Dataset Metadata': '数据集元数据',
+        'Data Paper Metadata': '数据论文元数据',
+        'Standard Literature Metadata': '标准文献元数据',
+        'Ecological Science Data Metadata': '生态科学数据元数据',
+        'Core Metadata': '核心元数据',
+    }.get(text, text or '领域元数据')
+
+
+def _build_already_unified_metadata(answer):
+    core_section = answer.get('核心元数据') or answer.get('Core Metadata')
+    core_section = _section_as_metadatas(core_section)
+    core_items = core_section.get('metadatas') or []
+    core_data = core_items[0] if core_items and isinstance(core_items[0], dict) else {}
+    domain_type = _domain_type_from_answer(answer, core_data)
+
+    domain_root = answer.get('领域元数据') or answer.get('Domain Metadata')
+    if isinstance(domain_root, dict):
+        domain_items = domain_root.get('metadatas')
+        if isinstance(domain_items, list):
+            domain_data = domain_items[0] if domain_items and isinstance(domain_items[0], dict) else {}
+        else:
+            domain_data = {
+                key: value
+                for key, value in domain_root.items()
+                if key not in {'metadata_type', 'metadatas'}
+            }
+    else:
+        domain_data = {}
+        specific_domain = answer.get(domain_type)
+        if isinstance(specific_domain, dict):
+            specific_items = specific_domain.get('metadatas')
+            domain_data = specific_items[0] if isinstance(specific_items, list) and specific_items and isinstance(specific_items[0], dict) else specific_domain
+        else:
+            extracted = _extract_domain_answer(answer, 'zh')
+            if isinstance(extracted, dict):
+                domain_data = extracted
+
+    return {
+        '核心元数据': core_section,
+        '领域元数据': {
+            'metadata_type': domain_type,
+            'metadatas': [domain_data if isinstance(domain_data, dict) else {}],
+        },
+    }
+
+
+def _build_unified_metadata(answer):
+    if not isinstance(answer, dict):
+        raise ValueError('LLM response must be a metadata object')
+
+    raw_zh_answer = answer.get('zh') if isinstance(answer.get('zh'), dict) else None
+    raw_en_answer = answer.get('en') if isinstance(answer.get('en'), dict) else None
+    has_bilingual_wrappers = raw_zh_answer is not None or raw_en_answer is not None
+
+    if not has_bilingual_wrappers:
+        return _build_already_unified_metadata(answer)
+
+    zh_answer = raw_zh_answer if raw_zh_answer is not None else answer
+    en_answer = raw_en_answer if raw_en_answer is not None else answer
+    en_answer = _map_keys_recursive(en_answer, LABEL_TRANSLATIONS_EN)
+
+    zh_core_source = _extract_core_answer(zh_answer, 'zh')
+    en_core_source = _extract_core_answer(en_answer, 'en')
+    core_zh = _pick_fields(zh_core_source, CORE_FIELD_ALIASES_ZH)
+    core_en = _pick_fields(en_core_source, CORE_FIELD_ALIASES_EN)
+
+    resource_type_zh = _first_present_value(zh_core_source, 'resource_type', '资源类型', '资源类型判定')
+    resource_type_en = _first_present_value(en_core_source, 'resource_type', 'ResourceType', 'Resource Type Classification')
+    domain_class_zh = _first_present_value(zh_answer, '领域判定')
+    domain_class_en = _first_present_value(en_answer, 'Domain Classification')
+
+    if not core_zh.get('resource_type'):
+        core_zh['resource_type'] = resource_type_zh or _resource_type_from_domain(domain_class_zh, 'zh')
+    if not core_en.get('resource_type'):
+        core_en['resource_type'] = resource_type_en or _resource_type_from_domain(domain_class_en, 'en')
+
+    core_zh = _normalize_core_metadata_shape(core_zh, 'zh')
+    core_en = _normalize_core_metadata_shape(core_en, 'en')
+    core_metadata = _merge_core_language_variants(core_zh, core_en)
+    if has_bilingual_wrappers:
+        core_metadata = _core_with_extra_fields(core_metadata, zh_core_source, en_core_source)
+
+    domain_section_zh = _infer_domain_section(core_metadata.get('resource_type'), 'zh')
+    metadata = {
+        '核心元数据': {'metadatas': [core_metadata]},
+        '领域元数据': {
+            'metadata_type': domain_section_zh,
+            'metadatas': [{}],
+        },
+    }
+
+    domain_zh = _normalize_domain_metadata_shape(_extract_domain_answer(zh_answer, 'zh'), 'zh')
+    domain_en = _normalize_domain_metadata_shape(_extract_domain_answer(en_answer, 'en'), 'en')
+    domain_en = _map_keys_to_zh_recursive(domain_en)
+    domain_unified = _merge_language_nodes(domain_zh, domain_en)
+    if isinstance(domain_unified, dict) and domain_unified and domain_section_zh != '核心元数据':
+        metadata['领域元数据']['metadatas'][0] = domain_unified
+
+    if not has_bilingual_wrappers:
+        for key, value in answer.items():
+            if key in {'zh', 'en'}:
+                continue
+            zh_key = _map_key_to_zh(key)
+            if zh_key not in metadata and zh_key not in DOMAIN_FIELD_KEYS_ZH and zh_key not in DOMAIN_WRAPPER_KEYS_ZH:
+                metadata['领域元数据']['metadatas'][0][zh_key] = value
+        if domain_section_zh != '核心元数据' and not metadata['领域元数据']['metadatas'][0]:
+            domain_direct = _extract_domain_answer(answer, 'zh')
+            if domain_direct:
+                metadata['领域元数据']['metadatas'][0] = _normalize_domain_metadata_shape(domain_direct, 'zh')
+    else:
+        zh_extra = _extra_answer_fields(zh_answer, 'zh')
+        en_extra = _map_keys_to_zh_recursive(_extra_answer_fields(en_answer, 'en'))
+        extra = _merge_language_nodes(zh_extra, en_extra)
+        if isinstance(extra, dict):
+            metadata['领域元数据']['metadatas'][0].update({
+                key: value for key, value in extra.items()
+                if key not in metadata['领域元数据']['metadatas'][0]
+            })
+
+    return metadata
+
+
 def _extract_domain_answer(answer, language='zh'):
     if not isinstance(answer, dict):
         return {}
 
     if language == 'en':
         wrapper_keys = {
+            'Domain Metadata',
             'Dataset Metadata',
             'Data Paper Metadata',
             'Standard Literature Metadata',
@@ -935,7 +1286,7 @@ def _extract_domain_answer(answer, language='zh'):
             'Ecological Science Data Service Information',
         }
     else:
-        wrapper_keys = {'数据集元数据', '数据论文元数据', '标准文献元数据', '生态科学数据元数据'}
+        wrapper_keys = {'领域元数据', '数据集元数据', '数据论文元数据', '标准文献元数据', '生态科学数据元数据'}
         field_keys = {
             '数据论文内容信息',
             '数据论文出版信息',
@@ -955,6 +1306,9 @@ def _extract_domain_answer(answer, language='zh'):
     for key in wrapper_keys:
         section = answer.get(key)
         if isinstance(section, dict):
+            metadatas = section.get('metadatas')
+            if isinstance(metadatas, list) and metadatas and isinstance(metadatas[0], dict):
+                return metadatas[0]
             return section
 
     return {key: value for key, value in answer.items() if key in field_keys}
@@ -1144,79 +1498,7 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
         llm_answer = normalize_llm_answer(
             qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
         )
-    zh_answer = llm_answer.get('zh')
-    en_answer = llm_answer.get('en')
-    if not isinstance(zh_answer, dict) and not isinstance(en_answer, dict) and isinstance(llm_answer, dict):
-        zh_answer = llm_answer
-        en_answer = llm_answer
-    if not isinstance(zh_answer, dict) or not isinstance(en_answer, dict):
-        raise ValueError('LLM response must be a metadata object or contain zh and en objects')
-
-    # 如果 LLM/规则在英文对象中使用了中文键名，则尝试把这些键名映射为英文。
-    # 不再用中文结果补英文值，避免英文视图混入中文内容。
-    en_answer = _map_keys_recursive(en_answer, LABEL_TRANSLATIONS_EN)
-
-    # 提取并规范化核心元数据和领域元数据
-    zh_core_source = _extract_core_answer(zh_answer, 'zh')
-    en_core_source = _extract_core_answer(en_answer, 'en')
-    core_zh = _pick_fields(zh_core_source, CORE_FIELD_ALIASES_ZH)
-    core_en = _pick_fields(en_core_source, CORE_FIELD_ALIASES_EN)
-
-    domain_zh = _extract_domain_answer(zh_answer, 'zh')
-    domain_en = _extract_domain_answer(en_answer, 'en')
-
-    # 将领域判定写回核心层，供前端切换领域表使用
-    resource_type_zh = _first_present_value(zh_core_source, 'resource_type', '资源类型', '资源类型判定')
-    resource_type_en = _first_present_value(en_core_source, 'resource_type', 'ResourceType', 'Resource Type Classification')
-    domain_class_zh = _first_present_value(zh_answer, '领域判定')
-    domain_class_en = _first_present_value(en_answer, 'Domain Classification')
-
-    if not core_zh.get('resource_type'):
-        core_zh['resource_type'] = resource_type_zh or _resource_type_from_domain(domain_class_zh, 'zh')
-
-    if not core_en.get('resource_type'):
-        core_en['resource_type'] = resource_type_en or _resource_type_from_domain(domain_class_en, 'en')
-
-    core_zh = _normalize_core_metadata_shape(core_zh, 'zh')
-    core_en = _normalize_core_metadata_shape(core_en, 'en')
-    domain_zh = _normalize_domain_metadata_shape(domain_zh, 'zh')
-    domain_en = _normalize_domain_metadata_shape(domain_en, 'en')
-    domain_zh_as_en = _normalize_domain_metadata_shape(
-        _map_keys_recursive(domain_zh, LABEL_TRANSLATIONS_EN),
-        'en',
-    ) if isinstance(domain_zh, dict) else {}
-    domain_en_as_zh = _normalize_domain_metadata_shape(
-        _map_keys_recursive(domain_en, _reverse_translation_map(LABEL_TRANSLATIONS_EN)),
-        'zh',
-    ) if isinstance(domain_en, dict) else {}
-    domain_zh = _merge_domain_missing_values(domain_zh, domain_en_as_zh) if domain_en_as_zh else domain_zh
-    domain_en = _merge_domain_missing_values(domain_en, domain_zh_as_en) if domain_zh_as_en else domain_en
-
-    core_metadata = _merge_core_language_variants(core_zh, core_en)
-    domain_section_zh = _infer_domain_section(core_metadata.get('resource_type'), 'zh')
-    domain_section_en = _infer_domain_section(core_metadata.get('resource_type'), 'en')
-
-    core_section_zh = {'metadatas': [core_metadata]}
-    core_section_en = {'metadatas': [core_metadata]}
-
-    zh_payload = {'核心元数据': core_section_zh}
-    en_payload = {'Core Metadata': core_section_en}
-
-    merged_answer = {
-        '核心元数据': core_section_zh,
-        'zh': zh_payload,
-        'en': en_payload,
-    }
-    if domain_zh:
-        zh_payload[domain_section_zh] = domain_zh
-        merged_answer[domain_section_zh] = domain_zh
-    elif domain_en:
-        merged_answer[domain_section_zh] = domain_en
-
-    if domain_en:
-        en_payload[domain_section_en] = domain_en
-    elif domain_zh:
-        en_payload[domain_section_en] = domain_zh
+    merged_answer = _build_unified_metadata(llm_answer)
 
     if persist_history and url and html:
         try:
