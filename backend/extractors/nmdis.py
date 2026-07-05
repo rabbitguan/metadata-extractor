@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from .base import MetadataDict
 
 
-RULE_NAME = 'NMDC Metadata Detail'
+RULE_NAME = 'NMDIS Metadata Detail'
 
 PUBLISHER_ZH = '国家海洋科学数据中心'
 PUBLISHER_EN = 'National Marine Data Center'
@@ -116,7 +116,7 @@ def _parse_query(url: str) -> Dict[str, str]:
     return result
 
 
-def _is_nmdc_detail_url(url: str) -> bool:
+def _is_nmdis_detail_url(url: str) -> bool:
     normalized_url = (url or '').strip().lower()
     return 'mds.nmdis.org.cn/pages/dataviewdetail.html' in normalized_url
 
@@ -145,7 +145,7 @@ def _fetch_detail_data(url: str) -> Optional[Dict[str, Any]]:
         response.raise_for_status()
         payload = response.json()
     except Exception as error:
-        print(f"[WARNING] NMDC detail API failed for datasetId={dataset_id}: {error}")
+        print(f"[WARNING] NMDIS detail API failed for datasetId={dataset_id}: {error}")
         return None
 
     data = payload.get('data') if isinstance(payload, dict) else None
@@ -493,7 +493,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 
 
 def _data_from_static_template(content: str, url: str, title: str) -> Optional[Dict[str, Any]]:
-    if not _is_nmdc_detail_url(url) or not _looks_like_static_vue_template(content):
+    if not _is_nmdis_detail_url(url) or not _looks_like_static_vue_template(content):
         return None
 
     query = _parse_query(url)
@@ -546,7 +546,7 @@ def matches(url: str, title: str, content: str) -> bool:
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
 
     return bool(
-        _is_nmdc_detail_url(url)
+        _is_nmdis_detail_url(url)
         or 'datasetid=' in normalized_url
         and 'nmdis.org.cn' in normalized_url
         or ('国家海洋科学数据中心' in combined and '数据集摘要' in combined)
@@ -558,7 +558,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     if not content:
         return None
 
-    data = _fetch_detail_data(url) if _is_nmdc_detail_url(url) else None
+    data = _fetch_detail_data(url) if _is_nmdis_detail_url(url) else None
     if not data:
         data = _extract_payload_dict(content)
     if not data:

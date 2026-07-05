@@ -468,13 +468,43 @@ const WEBSITE_FORMAT_SUPPORT = [
         }
     },
     {
-        name: "NMDC 国家海洋科学数据中心",
-        rule: "nmdc",
+        name: "NMDIS 国家海洋科学数据中心",
+        rule: "nmdis",
         domains: ["mds.nmdis.org.cn/pages/dataViewDetail.html"],
         resourceType: { zh: "数据集", en: "Dataset" },
         summary: {
-            zh: "识别 NMDC 数据集详情页，调用详情接口格式化标题、标识符、摘要、关键词、数据时间、共享级别和引用方式。",
-            en: "Handles NMDC dataset detail pages and formats title, identifiers, abstract, keywords, data time, sharing level, and citation."
+            zh: "识别 NMDIS 数据集详情页，调用详情接口格式化标题、标识符、摘要、关键词、数据时间、共享级别和引用方式。",
+            en: "Handles NMDIS dataset detail pages and formats title, identifiers, abstract, keywords, data time, sharing level, and citation."
+        }
+    },
+    {
+        name: "NBSDC 国家基础学科公共科学数据中心",
+        rule: "nbsdc",
+        domains: ["nbsdc.cn/general/dataDetail"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NBSDC 数据集详情页，调用详情接口格式化标题、CSTR/DOI、摘要、关键词、学科、项目、共享方式和引用方式。",
+            en: "Handles NBSDC dataset detail pages and formats title, CSTR/DOI, abstract, keywords, subjects, projects, sharing mode, and citation."
+        }
+    },
+    {
+        name: "GEODATA 国家地球系统科学数据中心",
+        rule: "geodata",
+        domains: ["geodata.cn/main/face_science_detail"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 GEODATA 科学数据详情页，调用详情接口格式化标题、DOI、摘要、关键词、时空范围、数据文件、联系方式和固定引用方式。",
+            en: "Handles GEODATA science detail pages and formats title, DOI, abstract, keywords, coverage, files, contact details, and fixed citation text."
+        }
+    },
+    {
+        name: "NCMI 国家人口健康科学数据中心",
+        rule: "ncmi",
+        domains: ["ncmi.cn/phda/dataDetails.do"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NCMI/PHDA 数据详情页，格式化 CSTR/DOI、数据集名称、关键词、描述、创建者、共享方式、许可协议和引用格式。",
+            en: "Handles NCMI/PHDA data detail pages and formats CSTR/DOI, dataset name, keywords, description, creators, sharing mode, license, and citation."
         }
     },
     {
