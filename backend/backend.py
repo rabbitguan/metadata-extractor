@@ -275,6 +275,10 @@ def _map_keys_recursive(obj, translations):
     return obj
 
 
+def _reverse_translation_map(translations):
+    return {value: key for key, value in translations.items()}
+
+
 def _is_missing_value(value):
     if value is None:
         return True
