@@ -275,6 +275,10 @@ def _map_keys_recursive(obj, translations):
     return obj
 
 
+def _reverse_translation_map(translations):
+    return {value: key for key, value in translations.items()}
+
+
 def _is_missing_value(value):
     if value is None:
         return True
@@ -1181,6 +1185,11 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
         _map_keys_recursive(domain_zh, LABEL_TRANSLATIONS_EN),
         'en',
     ) if isinstance(domain_zh, dict) else {}
+    domain_en_as_zh = _normalize_domain_metadata_shape(
+        _map_keys_recursive(domain_en, _reverse_translation_map(LABEL_TRANSLATIONS_EN)),
+        'zh',
+    ) if isinstance(domain_en, dict) else {}
+    domain_zh = _merge_domain_missing_values(domain_zh, domain_en_as_zh) if domain_en_as_zh else domain_zh
     domain_en = _merge_domain_missing_values(domain_en, domain_zh_as_en) if domain_zh_as_en else domain_en
 
     core_metadata = _merge_core_language_variants(core_zh, core_en)

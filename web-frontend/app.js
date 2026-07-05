@@ -2213,7 +2213,10 @@ function normalizeDisplayValue(data, language = state.language) {
                 return Array.isArray(localized.keyword) ? localized.keyword.join("；") : localized.keyword;
             }
         }
-        return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join("；");
+        return data
+            .map((item) => displayTextFromValue(normalizeDisplayValue(item, language), language))
+            .filter(Boolean)
+            .join("；");
     }
 
     if (!isObject(data)) return data;
@@ -2242,6 +2245,28 @@ function normalizeDisplayValue(data, language = state.language) {
     return filterLocalizedTree(data, language);
 }
 
+function displayTextFromValue(value, language = state.language) {
+    if (isMissingDisplayValue(value)) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+    if (Array.isArray(value)) {
+        return value.map((item) => displayTextFromValue(item, language)).filter(Boolean).join("；");
+    }
+    if (isObject(value)) {
+        const localized = filterLocalizedTree(value, language);
+        const target = isObject(localized) || Array.isArray(localized) ? localized : value;
+        if (Array.isArray(target)) return displayTextFromValue(target, language);
+        if (!isObject(target)) return displayTextFromValue(target, language);
+        return Object.entries(target)
+            .map(([key, item]) => {
+                const text = displayTextFromValue(item, language);
+                return text ? `${key}: ${text}` : "";
+            })
+            .filter(Boolean)
+            .join("；");
+    }
+    return "";
+}
+
 function isMissingDisplayValue(value) {
     if (value === null || typeof value === "undefined") return true;
     if (typeof value === "string") {
@@ -2261,11 +2286,9 @@ function renderFieldValue(data) {
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
         const rawValue = data.value;
         if (isMissingDisplayValue(rawValue)) return { text: ui.noContent, isEmpty: true };
-        if (Array.isArray(rawValue)) return { text: rawValue.map((item) => (isObject(item) ? JSON.stringify(item) : String(item))).join("；"), isEmpty: false };
-        return { text: String(rawValue), isEmpty: false };
+        return { text: displayTextFromValue(rawValue) || ui.noContent, isEmpty: false };
     }
-    if (Array.isArray(data)) return { text: data.map((item) => (isObject(item) ? JSON.stringify(item) : String(item))).join("；"), isEmpty: false };
-    if (isObject(data)) return { text: JSON.stringify(data), isEmpty: false };
+    if (Array.isArray(data) || isObject(data)) return { text: displayTextFromValue(data) || ui.noContent, isEmpty: false };
     return { text: String(data), isEmpty: false };
 }
 
