@@ -3,13 +3,22 @@ from __future__ import annotations
 import re
 from html import unescape
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs, urlparse
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import MetadataDict
 
 
 RULE_NAME = 'VSSO Metadata Detail'
+BASE_URL = 'https://vsso.nssdc.ac.cn'
+API_URL = f'{BASE_URL}/nssdc/coreMetadata/getDetail'
+API_HEADERS = {
+    'User-Agent': 'metadata-extractor/1.0 (+https://localhost)',
+    'Accept': 'application/json,text/plain,*/*',
+    'Referer': f'{BASE_URL}/nssdc_zh/html/vssoinfo.html',
+}
 
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
@@ -36,6 +45,15 @@ def _first_non_empty(*values: Optional[str]) -> Optional[str]:
     return None
 
 
+def _strip_label_value(value: Optional[str]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    if re.fullmatch(r'[\u4e00-\u9fffA-Za-z\s/（）()]+[:：]', text):
+        return None
+    return re.sub(r'^[\u4e00-\u9fffA-Za-z\s/（）()]+[:：]\s*', '', text).strip() or None
+
+
 def _split_terms(value: Optional[str]) -> list[str]:
     text = _clean_text(value)
     if not text:
@@ -53,7 +71,45 @@ def _extract_id_text(soup: BeautifulSoup, element_id: str) -> Optional[str]:
     if value:
         return _clean_text(value)
 
-    return _text_or_none(element)
+    return _strip_label_value(_text_or_none(element))
+
+
+def _extract_link_id(url: str, html: str = '') -> Optional[str]:
+    parsed = urlparse(url or '')
+    if parsed.query:
+        query = parse_qs(parsed.query)
+        for key in ('linkId', 'id'):
+            if query.get(key):
+                return _clean_text(query[key][0])
+        if re.fullmatch(r'\d+', parsed.query):
+            return parsed.query
+
+    match = re.search(r'vssoinfo\.html\?(\d+)', url or html)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _fetch_detail_data(url: str, html: str = '') -> Dict[str, Any]:
+    link_id = _extract_link_id(url, html)
+    if not link_id:
+        return {}
+    try:
+        response = requests.get(API_URL, params={'linkId': link_id}, headers=API_HEADERS, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as error:
+        print(f'[WARNING] VSSO detail API failed for linkId={link_id}: {error}')
+        return {}
+    if not isinstance(payload, dict) or payload.get('code') not in (0, None):
+        return {}
+    data = payload.get('coreMetadataDatasetInfo')
+    return data if isinstance(data, dict) else {}
+
+
+def _data_value(data: Dict[str, Any], key: str, fallback: Optional[str] = None) -> Optional[str]:
+    value = data.get(key) if isinstance(data, dict) else None
+    return _first_non_empty(value, fallback)
 
 
 def _extract_leading_text(element) -> Optional[str]:
@@ -129,6 +185,14 @@ def _extract_time_range(text: Optional[str]) -> Optional[Dict[str, Optional[str]
     return {'起始时间': cleaned, '结束时间': None}
 
 
+def _time_range_from_data(data: Dict[str, Any], fallback_text: Optional[str]) -> Optional[Dict[str, Optional[str]]]:
+    begin = _clean_text(data.get('timeSpanBegin')) if isinstance(data, dict) else None
+    end = _clean_text(data.get('timeSpanEnd')) if isinstance(data, dict) else None
+    if begin or end:
+        return {'起始时间': begin, '结束时间': end}
+    return _extract_time_range(fallback_text)
+
+
 def _extract_citation_format(soup: BeautifulSoup) -> Optional[str]:
     citation = _text_or_none(soup.select_one('#chineseQuotation'))
     if citation:
@@ -154,50 +218,60 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
 
     soup = BeautifulSoup(content, 'html.parser')
     html = content
+    data = _fetch_detail_data(url, html)
 
-    title_zh = _first_non_empty(_extract_id_text(soup, 'dataNameCh'), title, _text_or_none(soup.title), url)
-    title_en = _first_non_empty(_extract_id_text(soup, 'dataNameEn'), title_zh, title)
+    title_zh = _first_non_empty(_data_value(data, 'dataNameCh'), _extract_id_text(soup, 'dataNameCh'), title, _text_or_none(soup.title), url)
+    title_en = _first_non_empty(_data_value(data, 'dataNameEn'), _extract_id_text(soup, 'dataNameEn'), title_zh, title)
 
-    description = _extract_main_description(soup)
-    keywords_zh = _split_terms(_extract_id_text(soup, 'keywordCh'))
+    description = _first_non_empty(_data_value(data, 'desCh'), _extract_main_description(soup))
+    description_en = _first_non_empty(_data_value(data, 'desEn'), description)
+    keywords_zh = _split_terms(_data_value(data, 'keywordCh', _extract_id_text(soup, 'keywordCh')))
+    keywords_en = _split_terms(_data_value(data, 'keywordEn')) or keywords_zh
 
-    release_date = _extract_id_text(soup, 'releaseDate')
-    version = _extract_id_text(soup, 'versionNum') or _extract_id_text(soup, 'nowVersion')
-    dataset_size = _extract_id_text(soup, 'datasetTotalSize')
+    release_date = _data_value(data, 'releaseDate', _extract_id_text(soup, 'releaseDate'))
+    version = _data_value(data, 'versionNum', _extract_id_text(soup, 'versionNum')) or _data_value(data, 'nowVersion', _extract_id_text(soup, 'nowVersion'))
+    dataset_size = _data_value(data, 'datasetTotalSize', _extract_id_text(soup, 'datasetTotalSize'))
     time_range_text = _extract_id_text(soup, 'scopeServices')
-    time_range = _extract_time_range(time_range_text)
+    time_range = _time_range_from_data(data, time_range_text)
 
-    sharing_method = _extract_id_text(soup, 'shareMathod')
-    sharing_scope = _extract_id_text(soup, 'shareScope')
-    sharing_plan = _extract_id_text(soup, 'sharingPlan')
-    application_procedure = _extract_id_text(soup, 'applicationProcedure')
-    protection_period = _extract_id_text(soup, 'protectionPeriod')
+    sharing_method = _data_value(data, 'shareMathod', _extract_id_text(soup, 'shareMathod'))
+    sharing_scope = _data_value(data, 'shareScope', _extract_id_text(soup, 'shareScope'))
+    sharing_plan = _data_value(data, 'sharePlan', _extract_id_text(soup, 'sharingPlan'))
+    application_procedure = _data_value(data, 'applicationProcedure', _extract_id_text(soup, 'applicationProcedure'))
+    protection_period = _data_value(data, 'period', _extract_id_text(soup, 'protectionPeriod')) or _data_value(data, 'periodEnd')
 
-    source_project = _extract_id_text(soup, 'sourceProjectChT')
-    instrument = _extract_id_text(soup, 'instrumentChT')
-    observatory = _extract_id_text(soup, 'observatoryChT')
+    source_project = _data_value(data, 'sourceProjectCh', _extract_id_text(soup, 'sourceProjectChT'))
+    source_project_en = _data_value(data, 'sourceProjectEn', source_project)
+    instrument = _data_value(data, 'instrumentCh', _extract_id_text(soup, 'instrumentChT'))
+    instrument_en = _data_value(data, 'instrumentEn', instrument)
+    observatory = _data_value(data, 'observatoryCh', _extract_id_text(soup, 'observatoryChT'))
+    observatory_en = _data_value(data, 'observatoryEn', observatory)
 
-    producer = _extract_id_text(soup, 'dataProducerChT')
-    producer_tel = _extract_id_text(soup, 'dataProducerTelT')
-    producer_email = _extract_id_text(soup, 'dataProducerEmailT')
+    producer = _data_value(data, 'dataProducerCh', _extract_id_text(soup, 'dataProducerChT'))
+    producer_en = _data_value(data, 'dataProducerEn', producer)
+    producer_tel = _data_value(data, 'dataProducerTel', _extract_id_text(soup, 'dataProducerTelT'))
+    producer_email = _data_value(data, 'dataProducerEmail', _extract_id_text(soup, 'dataProducerEmailT'))
 
-    license_text = _extract_id_text(soup, 'sharingProtocol') or 'CC BY 4.0'
+    license_text = _data_value(data, 'license', _extract_id_text(soup, 'sharingProtocol')) or 'CC BY 4.0'
     license_url = None
     license_anchor = soup.select_one('#sharingProtocol a[href]')
     if license_anchor and license_anchor.get('href'):
         license_url = _clean_text(license_anchor.get('href'))
 
     citation_format = _extract_citation_format(soup)
-    download_url = _extract_dataset_link(html)
+    download_url = _data_value(data, 'url', _extract_dataset_link(html))
 
     identifier, cstr_identifier, doi_identifier = _extract_identifier(soup, html)
+    cstr_identifier = _data_value(data, 'cstr', cstr_identifier)
+    doi_identifier = _data_value(data, 'doi', doi_identifier)
+    identifier = cstr_identifier or doi_identifier or identifier
     resource_url = url or download_url
 
     creators = [producer] if producer else None
     alternative_identifiers = [item for item in [doi_identifier] if item]
 
-    subject_classification = '空间科学'
-    topic_classification = '行星磁层与波粒相互作用'
+    subject_classification = _data_value(data, 'subjectCategory') or '空间科学'
+    topic_classification = _data_value(data, 'themCategory') or '行星磁层与波粒相互作用'
 
     file_formats = ['sts', 'mat', 'cdf', 'txt']
     file_content = [
@@ -298,11 +372,11 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Creators': creators,
         'Publisher': 'National Space Science Data Center',
         'Publication Date': release_date,
-        'Description': description,
-        'Keywords': keywords_zh,
+        'Description': description_en,
+        'Keywords': keywords_en,
         'Discipline Classification': subject_classification,
         'Language': 'Chinese',
-        'Contributors': [observatory] if observatory else None,
+        'Contributors': [observatory_en] if observatory_en else None,
         'Alternative Identifiers': alternative_identifiers if alternative_identifiers else None,
         'Related Identifiers': None,
         'Rights': {
@@ -313,26 +387,26 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Protection Period': protection_period,
             'License': license_text,
         },
-        'Funders': source_project,
+        'Funders': source_project_en,
         'Version': version,
         'Resource URL': resource_url,
         'ResourceType': 'Dataset',
         'Dataset Basic Information': {
             'Identifier': identifier,
             'Title': title_en,
-            'Abstract': description,
-            'Keywords': keywords_zh,
+            'Abstract': description_en,
+            'Keywords': keywords_en,
             'Coverage': {
                 'Time Range': time_range,
                 'Spatial Range': None,
             },
             'Language': 'Chinese',
             'File Content': file_content,
-            'Project/Funder': source_project,
+            'Project/Funder': source_project_en,
             'Data Size': dataset_size,
             'Data Format': file_formats,
             'Dataset Authors': {
-                'Author Name': creators,
+                'Author Name': [producer_en] if producer_en else None,
                 'Affiliation': 'Magnetospheric Space Weather Laboratory, School of Electronic Information, Wuhan University' if producer else None,
                 'Email': producer_email,
                 'Contribution': 'Dataset production, curation, and release' if producer else None,
@@ -360,7 +434,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Telephone': producer_tel,
             'Email': producer_email,
             'Observatory': observatory,
-            'Instrument': instrument,
+            'Instrument': instrument_en,
             'License URL': license_url,
             'Topic Classification': topic_classification,
         },

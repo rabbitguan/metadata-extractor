@@ -4,6 +4,36 @@
 - 通用返回：`application/json`
 - CORS：已开启（`flask_cors.CORS`）
 
+## 0. 通用请求头
+
+后端支持由网关、SSO 或浏览器插件透传当前用户信息。用户信息通过请求头传入，后端不会在请求体中读取用户 ID。
+
+| Header | 必填 | 说明 |
+| --- | --- | --- |
+| `Content-Type: application/json` | POST/DELETE 含 JSON 请求体时必填 | 声明请求体为 JSON。 |
+| `X-User-Id` | 建议必传 | 当前登录用户唯一 ID。后端用它隔离 URL 历史缓存和用户查询记录。 |
+| `X-User-Name` | 否 | 当前登录用户名。可传 URL 编码值，例如 `%E5%BC%A0%E4%B8%89`，后端会解码。 |
+| `X-User-Email` | 否 | 当前登录用户邮箱。 |
+
+说明：
+
+- `/register` 的 URL 历史缓存按 `X-User-Id` 写入和命中。
+- `/history`、`/history/lookup` 只读取当前 `X-User-Id` 下的数据。
+- `/query` 解析 DOI/CSTR 时会读取 `X-User-Id`，前端随后写入 `/history` 时也会按该用户保存查询记录。
+- 本地测试时可以用 ModHeader 或 cURL 手动添加这些请求头。
+- 如果不传 `X-User-Id`，后端会使用空字符串作为用户 ID；这种情况适合本地临时调试，不适合多人环境。
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:4000/register \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 10086" \
+  -H "X-User-Name: %E5%BC%A0%E4%B8%89" \
+  -H "X-User-Email: zhangsan@example.com" \
+  -d '{"source":"url","mode":"common","url":"https://arxiv.org/abs/2607.01315"}'
+```
+
 ## 1. 提交内容分析
 
 ### `POST /register`
@@ -175,13 +205,19 @@ python backend.py -d
       }
     ]
   },
-  "数据论文元数据": {
-    "数据论文内容信息": {
-      "摘要": [
-        {"lang": "zh", "description": "..."},
-        {"lang": "en", "description": "..."}
-      ]
-    }
+  "领域元数据": {
+    "metadata_type": "数据论文元数据",
+    "metadatas": [
+      {
+        "数据论文内容信息": {
+          "摘要": [
+            {"lang": "zh", "description": "..."},
+            {"lang": "en", "description": "..."}
+          ],
+          "数据量": "12GB"
+        }
+      }
+    ]
   }
 }
 ```
@@ -189,10 +225,10 @@ python backend.py -d
 说明：
 
 - `核心元数据` 下保持与规范示例一致的 `metadatas` 数组结构。
-- `metadatas[0]` 只包含核心元数据 17 个字段，不包含领域判定、扩展信息等辅助字段。
-- 后端会保证核心字段存在，空值会被填充为占位文本 `未提取到`。
-- 返回体不再按顶层 `zh` / `en` 分块；需要中英文的字段值在字段内部用 `lang` 区分。
-- 领域结构是否存在，取决于规则/模型提取结果。
+- `领域元数据` 同样使用 `metadatas` 数组结构；`metadata_type` 标识实际领域表，如 `数据集元数据` / `数据论文元数据`。
+- 返回体不再按顶层 `zh` / `en` 分块，也不返回旧格式副本；需要中英文的字段值在字段内部用 `lang` 区分。
+- 单一字段如果没有 `lang`，表示语言无关值，前端中文页和英文页都会展示该值。
+- 后端不裁剪原始提取字段；前端按当前 schema 展示，字段缺失时再尝试别名和另一语言值。
 
 #### 失败响应
 
@@ -261,11 +297,12 @@ python backend.py -d
       "source": "doi.org",
       "status": "ok",
       "payload": {
-        "zh": {
-          "核心元数据": {}
+        "核心元数据": {
+          "metadatas": [{}]
         },
-        "en": {
-          "Core Metadata": {}
+        "领域元数据": {
+          "metadata_type": "数据论文元数据",
+          "metadatas": [{}]
         }
       },
       "updated_at": "2026-06-09T12:00:00.000000Z"
@@ -318,7 +355,7 @@ python backend.py -d
 
 ### `GET /history/lookup`
 
-按 URL（或文本中抽取 URL）查当前用户最新一条历史分析结果。用户由网关透传的 `X-User-Id` 请求头识别。
+按 URL（或文本中抽取 URL）查当前用户最新一条历史分析结果。当前用户由 `X-User-Id` 请求头识别。
 
 #### Query 参数
 
@@ -330,8 +367,13 @@ python backend.py -d
 ```json
 {
   "found": true,
-  "zh": {},
-  "en": {},
+  "核心元数据": {
+    "metadatas": [{}]
+  },
+  "领域元数据": {
+    "metadata_type": "数据集元数据",
+    "metadatas": [{}]
+  },
   "from_history": true,
   "history_record_id": 12,
   "history_requested_url": "https://example.com",
@@ -354,7 +396,7 @@ python backend.py -d
 
 ### `GET /history`
 
-分页返回当前用户的查询/转换记录，包含前端日志页需要展示的完整结果 JSON。用户由网关透传的 `X-User-Id` 请求头识别。
+分页返回当前用户的查询/转换记录，包含前端日志页需要展示的完整结果 JSON。当前用户由 `X-User-Id` 请求头识别。
 
 #### Query 参数
 
@@ -445,7 +487,27 @@ python backend.py -d
 
 ---
 
-## 5. 状态码约定
+## 5. 当前用户信息
+
+### `GET /user`
+
+返回后端从请求头解析到的当前用户信息。这个接口常用于本地调试 ModHeader 或验证网关是否正确透传用户请求头。
+
+#### 成功响应（200）
+
+```json
+{
+  "user": {
+    "id": "10086",
+    "name": "张三",
+    "email": "zhangsan@example.com"
+  }
+}
+```
+
+---
+
+## 6. 状态码约定
 
 - `200`：成功（包括部分项失败但整体请求可返回结果的场景，如 `/query` 的 `items` 中混合 `ok/error`）
 - `400`：请求参数错误、标识符不可解析、模型响应格式错误
@@ -457,13 +519,23 @@ python backend.py -d
 
 ---
 
-## 6. 调用示例（cURL）
+## 7. 调用示例（cURL）
 
-### 6.1 当前页面文本分析
+### 7.1 验证用户请求头
+
+```bash
+curl http://127.0.0.1:4000/user \
+  -H "X-User-Id: 10086" \
+  -H "X-User-Name: %E5%BC%A0%E4%B8%89" \
+  -H "X-User-Email: zhangsan@example.com"
+```
+
+### 7.2 当前页面文本分析
 
 ```bash
 curl -X POST http://127.0.0.1:4000/register \
   -H "Content-Type: application/json" \
+  -H "X-User-Id: 10086" \
   -d '{
     "source":"web",
     "mode":"common",
@@ -474,11 +546,12 @@ curl -X POST http://127.0.0.1:4000/register \
   }'
 ```
 
-### 6.2 URL 直接分析
+### 7.3 URL 直接分析
 
 ```bash
 curl -X POST http://127.0.0.1:4000/register \
   -H "Content-Type: application/json" \
+  -H "X-User-Id: 10086" \
   -d '{
     "source":"url",
     "mode":"domain",
@@ -486,11 +559,12 @@ curl -X POST http://127.0.0.1:4000/register \
   }'
 ```
 
-### 6.3 DOI/CSTR 批量分析
+### 7.4 DOI/CSTR 批量分析
 
 ```bash
 curl -X POST http://127.0.0.1:4000/query \
   -H "Content-Type: application/json" \
+  -H "X-User-Id: 10086" \
   -d '{
     "source":"identifier",
     "mode":"common",
@@ -498,14 +572,23 @@ curl -X POST http://127.0.0.1:4000/query \
   }'
 ```
 
-### 6.4 查询历史命中
+### 7.5 查询历史命中
 
 ```bash
-curl "http://127.0.0.1:4000/history/lookup?url=https%3A%2F%2Fexample.com%2Fpage"
+curl -H "X-User-Id: 10086" \
+  "http://127.0.0.1:4000/history/lookup?url=https%3A%2F%2Fexample.com%2Fpage"
 ```
 
-### 6.5 分页获取历史列表
+### 7.6 分页获取历史列表
 
 ```bash
-curl "http://127.0.0.1:4000/history?limit=20&offset=0"
+curl -H "X-User-Id: 10086" \
+  "http://127.0.0.1:4000/history?limit=20&offset=0"
+```
+
+### 7.7 清空当前用户查询记录
+
+```bash
+curl -X DELETE http://127.0.0.1:4000/history \
+  -H "X-User-Id: 10086"
 ```

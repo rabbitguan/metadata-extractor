@@ -86,6 +86,7 @@ def _get_content_type(response):
 def _fetch_page(url, source, clean_html, redirect_depth=0):
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
     response.raise_for_status()
+    response.encoding = response.apparent_encoding or response.encoding
     final_url = response.url if isinstance(response.url, str) and response.url else url
 
     redirect_target = None
