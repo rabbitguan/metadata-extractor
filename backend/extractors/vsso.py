@@ -145,21 +145,24 @@ def _extract_identifier(soup: BeautifulSoup, html: str) -> tuple[Optional[str], 
     doi_text = _extract_id_text(soup, 'doi')
     hidden_doi = _extract_id_text(soup, 'hidden_doi')
 
-    cstr_match = re.search(
-        r'\b\d{5}\.\d{2}\.\d{2}\.\d{2}\.\d{5}-V\d+\b|\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b',
-        cstr_text or '',
-    )
-    cstr_identifier = cstr_match.group(0) if cstr_match else _clean_text(cstr_text)
+    cstr_identifier = _extract_cstr_identifier(cstr_text)
 
     doi_value = _first_non_empty(doi_text, hidden_doi)
     identifier = cstr_identifier or doi_value or _first_non_empty(cstr_text, doi_value)
 
     if not identifier:
-        html_match = re.search(r'\b\d{5}\.\d{2}\.\d{2}\.\d{2}\.\d{5}-V\d+\b', html)
-        if html_match:
-            identifier = html_match.group(0)
+        identifier = _extract_cstr_identifier(html)
 
     return identifier, cstr_identifier, doi_value
+
+
+def _extract_cstr_identifier(*values: Optional[str]) -> Optional[str]:
+    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+    for value in values:
+        match = pattern.search(str(value or ''))
+        if match:
+            return match.group(1).strip().strip('.,;，；')
+    return None
 
 
 def _extract_dataset_link(html: str) -> Optional[str]:
@@ -262,7 +265,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     download_url = _data_value(data, 'url', _extract_dataset_link(html))
 
     identifier, cstr_identifier, doi_identifier = _extract_identifier(soup, html)
-    cstr_identifier = _data_value(data, 'cstr', cstr_identifier)
+    cstr_identifier = _extract_cstr_identifier(_data_value(data, 'cstr'), cstr_identifier)
     doi_identifier = _data_value(data, 'doi', doi_identifier)
     identifier = cstr_identifier or doi_identifier or identifier
     resource_url = url or download_url

@@ -5,7 +5,6 @@ from html import unescape
 from typing import Optional
 
 from .base import MetadataDict
-import re as _re
 
 
 RULE_NAME = 'arXiv'
@@ -27,9 +26,8 @@ def _identifier_items(*values: Optional[str]) -> Optional[list[dict[str, str]]]:
         cleaned = _clean_text(value)
         if not cleaned:
             continue
-        item_type = 'DOI' if cleaned.lower().startswith('https://doi.org/') or cleaned.lower().startswith('10.') else 'Other'
-        identifier = cleaned.replace('https://doi.org/', '') if item_type == 'DOI' else cleaned
-        items.append({'type': item_type, 'identifier': identifier})
+        if cleaned.lower().startswith('https://doi.org/') or cleaned.lower().startswith('10.'):
+            items.append({'type': 'DOI', 'identifier': cleaned.replace('https://doi.org/', '')})
     return items or None
 
 
@@ -106,6 +104,16 @@ def _extract_arxiv_version(html: str, url: str) -> Optional[str]:
     return None
 
 
+def _extract_cstr(*values: Optional[str]) -> Optional[str]:
+    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+    for value in values:
+        text = str(value or '')
+        match = pattern.search(text)
+        if match:
+            return match.group(1).strip().strip('.,;，；')
+    return None
+
+
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
@@ -128,8 +136,9 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
     )
     abstract_text = _extract_meta_content(html, 'citation_abstract') or _extract_first_match(
         html,
-        r'<blockquote class="abstract[^>]*>\s*<span class="descriptor">Abstract:</span>(.*?)</blockquote>',
+        r'<blockquote class="abstract[^>]*>\s*(?:<span class="descriptor">Abstract:</span>)?(.*?)</blockquote>',
     )
+    abstract_text = re.sub(r'^Abstract:\s*', '', _clean_text(abstract_text) or '', flags=re.IGNORECASE) or None
     authors = re.findall(r'<meta\s+name=["\']citation_author["\']\s+content=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
     if not authors:
         authors = re.findall(r'<div class="authors">.*?<a[^>]*>([^<]+)</a>', html, flags=re.IGNORECASE | re.DOTALL)
@@ -143,22 +152,18 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
     license_url = _extract_first_match(html, r'<div class="abs-license">.*?<a[^>]+href="([^"]+)"', flags=re.IGNORECASE | re.DOTALL)
     journal_ref = _extract_meta_content(html, 'citation_journal_title')
     keywords = [item for item in [subject_name, subject_code] if item]
-    primary_identifier = arxiv_id or url
-    alternative_identifiers = [doi] if doi else []
-    # 验证并提取 CSTR 标识符（格式示例: 12345.12.123456.123456）
-    cstr_pattern = _re.compile(r'\d{5}\.\d{2}\.\d{6}\.\d{6}')
-    combined_for_cstr = ' '.join(filter(None, [primary_identifier, ' '.join(alternative_identifiers), title_text or '', abstract_text or '', html]))
-    cstr_match = cstr_pattern.search(combined_for_cstr)
-    cstr_id = cstr_match.group(0) if cstr_match else None
+    doi_identifier = doi.replace('https://doi.org/', '') if doi else None
+    cstr_id = _extract_cstr(title_text, abstract_text, html)
+    domain_identifier = cstr_id or (f'DOI: {doi_identifier}' if doi_identifier else None)
 
     metadata = {
         'zh': {
             '资源类型判定': '数据论文',
             '领域判定': '数据论文元数据',
             'CSTR标识符': cstr_id,
-            '资源名称': None,
-            '描述': None,
-            '关键词': None,
+            '资源名称': _clean_text(title_text) or arxiv_id or url,
+            '描述': _clean_text(abstract_text),
+            '关键词': keywords or None,
             '生成日期': publication_date,
             '注册日期': None,
             '最新发布日期': None,
@@ -167,16 +172,22 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             '知识产权类别': None,
             '资源使用许可': _clean_text(license_url),
             '资源访问地址': url,
-            '替代标识符': _identifier_items(arxiv_id, doi),
+            '替代标识符': _identifier_items(doi),
             '共享方式': None,
             '提供方信息': None,
             '服务方信息': None,
             '数据论文内容信息': {
-                '标识符': primary_identifier,
-                '标题': None,
-                '摘要': None,
-                '关键词': None,
-                '数据论文作者': None,
+                '标识符': domain_identifier,
+                '标题': _clean_text(title_text) or arxiv_id or url,
+                '摘要': _clean_text(abstract_text),
+                '关键词': keywords or None,
+                '数据论文作者': {
+                    '作者姓名': authors if authors else None,
+                    '工作单位': None,
+                    '电子邮箱': None,
+                    '工作贡献': None,
+                    '作者简介': None,
+                } if authors else None,
                 '数据采集和处理方法': None,
             },
             '数据论文出版信息': {
@@ -204,7 +215,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             'subjects': [{'standard_gbt': None, 'standard_oecd': [item for item in [subject_name, subject_code] if item]}],
             'language': 'en',
             'contributors': None,
-            'alternative_identifiers': _identifier_items(arxiv_id, doi),
+            'alternative_identifiers': _identifier_items(doi),
             'related_identifiers': None,
             'rights': [{'license_type': None, 'license': None, 'type': None, 'description': _clean_text(license_url), 'cert_num': None}] if _clean_text(license_url) else None,
             'funders': None,
@@ -222,12 +233,12 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             'Intellectual Property Type': None,
             'Usage License': _clean_text(license_url),
             'Resource Access URL': url,
-            'Alternative Identifiers': alternative_identifiers,
+            'Alternative Identifiers': _identifier_items(doi),
             'Sharing Details': None,
             'Provider Information': None,
             'Service Provider Information': None,
             'Data Paper Content Information': {
-                'Identifier': primary_identifier,
+                'Identifier': domain_identifier,
                 'Title': _clean_text(title_text) or arxiv_id or url,
                 'Abstract': _clean_text(abstract_text),
                 'Keywords': keywords,

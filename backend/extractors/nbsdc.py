@@ -77,6 +77,19 @@ def _unique_list(values: Iterable[Any]) -> list[str]:
     return result
 
 
+def _identifier_item(value: Optional[Any]) -> Optional[Dict[str, str]]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    doi_match = re.search(r'10\.\d{4,9}/[^\s<>"\']+', text, flags=re.IGNORECASE)
+    if doi_match:
+        return {'type': 'DOI', 'identifier': doi_match.group(0).rstrip('.,;。；')}
+    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    if cstr_match:
+        return {'type': 'CSTR', 'identifier': cstr_match.group(1).strip().strip('.,;，；')}
+    return None
+
+
 def _parse_query(url: str) -> Dict[str, str]:
     if not url:
         return {}
@@ -274,7 +287,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     doi = _first_non_empty(identifiers.get('doi'))
     data_no = _first_non_empty(identifiers.get('dataNo'))
     identifier = cstr_identifier or doi or data_no or dataset_id
-    alternative_identifiers = _unique_list([doi, data_no, dataset_id])
+    alternative_identifiers = [item for item in (_identifier_item(doi), _identifier_item(data_no), _identifier_item(dataset_id)) if item]
     resource_url = _resource_url(url, data, dataset_id)
     access_url = _first_non_empty(file_map.get('externalLink'), info.get('url'), resource_url)
     update_date = _format_date(data.get('updateTime'))
@@ -286,8 +299,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     related_identifiers = []
     for item in relations:
         if isinstance(item, dict):
-            related_identifiers.append(item.get('dataId') or item.get('id') or item.get('name'))
-    related_identifiers = _unique_list(related_identifiers)
+            identifier_item = _identifier_item(item.get('dataId') or item.get('id') or item.get('name'))
+            if identifier_item:
+                related_identifiers.append({
+                    'relation': _first_non_empty(item.get('relation'), item.get('type'), 'RelatedResource'),
+                    'type': identifier_item['type'],
+                    'identifier': identifier_item,
+                })
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',

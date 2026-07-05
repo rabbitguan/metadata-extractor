@@ -2366,7 +2366,11 @@ function normalizeDisplayValue(data, language = state.language) {
     if (Array.isArray(data.names)) return normalizeDisplayValue(data.names, language);
     if (Array.isArray(data.keyword)) return data.keyword.join("；");
     if ((data.identifier || data.value) && data.type) {
-        return `${data.type}: ${data.identifier || data.value}`;
+        const identifierValue = data.identifier || data.value;
+        if (isObject(identifierValue) || Array.isArray(identifierValue)) {
+            return normalizeDisplayValue(identifierValue, language);
+        }
+        return `${data.type}: ${identifierValue}`;
     }
     if (Object.prototype.hasOwnProperty.call(data, "value")) return normalizeDisplayValue(data.value, language);
     if (data.person) {

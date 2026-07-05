@@ -184,17 +184,13 @@ def _related_identifiers(items: Any) -> Optional[list[Dict[str, Any]]]:
                 'type': 'DOI',
                 'identifier': {'type': 'DOI', 'identifier': doi},
             })
-        elif identifier.startswith(('http://', 'https://')):
+            continue
+        cstr = _extract_cstr(identifier, title)
+        if cstr:
             related.append({
                 'relation': _first_non_empty(item.get('associationDescription'), 'RelatedResource'),
-                'type': 'URL',
-                'identifier': {'type': 'URL', 'identifier': identifier},
-            })
-        elif title:
-            related.append({
-                'relation': _first_non_empty(item.get('associationDescription'), 'RelatedResource'),
-                'type': 'Other',
-                'identifier': {'type': 'Other', 'identifier': title},
+                'type': 'CSTR',
+                'identifier': {'type': 'CSTR', 'identifier': cstr},
             })
     return related or None
 

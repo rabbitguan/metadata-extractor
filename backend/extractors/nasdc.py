@@ -266,7 +266,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     dataset_doi = _extract_doi(data.get('DataBaseDOI'))
     paper_doi = _extract_doi(data.get('PaperDOI'))
     identifier = cstr_identifier or dataset_doi or dataset_id
-    alternative_identifiers = _unique_list([dataset_doi, paper_doi, data.get('OtherID')])
+    other_id = data.get('OtherID')
+    alternative_identifiers = _unique_list([
+        dataset_doi,
+        paper_doi,
+        _extract_doi(other_id),
+        _extract_cstr(other_id),
+    ])
 
     authors = _parse_people(data.get('DataPropertyRight'), data.get('Author'))
     producer = _first_non_empty(data.get('Producer'), data.get('PropertyRightUnit'), data.get('Origin'))
