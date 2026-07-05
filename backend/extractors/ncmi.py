@@ -110,7 +110,7 @@ def _extract_identifier_from_url(url: str) -> Optional[str]:
 def _detail_url(identifier: Optional[str]) -> Optional[str]:
     if not identifier:
         return None
-    return f'{DETAIL_URL}?id={quote(identifier, safe="")}'
+    return f'{DETAIL_URL}?id={quote(identifier, safe=":._-")}'
 
 
 def _fetch_detail_html(url: str) -> Optional[str]:
@@ -121,6 +121,7 @@ def _fetch_detail_html(url: str) -> Optional[str]:
     try:
         response = requests.get(request_url, headers=REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
+        response.encoding = response.apparent_encoding or response.encoding
     except Exception as error:
         print(f"[WARNING] NCMI detail page failed for id={identifier}: {error}")
         return None
@@ -185,10 +186,11 @@ def _format_date(value: Optional[Any]) -> Optional[str]:
 def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataDict]:
     soup = BeautifulSoup(content or '', 'html.parser')
     labels = _label_map(soup)
-    if not labels and 'dataSetNameZh' not in content:
+    fallback_identifier = _extract_identifier_from_url(url)
+    if not labels and 'dataSetNameZh' not in content and not fallback_identifier:
         return None
 
-    cstr_identifier = _first_non_empty(labels.get('科技资源标识符'), _extract_identifier_from_url(url))
+    cstr_identifier = _first_non_empty(fallback_identifier, labels.get('科技资源标识符'))
     doi = _first_non_empty(labels.get('DOI'))
     title_zh = _first_non_empty(_element_text(soup, '#dataSetNameZh'), labels.get('数据集中文名称'), title)
     title_en = _first_non_empty(_element_text(soup, '#dataSetNameEn'), labels.get('数据集英文名称'), _english_text(title_zh), title_zh)
@@ -208,6 +210,21 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     creators = _unique_list(_split_terms(labels.get('资源创建者')))
     creator_org = _first_non_empty(labels.get('数据资源创建机构'), labels.get('资源创建者单位'))
     contact_org = _first_non_empty(labels.get('联系单位'))
+    contact_email = _first_non_empty(labels.get('联系人邮箱'))
+    author_info = {
+        '作者姓名': creators or None,
+        '工作单位': creator_org,
+        '电子邮箱': contact_email,
+        '工作贡献': None,
+        '作者简介': None,
+    } if creators or creator_org or contact_email else None
+    author_info_en = {
+        'Author Name': creators or None,
+        'Affiliation': _english_text(creator_org),
+        'Email': contact_email,
+        'Contribution': None,
+        'Biography': None,
+    } if creators or _english_text(creator_org) or contact_email else None
     access_url = _first_non_empty(labels.get('数据链接'), resource_url)
     alternative_identifiers = []
     if doi:
@@ -251,13 +268,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             '基金项目': None,
             '数据量': data_size,
             '数据格式': data_format,
-            '数据集作者': {
-                '作者姓名': creators or None,
-                '工作单位': creator_org,
-                '电子邮箱': _first_non_empty(labels.get('联系人邮箱')),
-                '工作贡献': None,
-                '作者简介': None,
-            },
+            '数据集作者': author_info,
         },
         '数据集出版信息': {
             '发布日期': publish_date,
@@ -327,13 +338,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             'Project/Funder': None,
             'Data Size': data_size,
             'Data Format': data_format,
-            'Dataset Authors': {
-                'Author Name': creators or None,
-                'Affiliation': _english_text(creator_org),
-                'Email': _first_non_empty(labels.get('联系人邮箱')),
-                'Contribution': None,
-                'Biography': None,
-            },
+            'Dataset Authors': author_info_en,
         },
         'Dataset Publication Information': {
             'Publication Date': publish_date,
