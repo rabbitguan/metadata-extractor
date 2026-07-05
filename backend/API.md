@@ -205,13 +205,19 @@ python backend.py -d
       }
     ]
   },
-  "数据论文元数据": {
-    "数据论文内容信息": {
-      "摘要": [
-        {"lang": "zh", "description": "..."},
-        {"lang": "en", "description": "..."}
-      ]
-    }
+  "领域元数据": {
+    "metadata_type": "数据论文元数据",
+    "metadatas": [
+      {
+        "数据论文内容信息": {
+          "摘要": [
+            {"lang": "zh", "description": "..."},
+            {"lang": "en", "description": "..."}
+          ],
+          "数据量": "12GB"
+        }
+      }
+    ]
   }
 }
 ```
@@ -219,10 +225,10 @@ python backend.py -d
 说明：
 
 - `核心元数据` 下保持与规范示例一致的 `metadatas` 数组结构。
-- `metadatas[0]` 只包含核心元数据 17 个字段，不包含领域判定、扩展信息等辅助字段。
-- 后端会保证核心字段存在，空值会被填充为占位文本 `未提取到`。
-- 返回体不再按顶层 `zh` / `en` 分块；需要中英文的字段值在字段内部用 `lang` 区分。
-- 领域结构是否存在，取决于规则/模型提取结果。
+- `领域元数据` 同样使用 `metadatas` 数组结构；`metadata_type` 标识实际领域表，如 `数据集元数据` / `数据论文元数据`。
+- 返回体不再按顶层 `zh` / `en` 分块，也不返回旧格式副本；需要中英文的字段值在字段内部用 `lang` 区分。
+- 单一字段如果没有 `lang`，表示语言无关值，前端中文页和英文页都会展示该值。
+- 后端不裁剪原始提取字段；前端按当前 schema 展示，字段缺失时再尝试别名和另一语言值。
 
 #### 失败响应
 
@@ -291,11 +297,12 @@ python backend.py -d
       "source": "doi.org",
       "status": "ok",
       "payload": {
-        "zh": {
-          "核心元数据": {}
+        "核心元数据": {
+          "metadatas": [{}]
         },
-        "en": {
-          "Core Metadata": {}
+        "领域元数据": {
+          "metadata_type": "数据论文元数据",
+          "metadatas": [{}]
         }
       },
       "updated_at": "2026-06-09T12:00:00.000000Z"
@@ -360,8 +367,13 @@ python backend.py -d
 ```json
 {
   "found": true,
-  "zh": {},
-  "en": {},
+  "核心元数据": {
+    "metadatas": [{}]
+  },
+  "领域元数据": {
+    "metadata_type": "数据集元数据",
+    "metadatas": [{}]
+  },
   "from_history": true,
   "history_record_id": 12,
   "history_requested_url": "https://example.com",
