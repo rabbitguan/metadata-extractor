@@ -183,9 +183,20 @@ def _normalize_allowed_identifier(value, preferred_type=None):
     return None
 
 
+def _format_identifier_display(identifier, language='zh'):
+    normalized = _normalize_allowed_identifier(
+        identifier.get('identifier') if isinstance(identifier, dict) else identifier,
+        preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
+    )
+    if not normalized:
+        return None
+    return f"{normalized['type']}: {normalized['identifier']}"
+
+
 def _replace_cstr_identifier_value(key, value, cstr):
     if key in {'标识符', 'Identifier'}:
-        return {'type': 'CSTR', 'identifier': cstr}
+        language = 'en' if key == 'Identifier' else 'zh'
+        return _format_identifier_display({'type': 'CSTR', 'identifier': cstr}, language=language)
     if isinstance(value, dict):
         updated = dict(value)
         updated['type'] = 'CSTR'
@@ -775,7 +786,7 @@ def _normalize_domain_metadata_shape(obj, lang):
         if key in {'数据集作者', '数据论文作者', 'Dataset Authors', 'Data Paper Authors'}:
             normalized[key] = _normalize_agents(value, lang)
         elif key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            normalized[key] = _normalize_identifier(value)
+            normalized[key] = _format_identifier_display(value, language=lang)
         elif key in {'标题', 'Title'}:
             normalized[key] = _language_name_list(value, lang) or value
         elif key in {'摘要', 'Abstract'}:

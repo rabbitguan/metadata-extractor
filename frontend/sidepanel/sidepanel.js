@@ -1597,6 +1597,7 @@ function normalizeDisplayValue(data, language = state.language) {
             if (Object.prototype.hasOwnProperty.call(localized, 'keyword')) {
                 return Array.isArray(localized.keyword) ? localized.keyword.join('；') : localized.keyword;
             }
+            if (Object.prototype.hasOwnProperty.call(localized, 'value')) return normalizeDisplayValue(localized.value, language);
         }
         return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join('；');
     }
@@ -1605,7 +1606,10 @@ function normalizeDisplayValue(data, language = state.language) {
 
     if (Array.isArray(data.names)) return normalizeDisplayValue(data.names, language);
     if (Array.isArray(data.keyword)) return data.keyword.join('；');
-    if (data.identifier && data.type) return `${data.type}: ${data.identifier}`;
+    if ((data.identifier || data.value) && data.type) {
+        return `${data.type}: ${data.identifier || data.value}`;
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'value')) return normalizeDisplayValue(data.value, language);
     if (data.person) {
         const name = normalizeDisplayValue(data.person.names, language);
         const affiliation = normalizeDisplayValue(data.person.affiliations, language);

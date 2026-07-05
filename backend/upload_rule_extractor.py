@@ -256,6 +256,16 @@ def _normalize_identifier_item(value: Any, preferred_type: Any = None) -> Option
     return None
 
 
+def _format_identifier_display(value: Any, language: str = 'zh') -> Optional[str]:
+    normalized = _normalize_identifier_item(
+        value.get('identifier') if isinstance(value, dict) else value,
+        preferred_type=value.get('type') if isinstance(value, dict) else None,
+    )
+    if not normalized:
+        return None
+    return f"{normalized['type']}: {normalized['identifier']}"
+
+
 def _is_missing_value(value: Any) -> bool:
     if value is None:
         return True
@@ -611,7 +621,7 @@ def _format_domain_identifier(identifier: Optional[str], language: str = 'zh') -
     cleaned = _clean_text(identifier)
     if not cleaned:
         return None
-    return _normalize_identifier_item(cleaned)
+    return _format_identifier_display(cleaned, language=language)
 
 
 def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifiers: Optional[list], language: str = 'zh') -> Optional[str]:
@@ -624,7 +634,7 @@ def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifi
             preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
         )
         if normalized and normalized.get('type') == 'CSTR':
-            return normalized
+            return _format_identifier_display(normalized, language=language)
 
     for identifier in alternative_identifiers or []:
         normalized = _normalize_identifier_item(
@@ -632,7 +642,7 @@ def _pick_domain_identifier(cstr_identifier: Optional[str], alternative_identifi
             preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
         )
         if normalized:
-            return normalized
+            return _format_identifier_display(normalized, language=language)
 
     return None
 
@@ -645,21 +655,18 @@ def _fill_missing_identifier(section: Any, key: str, value: Optional[str]) -> An
     return section
 
 
-def _filter_domain_identifiers(value: Any) -> Any:
+def _filter_domain_identifiers(value: Any, language: str = 'zh') -> Any:
     if isinstance(value, list):
-        return [_filter_domain_identifiers(item) for item in value]
+        return [_filter_domain_identifiers(item, language=language) for item in value]
     if not isinstance(value, dict):
         return value
 
     filtered = {}
     for key, item in value.items():
         if key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            filtered[key] = _normalize_identifier_item(
-                item.get('identifier') if isinstance(item, dict) else item,
-                preferred_type=item.get('type') if isinstance(item, dict) else None,
-            )
+            filtered[key] = _format_identifier_display(item, language=language)
         else:
-            filtered[key] = _filter_domain_identifiers(item)
+            filtered[key] = _filter_domain_identifiers(item, language=language)
     return filtered
 
 
@@ -682,8 +689,8 @@ def _domain_sections(
         service = _first(domain, 'dataset_service_information', 'Dataset Service Information', '数据集服务信息')
         basic_zh = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(basic, dict) else {}
         basic_en = _translate_keys_recursive(basic, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(basic, dict) else {}
-        basic_zh = _filter_domain_identifiers(basic_zh)
-        basic_en = _filter_domain_identifiers(basic_en)
+        basic_zh = _filter_domain_identifiers(basic_zh, language='zh')
+        basic_en = _filter_domain_identifiers(basic_en, language='en')
         _fill_missing_identifier(basic_zh, '标识符', identifier_zh)
         _fill_missing_identifier(basic_en, 'Identifier', identifier_en)
         return (
@@ -708,8 +715,8 @@ def _domain_sections(
         service = _first(domain, 'data_paper_service_information', 'Data Paper Service Information', '数据论文服务信息')
         content_zh = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(content, dict) else {}
         content_en = _translate_keys_recursive(content, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(content, dict) else {}
-        content_zh = _filter_domain_identifiers(content_zh)
-        content_en = _filter_domain_identifiers(content_en)
+        content_zh = _filter_domain_identifiers(content_zh, language='zh')
+        content_en = _filter_domain_identifiers(content_en, language='en')
         _fill_missing_identifier(content_zh, '标识符', identifier_zh)
         _fill_missing_identifier(content_en, 'Identifier', identifier_en)
         return (
@@ -735,8 +742,8 @@ def _domain_sections(
         info_zh = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(info, dict) else {}
         info_en = _translate_keys_recursive(info, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(info, dict) else {}
         return (
-            {'标准文献信息': _filter_domain_identifiers(info_zh)},
-            {'Standard Literature Information': _filter_domain_identifiers(info_en)},
+            {'标准文献信息': _filter_domain_identifiers(info_zh, language='zh')},
+            {'Standard Literature Information': _filter_domain_identifiers(info_en, language='en')},
         )
 
     if resource_type_en == 'Ecological Data':
@@ -758,8 +765,8 @@ def _domain_sections(
             section = _first(domain, *aliases)
             zh_section = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_ZH) if isinstance(section, dict) else {}
             en_section = _translate_keys_recursive(section, DOMAIN_KEY_TRANSLATIONS_EN) if isinstance(section, dict) else {}
-            zh_sections[zh_key] = _filter_domain_identifiers(zh_section)
-            en_sections[en_key] = _filter_domain_identifiers(en_section)
+            zh_sections[zh_key] = _filter_domain_identifiers(zh_section, language='zh')
+            en_sections[en_key] = _filter_domain_identifiers(en_section, language='en')
         return zh_sections, en_sections
 
     return {}, {}
