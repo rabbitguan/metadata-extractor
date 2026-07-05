@@ -946,14 +946,19 @@ const API_DOCS_TEXT = {
                     html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
                     title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
                 },
-                example: {
-                    source: "url",
-                    mode: "common",
-                    strategy: "auto",
-                    force_reanalyze: false,
-                    dynamic_render: "auto",
-                    url: "https://arxiv.org/abs/2303.14524"
-                },
+                example: `curl -X POST http://127.0.0.1:4000/register \\
+  -H "Content-Type: application/json" \\
+  -H "X-User-Id: 10086" \\
+  -H "X-User-Name: Zhang San" \\
+  -H "X-User-Email: zhangsan@example.com" \\
+  -d '{
+    "source": "url",
+    "mode": "common",
+    "strategy": "auto",
+    "force_reanalyze": false,
+    "dynamic_render": "auto",
+    "url": "https://arxiv.org/abs/2303.14524"
+  }'`,
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -979,11 +984,16 @@ const API_DOCS_TEXT = {
                     text: "当 identifiers 不传时，后端会从 text 中自动识别 DOI/CSTR。",
                     html: "当 identifiers 和 text 都不传时，后端会从 html 中自动识别 DOI/CSTR。"
                 },
-                example: {
-                    source: "identifier",
-                    mode: "common",
-                    identifiers: "CSTR:14804.11.05.70.00079-V01"
-                },
+                example: `curl -X POST http://127.0.0.1:4000/query \\
+  -H "Content-Type: application/json" \\
+  -H "X-User-Id: 10086" \\
+  -H "X-User-Name: Zhang San" \\
+  -H "X-User-Email: zhangsan@example.com" \\
+  -d '{
+    "source": "identifier",
+    "mode": "common",
+    "identifiers": "CSTR:14804.11.05.70.00079-V01"
+  }'`,
                 success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -1035,14 +1045,19 @@ const API_DOCS_TEXT = {
                     html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
                     title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
                 },
-                example: {
-                    source: "url",
-                    mode: "common",
-                    strategy: "auto",
-                    force_reanalyze: false,
-                    dynamic_render: "auto",
-                    url: "https://arxiv.org/abs/2303.14524"
-                },
+                example: `curl -X POST http://127.0.0.1:4000/register \\
+  -H "Content-Type: application/json" \\
+  -H "X-User-Id: 10086" \\
+  -H "X-User-Name: Zhang San" \\
+  -H "X-User-Email: zhangsan@example.com" \\
+  -d '{
+    "source": "url",
+    "mode": "common",
+    "strategy": "auto",
+    "force_reanalyze": false,
+    "dynamic_render": "auto",
+    "url": "https://arxiv.org/abs/2303.14524"
+  }'`,
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -1068,11 +1083,16 @@ const API_DOCS_TEXT = {
                     text: "When identifiers is omitted, the backend extracts DOI/CSTR values from text.",
                     html: "When identifiers and text are omitted, the backend extracts DOI/CSTR values from html."
                 },
-                example: {
-                    source: "identifier",
-                    mode: "common",
-                    identifiers: "CSTR:14804.11.05.70.00079-V01"
-                },
+                example: `curl -X POST http://127.0.0.1:4000/query \\
+  -H "Content-Type: application/json" \\
+  -H "X-User-Id: 10086" \\
+  -H "X-User-Name: Zhang San" \\
+  -H "X-User-Email: zhangsan@example.com" \\
+  -d '{
+    "source": "identifier",
+    "mode": "common",
+    "identifiers": "CSTR:14804.11.05.70.00079-V01"
+  }'`,
                 success: QUERY_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -1621,7 +1641,7 @@ function createApiDocSection(title, payload) {
     const heading = document.createElement("h4");
     heading.textContent = title;
     const pre = document.createElement("pre");
-    pre.textContent = JSON.stringify(payload, null, 2);
+    pre.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
     fragment.append(heading, pre);
     return fragment;
 }
