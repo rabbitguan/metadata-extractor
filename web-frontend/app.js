@@ -2387,7 +2387,7 @@ function renderMode(mode) {
     const schemaKey = getSchemaKeyForMode(mode, payload, language);
     const rawSchemaRoot = schema ? (schema[schemaKey] || schema["核心元数据"]) : null;
     const schemaRoot = rawSchemaRoot ? translateTree(rawSchemaRoot, language) : null;
-    const sectionPayload = getEffectiveSectionPayload(payload, schemaKey);
+    const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
 
     const metadataRoot = document.getElementById("metadataRoot");
     const extensionInfo = document.getElementById("extensionInfo");
