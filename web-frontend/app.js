@@ -25,8 +25,8 @@ function getServiceBasePathLabel() {
 const BACKEND_QUERY_URL = buildServiceUrl("/query");
 const BACKEND_REGISTER_URL = buildServiceUrl("/register");
 const BACKEND_USER_URL = buildServiceUrl("/user");
+const BACKEND_HISTORY_URL = buildServiceUrl("/history");
 const DOWNLOAD_LANGUAGE = "en";
-const CONVERSION_LOG_STORAGE_KEY = "metadata_web_conversion_logs_v1";
 const MAX_CONVERSION_LOGS = 50;
 const UPLOAD_EXAMPLE_JSON = `{
   "resource_type": "dataset",
@@ -1122,17 +1122,61 @@ function activateSourceMode(sourceMode) {
     state.resultCache = getSourceResultCache();
 }
 
-function loadConversionLogs() {
+function normalizeHistoryEntry(record) {
+    return {
+        id: String(record.id || ""),
+        createdAt: record.created_at || record.createdAt || "",
+        source: record.source || "url",
+        mode: record.mode || "common",
+        strategy: record.strategy || "",
+        title: record.title || "",
+        url: record.requested_url || record.url || "",
+        identifierInput: record.identifier_input || record.identifierInput || "",
+        inputPreview: record.input_preview || record.inputPreview || "",
+        payload: record.payload || {}
+    };
+}
+
+async function loadConversionLogs() {
     try {
-        const parsed = JSON.parse(localStorage.getItem(CONVERSION_LOG_STORAGE_KEY) || "[]");
-        state.conversionLogs = Array.isArray(parsed) ? parsed : [];
+        const response = await fetch(`${BACKEND_HISTORY_URL}?limit=${MAX_CONVERSION_LOGS}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const records = Array.isArray(payload.records) ? payload.records : [];
+        state.conversionLogs = records.map(normalizeHistoryEntry);
     } catch (error) {
         state.conversionLogs = [];
+    } finally {
+        if (!state.selectedLogId && state.conversionLogs.length) {
+            state.selectedLogId = state.conversionLogs[0].id;
+        }
+        renderUserDashboard();
     }
 }
 
-function saveConversionLogs() {
-    localStorage.setItem(CONVERSION_LOG_STORAGE_KEY, JSON.stringify(state.conversionLogs));
+async function saveConversionLog(entry) {
+    const response = await fetch(BACKEND_HISTORY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            source: entry.source,
+            mode: entry.mode,
+            strategy: entry.strategy,
+            title: entry.title,
+            url: entry.url,
+            identifierInput: entry.identifierInput,
+            inputPreview: entry.inputPreview,
+            payload: entry.payload
+        })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+}
+
+async function clearConversionLogs() {
+    const response = await fetch(BACKEND_HISTORY_URL, { method: "DELETE" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
 }
 
 function getDisplayUserName() {
@@ -1554,8 +1598,10 @@ function recordConversionLog({ source, mode, strategy, title, url, inputText, pa
     };
     state.conversionLogs = [entry, ...state.conversionLogs].slice(0, MAX_CONVERSION_LOGS);
     state.selectedLogId = entry.id;
-    saveConversionLogs();
     renderUserDashboard();
+    saveConversionLog(entry)
+        .then(() => loadConversionLogs())
+        .catch((error) => console.warn("Failed to save conversion log", error));
 }
 
 function showLogs() {
@@ -1571,6 +1617,7 @@ function showLogs() {
     document.getElementById("logWorkspace").hidden = false;
     setSidebarActive("Logs");
     renderLogs();
+    loadConversionLogs().then(renderLogs).catch(() => {});
 }
 
 function showFormatSupport() {
@@ -2777,7 +2824,7 @@ function bindEvents() {
     document.getElementById("dashboardFormatButton").addEventListener("click", showFormatSupport);
     document.getElementById("dashboardLogsButton").addEventListener("click", showLogs);
     document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
-    document.getElementById("dashboardRefreshButton").addEventListener("click", renderOperationsDashboard);
+    document.getElementById("dashboardRefreshButton").addEventListener("click", loadConversionLogs);
     document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
         window.location.href = "/";
     });
@@ -2804,12 +2851,16 @@ function bindEvents() {
     document.getElementById("closeFormatSupportButton").addEventListener("click", goHome);
     document.getElementById("openLogsButton").addEventListener("click", showLogs);
     document.getElementById("closeLogsButton").addEventListener("click", goHome);
-    document.getElementById("clearLogsButton").addEventListener("click", () => {
+    document.getElementById("clearLogsButton").addEventListener("click", async () => {
         state.conversionLogs = [];
         state.selectedLogId = null;
-        saveConversionLogs();
         renderUserDashboard();
         renderLogs();
+        try {
+            await clearConversionLogs();
+        } catch (error) {
+            console.warn("Failed to clear conversion logs", error);
+        }
     });
     document.getElementById("uploadButton").addEventListener("click", () => {
         if (state.sourceMode !== "upload") selectSourceMode("upload");
@@ -2856,10 +2907,9 @@ function bindEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-    loadConversionLogs();
     bindEvents();
     updateStaticText();
-    loadGatewayUser();
+    await Promise.all([loadGatewayUser(), loadConversionLogs()]);
     try {
         await loadModeSchema("common");
         await loadModeSchema("domain");

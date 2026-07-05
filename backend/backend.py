@@ -17,10 +17,12 @@ from get_id import get_typed_identifiers
 from identifier import process_source_code
 from upload_rule_extractor import extract_upload_metadata
 from metadata_store import (
+    clear_conversion_logs,
     get_latest_analysis_history_by_url,
     initialize_metadata_store,
-    list_analysis_history,
+    list_conversion_logs,
     save_analysis_history,
+    save_conversion_log,
 )
 
 
@@ -41,6 +43,7 @@ FETCH_HEADERS = {
 }
 
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
+CSTR_IDENTIFIER_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
 
 DYNAMIC_RENDER_DOMAINS = {
     item.strip().lower()
@@ -85,7 +88,7 @@ def _normalize_url_candidate(value):
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, parsed.query, ''))
 
 
-def _lookup_history_payload(*, source='', url='', text=''):
+def _lookup_history_payload(*, source='', url='', text='', user_id=''):
     if source == 'identifier':
         return None
 
@@ -109,9 +112,13 @@ def _lookup_history_payload(*, source='', url='', text=''):
     if not candidates:
         return None
 
-    history_record = get_latest_analysis_history_by_url(requested_url=candidates[0], text='')
+    history_record = get_latest_analysis_history_by_url(requested_url=candidates[0], text='', user_id=user_id)
     if not history_record and len(candidates) > 1:
-        history_record = get_latest_analysis_history_by_url(requested_url='', text='\n'.join(candidates[1:]))
+        history_record = get_latest_analysis_history_by_url(
+            requested_url='',
+            text='\n'.join(candidates[1:]),
+            user_id=user_id,
+        )
 
     if not history_record:
         return None
@@ -139,6 +146,55 @@ def _parse_bool(value):
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
     return bool(value)
+
+
+def _normalize_queried_cstr(value):
+    match = CSTR_IDENTIFIER_PATTERN.search(str(value or '').strip())
+    if not match:
+        return ''
+    return f'CSTR:{match.group(1).strip().strip(".,;，；")}'
+
+
+def _replace_cstr_identifier_value(value, cstr):
+    if isinstance(value, dict):
+        updated = dict(value)
+        updated['type'] = 'CSTR'
+        updated['identifier'] = cstr
+        return updated
+    return cstr
+
+
+def _apply_queried_cstr_to_payload(payload, queried_cstr):
+    cstr = _normalize_queried_cstr(queried_cstr)
+    if not cstr or not isinstance(payload, dict):
+        return payload
+
+    def patch_node(node):
+        if isinstance(node, list):
+            return [patch_node(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        patched = {}
+        for key, value in node.items():
+            if key in {'CSTR标识符', '标识符', 'Identifier', 'CSTR Identifier'}:
+                patched[key] = _replace_cstr_identifier_value(value, cstr)
+            else:
+                patched[key] = patch_node(value)
+        return patched
+
+    patched_payload = patch_node(payload)
+    core = patched_payload.get('核心元数据')
+    if isinstance(core, dict):
+        metadatas = core.get('metadatas')
+        if isinstance(metadatas, list):
+            for item in metadatas:
+                if isinstance(item, dict):
+                    item['identifier'] = cstr
+        else:
+            core['identifier'] = cstr
+
+    return patched_payload
 
 
 def _looks_like_structured_upload(title='', source='', strategy=''):
@@ -1102,6 +1158,7 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
                 mode=mode,
                 strategy=strategy,
                 result_payload=merged_answer,
+                user_id=get_gateway_user().get('id', ''),
             )
             print(f"[DB] Saved analysis history record #{record_id}")
         except Exception as error:
@@ -1219,8 +1276,11 @@ def handle_identifier_request(data):
                 if resource_result:
                     supplemental_results.append(resource_result)
 
+            if item.get('type') == 'cstr':
+                payload = _apply_queried_cstr_to_payload(payload, item.get('identifier'))
+
             results.append({
-                'identifier': item.get('identifier'),
+                'identifier': _normalize_queried_cstr(item.get('identifier')) if item.get('type') == 'cstr' else item.get('identifier'),
                 'type': item.get('type'),
                 'resolved_url': url,
                 'source': item.get('source'),
@@ -1256,7 +1316,12 @@ def handle_register_request(data):
         if not url:
             return jsonify({"status": "error", "message": "Missing URL"}), 400
         if not force_reanalyze:
-            history_payload = _lookup_history_payload(source=source, url=url, text='')
+            history_payload = _lookup_history_payload(
+                source=source,
+                url=url,
+                text='',
+                user_id=get_gateway_user().get('id', ''),
+            )
             if history_payload:
                 return jsonify(history_payload)
         try:
@@ -1271,6 +1336,7 @@ def handle_register_request(data):
             source=source,
             url=data.get('url', ''),
             text=data.get('text', ''),
+            user_id=get_gateway_user().get('id', ''),
         )
         if history_payload:
             return jsonify(history_payload)
@@ -1322,18 +1388,52 @@ def register():
 def history_lookup():
     url = request.args.get('url', '')
     text = request.args.get('text', '')
-    history_payload = _lookup_history_payload(source='url', url=url, text=text)
+    history_payload = _lookup_history_payload(
+        source='url',
+        url=url,
+        text=text,
+        user_id=get_gateway_user().get('id', ''),
+    )
     if not history_payload:
         return jsonify({'found': False})
 
     return jsonify({'found': True, **history_payload})
 
-@app.route('/history', methods=['GET'])
+@app.route('/history', methods=['GET', 'POST', 'DELETE'])
 def history():
+    user_id = get_gateway_user().get('id', '')
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        payload = data.get('payload')
+        if not isinstance(payload, dict):
+            return jsonify({'status': 'error', 'message': 'Missing payload'}), 400
+        try:
+            record_id = save_conversion_log(
+                user_id=user_id,
+                source=data.get('source', ''),
+                mode=data.get('mode', ''),
+                strategy=data.get('strategy', ''),
+                title=data.get('title', ''),
+                requested_url=data.get('url', ''),
+                identifier_input=data.get('identifierInput', ''),
+                input_preview=data.get('inputPreview', ''),
+                result_payload=payload,
+            )
+        except Exception as error:
+            return jsonify({'status': 'error', 'message': f'Failed to save history: {error}'}), 500
+        return jsonify({'status': 'ok', 'id': record_id})
+
+    if request.method == 'DELETE':
+        try:
+            deleted = clear_conversion_logs(user_id=user_id)
+        except Exception as error:
+            return jsonify({'status': 'error', 'message': f'Failed to clear history: {error}'}), 500
+        return jsonify({'status': 'ok', 'deleted': deleted})
+
     limit = request.args.get('limit', 20)
     offset = request.args.get('offset', 0)
     try:
-        records = list_analysis_history(limit=limit, offset=offset)
+        records = list_conversion_logs(user_id=user_id, limit=limit, offset=offset)
     except Exception as error:
         return jsonify({'status': 'error', 'message': f'Failed to load history: {error}'}), 500
 

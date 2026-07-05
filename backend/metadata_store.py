@@ -40,8 +40,33 @@ def initialize_metadata_store():
             )
             '''
         )
+        columns = {
+            row['name']
+            for row in connection.execute('PRAGMA table_info(analysis_history)').fetchall()
+        }
+        if 'user_id' not in columns:
+            connection.execute("ALTER TABLE analysis_history ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
         connection.execute('CREATE INDEX IF NOT EXISTS idx_analysis_history_url ON analysis_history(requested_url)')
         connection.execute('CREATE INDEX IF NOT EXISTS idx_analysis_history_hash ON analysis_history(html_sha256)')
+        connection.execute('CREATE INDEX IF NOT EXISTS idx_analysis_history_user_url ON analysis_history(user_id, requested_url)')
+        connection.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS conversion_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                mode TEXT,
+                strategy TEXT,
+                title TEXT,
+                requested_url TEXT,
+                identifier_input TEXT,
+                input_preview TEXT,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+        connection.execute('CREATE INDEX IF NOT EXISTS idx_conversion_logs_user_created ON conversion_logs(user_id, id DESC)')
 
 
 def _json_dumps(value: Any) -> str:
@@ -154,6 +179,7 @@ def save_analysis_history(
     mode: str,
     strategy: str,
     result_payload: Dict[str, Any],
+    user_id: str = '',
 ) -> int:
     html_hash = hashlib.sha256((page_html or '').encode('utf-8')).hexdigest()
 
@@ -171,6 +197,7 @@ def save_analysis_history(
         cursor = connection.execute(
             '''
             INSERT INTO analysis_history (
+                user_id,
                 requested_url,
                 page_title,
                 page_html,
@@ -184,9 +211,10 @@ def save_analysis_history(
                 core_metadata_json,
                 domain_metadata_json,
                 result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
+                str(user_id or ''),
                 requested_url,
                 page_title,
                 page_html,
@@ -205,9 +233,10 @@ def save_analysis_history(
         return int(cursor.lastrowid)
 
 
-def list_analysis_history(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
+def list_analysis_history(limit: int = 20, offset: int = 0, user_id: str = '') -> List[Dict[str, Any]]:
     safe_limit = max(1, min(int(limit or 20), 200))
     safe_offset = max(0, int(offset or 0))
+    safe_user_id = str(user_id or '')
 
     with _connect() as connection:
         rows = connection.execute(
@@ -225,17 +254,19 @@ def list_analysis_history(limit: int = 20, offset: int = 0) -> List[Dict[str, An
                 domain_classification_en,
                 created_at
             FROM analysis_history
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT ? OFFSET ?
             ''',
-            (safe_limit, safe_offset),
+            (safe_user_id, safe_limit, safe_offset),
         ).fetchall()
 
     return [dict(row) for row in rows]
 
 
-def get_latest_analysis_history_by_url(*, requested_url: str = '', text: str = '') -> Optional[Dict[str, Any]]:
+def get_latest_analysis_history_by_url(*, requested_url: str = '', text: str = '', user_id: str = '') -> Optional[Dict[str, Any]]:
     candidates = _collect_url_candidates(requested_url)
+    safe_user_id = str(user_id or '')
 
     if text:
         for match in re.finditer(r'https?://[^\s<>"\'\)\]\}]+', text, re.IGNORECASE):
@@ -273,11 +304,100 @@ def get_latest_analysis_history_by_url(*, requested_url: str = '', text: str = '
                 result_json,
                 created_at
             FROM analysis_history
-            WHERE requested_url IN ({placeholders})
+            WHERE user_id = ? AND requested_url IN ({placeholders})
             ORDER BY id DESC
             LIMIT 1
             ''',
-            deduplicated_candidates,
+            [safe_user_id, *deduplicated_candidates],
         ).fetchone()
 
     return dict(row) if row else None
+
+
+def save_conversion_log(
+    *,
+    user_id: str,
+    source: str,
+    mode: str = '',
+    strategy: str = '',
+    title: str = '',
+    requested_url: str = '',
+    identifier_input: str = '',
+    input_preview: str = '',
+    result_payload: Dict[str, Any],
+) -> int:
+    with _connect() as connection:
+        cursor = connection.execute(
+            '''
+            INSERT INTO conversion_logs (
+                user_id,
+                source,
+                mode,
+                strategy,
+                title,
+                requested_url,
+                identifier_input,
+                input_preview,
+                result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                str(user_id or ''),
+                str(source or ''),
+                str(mode or ''),
+                str(strategy or ''),
+                str(title or ''),
+                str(requested_url or ''),
+                str(identifier_input or ''),
+                str(input_preview or '')[:1000],
+                _json_dumps(result_payload),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+
+def list_conversion_logs(*, user_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    safe_limit = max(1, min(int(limit or 50), 200))
+    safe_offset = max(0, int(offset or 0))
+    safe_user_id = str(user_id or '')
+
+    with _connect() as connection:
+        rows = connection.execute(
+            '''
+            SELECT
+                id,
+                source,
+                mode,
+                strategy,
+                title,
+                requested_url,
+                identifier_input,
+                input_preview,
+                result_json,
+                created_at
+            FROM conversion_logs
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            ''',
+            (safe_user_id, safe_limit, safe_offset),
+        ).fetchall()
+
+    records: List[Dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item['payload'] = json.loads(item.pop('result_json') or '{}')
+        except Exception:
+            item['payload'] = {}
+        records.append(item)
+    return records
+
+
+def clear_conversion_logs(*, user_id: str) -> int:
+    with _connect() as connection:
+        cursor = connection.execute(
+            'DELETE FROM conversion_logs WHERE user_id = ?',
+            (str(user_id or ''),),
+        )
+        return int(cursor.rowcount or 0)
