@@ -26,7 +26,6 @@ const BACKEND_QUERY_URL = buildServiceUrl("/query");
 const BACKEND_REGISTER_URL = buildServiceUrl("/register");
 const BACKEND_USER_URL = buildServiceUrl("/user");
 const BACKEND_HISTORY_URL = buildServiceUrl("/history");
-const DOWNLOAD_LANGUAGE = "en";
 const MAX_CONVERSION_LOGS = 50;
 const UPLOAD_EXAMPLE_JSON = `{
   "resource_type": "dataset",
@@ -850,30 +849,35 @@ const REGISTER_SUCCESS_RESPONSE = {
             }
         ]
     },
-    "数据论文元数据": {
-        "数据论文内容信息": {
-            "标识符": { "type": "DOI", "identifier": "10.1234/example.paper" },
-            "标题": [
-                { "lang": "zh", "name": "全球气候观测数据论文示例" },
-                { "lang": "en", "name": "Global Climate Observation Data Paper Example" }
-            ],
-            "摘要": [
-                { "lang": "zh", "description": "本文介绍全球气候观测数据集的来源、处理流程、质量控制方法和复用建议。" },
-                { "lang": "en", "description": "This paper introduces source data, processing workflow, quality control, and reuse recommendations." }
-            ],
-            "关键词": [
-                { "lang": "zh", "keyword": ["气候观测", "质量控制", "开放数据"] },
-                { "lang": "en", "keyword": ["climate observation", "quality control", "open data"] }
-            ]
-        },
-        "数据论文出版信息": {
-            "出版日期": "2026-06-20",
-            "版本信息": "v1.0"
-        },
-        "数据论文服务信息": {
-            "数据论文下载地址": "https://example.org/papers/metadata-example/download",
-            "数据论文共享许可协议": "CC BY 4.0"
-        }
+    "领域元数据": {
+        "metadata_type": "数据论文元数据",
+        "metadatas": [
+            {
+                "数据论文内容信息": {
+                    "标识符": { "type": "DOI", "identifier": "10.1234/example.paper" },
+                    "标题": [
+                        { "lang": "zh", "name": "全球气候观测数据论文示例" },
+                        { "lang": "en", "name": "Global Climate Observation Data Paper Example" }
+                    ],
+                    "摘要": [
+                        { "lang": "zh", "description": "本文介绍全球气候观测数据集的来源、处理流程、质量控制方法和复用建议。" },
+                        { "lang": "en", "description": "This paper introduces source data, processing workflow, quality control, and reuse recommendations." }
+                    ],
+                    "关键词": [
+                        { "lang": "zh", "keyword": ["气候观测", "质量控制", "开放数据"] },
+                        { "lang": "en", "keyword": ["climate observation", "quality control", "open data"] }
+                    ]
+                },
+                "数据论文出版信息": {
+                    "出版日期": "2026-06-20",
+                    "版本信息": "v1.0"
+                },
+                "数据论文服务信息": {
+                    "数据论文下载地址": "https://example.org/papers/metadata-example/download",
+                    "数据论文共享许可协议": "CC BY 4.0"
+                }
+            }
+        ]
     }
 };
 
@@ -897,7 +901,7 @@ const API_DOCS_TEXT = {
         requestLabel: "请求体",
         successLabel: "成功响应（200）",
         errorLabel: "失败响应",
-        responseNote: "说明：后端返回统一 JSON；核心元数据按规范使用 核心元数据.metadatas，多语言值在字段内部用 lang 区分。",
+        responseNote: "说明：后端只返回核心元数据和领域元数据；两者都使用 metadatas 数组，多语言值在字段内部用 lang 区分，无 lang 的值按语言无关值展示。",
         endpoints: [
             {
                 method: "POST",
@@ -944,7 +948,7 @@ const API_DOCS_TEXT = {
         requestLabel: "Request Body",
         successLabel: "Success Response (200)",
         errorLabel: "Error Response",
-        responseNote: "Note: the backend returns one JSON payload. Core metadata uses Core Metadata-compatible metadatas shape, and multilingual values are selected by lang inside each value.",
+        responseNote: "Note: the backend returns only Core Metadata and Domain Metadata. Both use metadatas arrays; multilingual values are selected by lang inside each value, while values without lang are shown in both languages.",
         endpoints: [
             {
                 method: "POST",
@@ -1045,11 +1049,13 @@ const FIELD_VALUE_ALIASES = {
     "Description": ["descriptions", "描述", "Abstract"],
     "Keywords": ["keywords", "关键词"],
     "Subjects": ["subjects", "学科", "学科分类"],
+    "Language": ["language", "语言", "语种"],
     "Contributors": ["contributors", "贡献者"],
     "Alternative Identifiers": ["alternative_identifiers", "替代标识符"],
     "Related Identifiers": ["related_identifiers", "关联标识符"],
     "Rights": ["rights", "权限", "资源使用许可"],
     "Funders": ["funders", "资助者", "基金项目"],
+    "Version": ["version", "版本", "Version Information", "版本信息"],
     "Resource URL": ["urls", "资源链接", "Resource Access URL"]
 };
 
@@ -1880,11 +1886,9 @@ function getFieldLookupKeys(fieldKey) {
     const keys = [fieldKey];
     const alias = FIELD_VALUE_ALIASES[fieldKey];
     if (Array.isArray(alias)) keys.push(...alias);
-    if (state.language === "en" && LABEL_TRANSLATIONS_EN[fieldKey]) keys.push(LABEL_TRANSLATIONS_EN[fieldKey]);
-    if (state.language === "zh") {
-        const reverse = Object.fromEntries(Object.entries(LABEL_TRANSLATIONS_EN).map(([k, v]) => [v, k]));
-        if (reverse[fieldKey]) keys.push(reverse[fieldKey]);
-    }
+    if (LABEL_TRANSLATIONS_EN[fieldKey]) keys.push(LABEL_TRANSLATIONS_EN[fieldKey]);
+    const reverse = Object.fromEntries(Object.entries(LABEL_TRANSLATIONS_EN).map(([k, v]) => [v, k]));
+    if (reverse[fieldKey]) keys.push(reverse[fieldKey]);
     return [...new Set(keys)];
 }
 
@@ -1920,8 +1924,23 @@ function translateTree(node, language = state.language) {
     return Object.fromEntries(entries);
 }
 
+function normalizeSchemaKey(schemaKey) {
+    return {
+        "Core Metadata": "核心元数据",
+        "Domain Metadata": "领域元数据",
+        "Dataset Metadata": "数据集元数据",
+        "Data Paper Metadata": "数据论文元数据",
+        "Standard Literature Metadata": "标准文献元数据",
+        "Ecological Science Data Metadata": "生态科学数据元数据"
+    }[schemaKey] || schemaKey;
+}
+
 function getSchemaKeyForMode(mode, payload, language = state.language) {
     if (mode === "domain") {
+        const domainRoot = isObject(payload) && isObject(payload["领域元数据"]) ? payload["领域元数据"] : null;
+        if (domainRoot && typeof domainRoot.metadata_type === "string") {
+            return normalizeSchemaKey(domainRoot.metadata_type);
+        }
         const coreKey = language === "en" ? "Core Metadata" : "核心元数据";
         const coreData = isObject(payload)
             ? unwrapMetadataSection(payload[coreKey] || payload["核心元数据"] || payload["Core Metadata"] || payload)
@@ -1972,14 +1991,16 @@ function getEffectiveSectionPayload(payload, schemaKey) {
     const sectionAliases = {
         "核心元数据": ["核心元数据", "Core Metadata"],
         "Core Metadata": ["Core Metadata", "核心元数据"],
-        "数据集元数据": ["数据集元数据", "Dataset Metadata"],
-        "Dataset Metadata": ["Dataset Metadata", "数据集元数据"],
-        "数据论文元数据": ["数据论文元数据", "Data Paper Metadata"],
-        "Data Paper Metadata": ["Data Paper Metadata", "数据论文元数据"],
-        "标准文献元数据": ["标准文献元数据", "Standard Literature Metadata"],
-        "Standard Literature Metadata": ["Standard Literature Metadata", "标准文献元数据"],
-        "生态科学数据元数据": ["生态科学数据元数据", "Ecological Science Data Metadata"],
-        "Ecological Science Data Metadata": ["Ecological Science Data Metadata", "生态科学数据元数据"]
+        "领域元数据": ["领域元数据", "Domain Metadata"],
+        "Domain Metadata": ["Domain Metadata", "领域元数据"],
+        "数据集元数据": ["数据集元数据", "Dataset Metadata", "领域元数据", "Domain Metadata"],
+        "Dataset Metadata": ["Dataset Metadata", "数据集元数据", "领域元数据", "Domain Metadata"],
+        "数据论文元数据": ["数据论文元数据", "Data Paper Metadata", "领域元数据", "Domain Metadata"],
+        "Data Paper Metadata": ["Data Paper Metadata", "数据论文元数据", "领域元数据", "Domain Metadata"],
+        "标准文献元数据": ["标准文献元数据", "Standard Literature Metadata", "领域元数据", "Domain Metadata"],
+        "Standard Literature Metadata": ["Standard Literature Metadata", "标准文献元数据", "领域元数据", "Domain Metadata"],
+        "生态科学数据元数据": ["生态科学数据元数据", "Ecological Science Data Metadata", "领域元数据", "Domain Metadata"],
+        "Ecological Science Data Metadata": ["Ecological Science Data Metadata", "生态科学数据元数据", "领域元数据", "Domain Metadata"]
     }[schemaKey] || [schemaKey];
     for (const sectionKey of sectionAliases) {
         if (isObject(payload[sectionKey])) return unwrapMetadataSection(payload[sectionKey]);
@@ -2212,6 +2233,8 @@ function normalizeDisplayValue(data, language = state.language) {
             if (Object.prototype.hasOwnProperty.call(localized, "keyword")) {
                 return Array.isArray(localized.keyword) ? localized.keyword.join("；") : localized.keyword;
             }
+            if (Object.prototype.hasOwnProperty.call(localized, "value")) return normalizeDisplayValue(localized.value, language);
+            return normalizeDisplayValue(filterLocalizedTree(localized, language), language);
         }
         return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join("；");
     }
@@ -2415,7 +2438,7 @@ function renderMode(mode) {
     updateStaticText();
 }
 
-function stripMetadataForDownload(schemaNode, valueNode, language = DOWNLOAD_LANGUAGE) {
+function stripMetadataForDownload(schemaNode, valueNode, language = state.language) {
     const result = {};
     Object.entries(schemaNode).forEach(([key, description]) => {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
@@ -2518,7 +2541,7 @@ function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
 
 async function downloadJsonFile(mode) {
     const language = state.language;
-    const downloadLanguage = DOWNLOAD_LANGUAGE;
+    const downloadLanguage = language;
     const schema = state.schemaCache[mode] || await loadSchema(mode);
     if (!schema) return updateStatus(getUIText(language).downloadBlocked, "error");
 
