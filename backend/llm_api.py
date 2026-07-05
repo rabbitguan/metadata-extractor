@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -6,9 +7,15 @@ from pathlib import Path
 from openai import OpenAI
 from extractors.manager import extract_metadata, list_extractors
 
+SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY', '').strip()
+SILICONFLOW_BASE_URL = os.environ.get('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1').strip()
+
+if not SILICONFLOW_API_KEY:
+    print('[CONFIG WARNING] SILICONFLOW_API_KEY is not set; LLM requests will fail until it is configured.')
+
 client = OpenAI(
-    api_key="sk-zqjbgganlfffxxynfyumlzdbdnpjezmuouuearsqwavipsrb",
-    base_url="https://api.siliconflow.cn/v1",
+    api_key=SILICONFLOW_API_KEY or 'missing-api-key',
+    base_url=SILICONFLOW_BASE_URL,
 )
 
 BASE_DIR = Path(__file__).resolve().parent

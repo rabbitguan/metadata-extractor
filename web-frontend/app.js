@@ -1,4 +1,14 @@
-const SERVICE_PROXY_PREFIX = "/sso/proxy/mapping-tool";
+function normalizeServiceProxyPrefix(prefix) {
+    const text = String(prefix || "").trim();
+    if (!text || text === "/") return "";
+    return `/${text.replace(/^\/+|\/+$/g, "")}`;
+}
+
+const SERVICE_PROXY_PREFIX = normalizeServiceProxyPrefix(
+    window.METADATA_EXTRACTOR_CONFIG && window.METADATA_EXTRACTOR_CONFIG.serviceProxyPrefix
+        ? window.METADATA_EXTRACTOR_CONFIG.serviceProxyPrefix
+        : "/sso/proxy/mapping-tool"
+);
 
 function getServiceBasePath() {
     const pathname = window.location.pathname.replace(/\/+$/, "");
@@ -20,6 +30,11 @@ function buildServiceUrl(path) {
 
 function getServiceBasePathLabel() {
     return getServiceBasePath() || "/";
+}
+
+function getServiceHomePath() {
+    const serviceBasePath = getServiceBasePath();
+    return serviceBasePath ? `${serviceBasePath}/` : "/";
 }
 
 const BACKEND_QUERY_URL = buildServiceUrl("/query");
@@ -2998,7 +3013,7 @@ function bindEvents() {
     document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
     document.getElementById("dashboardRefreshButton").addEventListener("click", loadConversionLogs);
     document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
-        window.location.href = "/";
+        window.location.href = getServiceHomePath();
     });
     document.getElementById("toolOverviewButton").addEventListener("click", showDashboard);
     document.getElementById("toolServiceButton").addEventListener("click", showToolHome);

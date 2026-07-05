@@ -6,7 +6,11 @@
     <title>元数据双向映射工具</title>
     <script>
         (function () {
-            var prefix = "/sso/proxy/mapping-tool/";
+            var servicePrefix = "/sso/proxy/mapping-tool";
+            window.METADATA_EXTRACTOR_CONFIG = {
+                serviceProxyPrefix: servicePrefix
+            };
+            var prefix = servicePrefix.replace(/\/+$/, "") + "/";
             var path = window.location.pathname;
             var href = window.location.protocol === "file:"
                 ? "./"
