@@ -183,9 +183,9 @@ def _apply_queried_cstr_to_payload(payload, queried_cstr):
                 patched[key] = patch_node(value)
         return patched
 
-    patched_payload = patch_node(payload)
-    core = patched_payload.get('核心元数据')
-    if isinstance(core, dict):
+    def patch_core_section(core):
+        if not isinstance(core, dict):
+            return
         metadatas = core.get('metadatas')
         if isinstance(metadatas, list):
             for item in metadatas:
@@ -193,6 +193,13 @@ def _apply_queried_cstr_to_payload(payload, queried_cstr):
                     item['identifier'] = cstr
         else:
             core['identifier'] = cstr
+
+    patched_payload = patch_node(payload)
+    patch_core_section(patched_payload.get('核心元数据'))
+    if isinstance(patched_payload.get('zh'), dict):
+        patch_core_section(patched_payload['zh'].get('核心元数据'))
+    if isinstance(patched_payload.get('en'), dict):
+        patch_core_section(patched_payload['en'].get('Core Metadata'))
 
     return patched_payload
 
@@ -300,6 +307,37 @@ def _merge_missing_values(primary, fallback):
 
     if isinstance(primary, list) and isinstance(fallback, list):
         return primary if primary else fallback
+
+    return primary
+
+
+def _is_domain_missing_value(value):
+    if _is_missing_value(value):
+        return True
+    if isinstance(value, list):
+        return len(value) == 0 or all(_is_domain_missing_value(item) for item in value)
+    if isinstance(value, dict):
+        meaningful_values = [
+            item
+            for key, item in value.items()
+            if key not in {'lang', 'type'}
+        ]
+        return len(meaningful_values) == 0 or all(_is_domain_missing_value(item) for item in meaningful_values)
+    return False
+
+
+def _merge_domain_missing_values(primary, fallback):
+    if _is_domain_missing_value(primary):
+        return fallback
+
+    if isinstance(primary, dict) and isinstance(fallback, dict):
+        merged = dict(primary)
+        for key, fallback_value in fallback.items():
+            merged[key] = _merge_domain_missing_values(merged.get(key), fallback_value)
+        return merged
+
+    if isinstance(primary, list) and isinstance(fallback, list):
+        return fallback if _is_domain_missing_value(primary) else primary
 
     return primary
 
@@ -1139,15 +1177,37 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     core_en = _normalize_core_metadata_shape(core_en, 'en')
     domain_zh = _normalize_domain_metadata_shape(domain_zh, 'zh')
     domain_en = _normalize_domain_metadata_shape(domain_en, 'en')
+    domain_zh_as_en = _normalize_domain_metadata_shape(
+        _map_keys_recursive(domain_zh, LABEL_TRANSLATIONS_EN),
+        'en',
+    ) if isinstance(domain_zh, dict) else {}
+    domain_en = _merge_domain_missing_values(domain_en, domain_zh_as_en) if domain_zh_as_en else domain_en
 
     core_metadata = _merge_core_language_variants(core_zh, core_en)
     domain_section_zh = _infer_domain_section(core_metadata.get('resource_type'), 'zh')
+    domain_section_en = _infer_domain_section(core_metadata.get('resource_type'), 'en')
 
-    merged_answer = {'核心元数据': {'metadatas': [core_metadata]}}
+    core_section_zh = {'metadatas': [core_metadata]}
+    core_section_en = {'metadatas': [core_metadata]}
+
+    zh_payload = {'核心元数据': core_section_zh}
+    en_payload = {'Core Metadata': core_section_en}
+
+    merged_answer = {
+        '核心元数据': core_section_zh,
+        'zh': zh_payload,
+        'en': en_payload,
+    }
     if domain_zh:
+        zh_payload[domain_section_zh] = domain_zh
         merged_answer[domain_section_zh] = domain_zh
     elif domain_en:
         merged_answer[domain_section_zh] = domain_en
+
+    if domain_en:
+        en_payload[domain_section_en] = domain_en
+    elif domain_zh:
+        en_payload[domain_section_en] = domain_zh
 
     if persist_history and url and html:
         try:
