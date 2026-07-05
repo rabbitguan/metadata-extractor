@@ -884,12 +884,19 @@ const REGISTER_SUCCESS_RESPONSE = {
 const QUERY_SUCCESS_RESPONSE = {
     items: [
         {
-            identifier: "10.1000/xyz123",
-            type: "doi",
-            resolved_url: "https://doi.org/10.1000/xyz123",
-            source: "doi.org",
+            identifier: "CSTR:14804.11.05.70.00079-V01",
+            type: "cstr",
+            resolved_url: "https://vsso.nssdc.ac.cn/nssdc_zh/html/vssoinfo.html?16236",
+            source: "cstr.cn",
             status: "ok",
             payload: REGISTER_SUCCESS_RESPONSE,
+            supplemental_sources: [
+                {
+                    source: "resource_url",
+                    url: "https://example.org/papers/metadata-example",
+                    status: "ok"
+                }
+            ],
             updated_at: "2026-06-21T00:00:00Z"
         }
     ]
@@ -898,42 +905,84 @@ const QUERY_SUCCESS_RESPONSE = {
 const API_DOCS_TEXT = {
     zh: {
         descriptionLabel: "接口说明",
-        requestLabel: "请求体",
+        headersLabel: "请求头",
+        requestLabel: "标准请求体",
+        requestFieldsLabel: "请求体字段说明",
+        exampleLabel: "请求示例",
         successLabel: "成功响应（200）",
         errorLabel: "失败响应",
-        responseNote: "说明：后端只返回核心元数据和领域元数据；两者都使用 metadatas 数组，多语言值在字段内部用 lang 区分，无 lang 的值按语言无关值展示。",
+        responseNote: "说明：元数据响应使用统一结构：核心元数据为 核心元数据.metadatas[0]，领域元数据为 领域元数据.metadata_type + 领域元数据.metadatas[0]。历史缓存和查询记录按 X-User-Id 隔离。",
+        commonHeaders: {
+            "Content-Type": "application/json",
+            "X-User-Id": "10086",
+            "X-User-Name": "Zhang San",
+            "X-User-Email": "zhangsan@example.com"
+        },
         endpoints: [
             {
                 method: "POST",
                 path: "/register",
                 description: "用于 URL、网页文本、普通文本和上传 JSON/XML 内容的元数据提取。",
+                headers: "common",
                 request: {
+                    source: "url | text | web | upload",
+                    mode: "common | domain",
+                    strategy: "auto | llm | rule | upload_rule",
+                    force_reanalyze: false,
+                    dynamic_render: "auto | always | never",
+                    url: "https://example.com/paper",
+                    text: "页面正文文本或上传文件原始内容",
+                    html: "<html>页面 HTML，可选</html>",
+                    title: "页面标题或上传文件名"
+                },
+                requestFields: {
+                    source: "输入来源。url 表示后端按 url 抓取网页；text 表示直接分析文本；web 表示前端传入网页 text/html；upload 表示上传 JSON/XML 原始内容。默认 text。",
+                    mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
+                    strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；llm 强制模型；rule 只用网站规则；upload_rule 用于结构化 JSON/XML 上传。默认 auto。",
+                    force_reanalyze: "是否跳过当前用户的 URL 历史缓存并重新分析。false 时命中缓存会直接返回历史结果。默认 false。",
+                    dynamic_render: "source=url 时的动态渲染策略。auto 自动判断；always 强制浏览器渲染；never 只静态抓取。默认 auto。",
+                    url: "待分析页面 URL。source=url 时必填；source=web/text/upload 时可选，用于结果里的资源链接和历史缓存匹配。",
+                    text: "待分析文本。source=text/web/upload 时必填；source=url 时由后端抓取页面后自动生成。",
+                    html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
+                    title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
+                },
+                example: {
                     source: "url",
                     mode: "common",
                     strategy: "auto",
                     force_reanalyze: false,
-                    url: "https://example.com/paper",
-                    text: "页面文本内容",
-                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
-                    title: "页面标题"
+                    dynamic_render: "auto",
+                    url: "https://arxiv.org/abs/2303.14524"
                 },
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
-                    message: "Missing text"
+                    message: "Missing URL / Missing text / Invalid bilingual JSON format from LLM"
                 }
             },
             {
                 method: "POST",
                 path: "/query",
                 description: "用于从 DOI/CSTR 标识符解析资源页面，再进行元数据提取。",
+                headers: "common",
                 request: {
                     source: "identifier",
+                    mode: "common | domain",
+                    identifiers: "10.1000/xyz123 或 CSTR:14804.11.05.70.00079-V01",
+                    text: "不传 identifiers 时，可从文本中自动提取 DOI/CSTR",
+                    html: "不传 identifiers 和 text 时，可从 HTML 中自动提取 DOI/CSTR"
+                },
+                requestFields: {
+                    source: "输入来源。建议固定传 identifier；后端会按 DOI/CSTR 标识符解析资源页面。",
+                    mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
+                    identifiers: "DOI/CSTR 标识符，支持字符串或数组。优先级最高；可一次传多个 DOI/CSTR。",
+                    text: "当 identifiers 不传时，后端会从 text 中自动识别 DOI/CSTR。",
+                    html: "当 identifiers 和 text 都不传时，后端会从 html 中自动识别 DOI/CSTR。"
+                },
+                example: {
+                    source: "identifier",
                     mode: "common",
-                    identifiers: [
-                        "10.1000/xyz123",
-                        "12345.12.ABCD-2024"
-                    ]
+                    identifiers: "CSTR:14804.11.05.70.00079-V01"
                 },
                 success: QUERY_SUCCESS_RESPONSE,
                 error: {
@@ -945,42 +994,84 @@ const API_DOCS_TEXT = {
     },
     en: {
         descriptionLabel: "Description",
-        requestLabel: "Request Body",
+        headersLabel: "Request Headers",
+        requestLabel: "Standard Request Body",
+        requestFieldsLabel: "Request Body Fields",
+        exampleLabel: "Request Example",
         successLabel: "Success Response (200)",
         errorLabel: "Error Response",
-        responseNote: "Note: the backend returns only Core Metadata and Domain Metadata. Both use metadatas arrays; multilingual values are selected by lang inside each value, while values without lang are shown in both languages.",
+        responseNote: "Note: metadata responses use a unified structure: core metadata is under Core Metadata.metadatas[0], and domain metadata is under Domain Metadata.metadata_type plus Domain Metadata.metadatas[0]. History cache and logs are isolated by X-User-Id.",
+        commonHeaders: {
+            "Content-Type": "application/json",
+            "X-User-Id": "10086",
+            "X-User-Name": "Zhang San",
+            "X-User-Email": "zhangsan@example.com"
+        },
         endpoints: [
             {
                 method: "POST",
                 path: "/register",
                 description: "Extract metadata from URLs, web text, plain text, or uploaded JSON/XML content.",
+                headers: "common",
                 request: {
+                    source: "url | text | web | upload",
+                    mode: "common | domain",
+                    strategy: "auto | llm | rule | upload_rule",
+                    force_reanalyze: false,
+                    dynamic_render: "auto | always | never",
+                    url: "https://example.com/paper",
+                    text: "Page text or raw uploaded file content",
+                    html: "<html>Optional page HTML</html>",
+                    title: "Page title or uploaded file name"
+                },
+                requestFields: {
+                    source: "Input source. url lets the backend fetch the page; text analyzes plain text; web sends page text/html from the frontend; upload sends raw JSON/XML file content. Default: text.",
+                    mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
+                    strategy: "Extraction strategy. auto tries site rules first and falls back to the model; llm forces the model; rule only uses site rules; upload_rule parses structured JSON/XML uploads. Default: auto.",
+                    force_reanalyze: "Whether to skip the current user's URL history cache and reanalyze. Default: false.",
+                    dynamic_render: "Dynamic rendering strategy for source=url. auto decides automatically; always forces browser rendering; never uses static fetching only. Default: auto.",
+                    url: "Target page URL. Required for source=url; optional for web/text/upload to preserve resource links and match history cache.",
+                    text: "Text to analyze. Required for source=text/web/upload; generated by the backend for source=url.",
+                    html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
+                    title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
+                },
+                example: {
                     source: "url",
                     mode: "common",
                     strategy: "auto",
                     force_reanalyze: false,
-                    url: "https://example.com/paper",
-                    text: "Page text content",
-                    html: "<html><head><title>Example Paper</title></head><body>Example content</body></html>",
-                    title: "Page title"
+                    dynamic_render: "auto",
+                    url: "https://arxiv.org/abs/2303.14524"
                 },
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
-                    message: "Missing text"
+                    message: "Missing URL / Missing text / Invalid bilingual JSON format from LLM"
                 }
             },
             {
                 method: "POST",
                 path: "/query",
                 description: "Resolve DOI/CSTR identifiers to resource pages and extract metadata.",
+                headers: "common",
                 request: {
                     source: "identifier",
+                    mode: "common | domain",
+                    identifiers: "10.1000/xyz123 or CSTR:14804.11.05.70.00079-V01",
+                    text: "If identifiers is omitted, DOI/CSTR can be extracted from text",
+                    html: "If identifiers and text are omitted, DOI/CSTR can be extracted from HTML"
+                },
+                requestFields: {
+                    source: "Input source. Recommended value: identifier; the backend resolves DOI/CSTR identifiers to resource pages.",
+                    mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
+                    identifiers: "DOI/CSTR identifier string or array. Highest priority; multiple DOI/CSTR values are supported.",
+                    text: "When identifiers is omitted, the backend extracts DOI/CSTR values from text.",
+                    html: "When identifiers and text are omitted, the backend extracts DOI/CSTR values from html."
+                },
+                example: {
+                    source: "identifier",
                     mode: "common",
-                    identifiers: [
-                        "10.1000/xyz123",
-                        "12345.12.ABCD-2024"
-                    ]
+                    identifiers: "CSTR:14804.11.05.70.00079-V01"
                 },
                 success: QUERY_SUCCESS_RESPONSE,
                 error: {
@@ -1568,15 +1659,23 @@ function renderApiDocs() {
         descriptionTitle.textContent = docs.descriptionLabel;
         const description = document.createElement("p");
         description.textContent = endpoint.description;
+        const headers = endpoint.headers === "common" ? docs.commonHeaders : endpoint.headers;
+        const sections = [];
+        if (headers) sections.push(createApiDocSection(docs.headersLabel, headers));
+        sections.push(
+            createApiDocSection(docs.requestLabel, endpoint.request),
+            createApiDocSection(docs.requestFieldsLabel, endpoint.requestFields),
+            createApiDocSection(docs.exampleLabel, endpoint.example),
+            createApiDocSection(docs.successLabel, endpoint.success),
+            createApiDocNote(docs.responseNote),
+            createApiDocSection(docs.errorLabel, endpoint.error)
+        );
 
         card.append(
             head,
             descriptionTitle,
             description,
-            createApiDocSection(docs.requestLabel, endpoint.request),
-            createApiDocSection(docs.successLabel, endpoint.success),
-            createApiDocNote(docs.responseNote),
-            createApiDocSection(docs.errorLabel, endpoint.error)
+            ...sections
         );
         root.appendChild(card);
     });
