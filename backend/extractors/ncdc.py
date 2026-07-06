@@ -232,16 +232,14 @@ def _extract_first_paragraph(soup: BeautifulSoup, title_text: str) -> Optional[s
 def _extract_cstr(text: str) -> Optional[str]:
     if not text:
         return None
-    match = re.search(r'cstr\.cn/(?:CSTR:)?([A-Za-z0-9._-]+)', text, flags=re.IGNORECASE)
+    match = re.search(r'cstr\.cn/(?:CSTR:)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if match:
         return match.group(1).rstrip('.,;。；')
-    match = re.search(r'CSTR:\s*([A-Za-z0-9._-]+)', text, flags=re.IGNORECASE)
+    match = re.search(r'CSTR:\s*([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if match:
         return match.group(1).rstrip('.,;。；')
     match = re.search(
-        r'\b\d{5}\.\d{2}\.\d{2}\.\d{2}\.\d{5}-V\d+\b'
-        r'|\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b'
-        r'|\b\d{5}\.\d{2}\.[A-Z0-9]+(?:\.[A-Z0-9]+){2,6}\b',
+        r'\b[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+\b',
         text,
         flags=re.IGNORECASE,
     )

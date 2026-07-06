@@ -100,7 +100,7 @@ def _extract_full_text_url(soup: BeautifulSoup, fallback_url: str) -> Optional[s
 
 
 def _extract_cstr_identifier(html: str, *extra_values: Optional[str]) -> Optional[str]:
-    cstr_pattern = re.compile(r'\b\d{5}\.\d{2}\.\d{6}\.\d{6}\b')
+    cstr_pattern = re.compile(r'\b[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+\b', re.IGNORECASE)
     combined = ' '.join([html, *[value for value in extra_values if value]])
     match = cstr_pattern.search(combined)
     if match:

@@ -157,7 +157,7 @@ def _extract_identifier(soup: BeautifulSoup, html: str) -> tuple[Optional[str], 
 
 
 def _extract_cstr_identifier(*values: Optional[str]) -> Optional[str]:
-    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
     for value in values:
         match = pattern.search(str(value or ''))
         if match:

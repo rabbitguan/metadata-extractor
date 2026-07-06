@@ -3,8 +3,7 @@ import re
 
 
 doi_pattern = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
-# cstr_pattern = re.compile(r'\d{5}\.\d{2}\.\d{6}\.\d{6}')
-cstr_pattern = re.compile(r'\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+', re.IGNORECASE)
+cstr_pattern = re.compile(r'[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+', re.IGNORECASE)
 china_patent_pattern = re.compile(r'(?:CN|ZL)\d{9}(?:\.\d)?[A-Z]?')
 
 

@@ -103,8 +103,16 @@ def _extract_identifier_from_url(url: str) -> Optional[str]:
     query_id = _parse_query(url).get('id')
     if query_id:
         return query_id
-    match = re.search(r'CSTR[:%3A]+[A-Za-z0-9._-]+', url or '', flags=re.IGNORECASE)
-    return unquote(match.group(0)) if match else None
+    match = re.search(r'CSTR(?::|%3A)([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', url or '', flags=re.IGNORECASE)
+    return f'CSTR:{unquote(match.group(1))}' if match else None
+
+
+def _extract_cstr(value: Optional[Any]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    match = re.search(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    return match.group(1).strip().strip('.,;，；') if match else None
 
 
 def _detail_url(identifier: Optional[str]) -> Optional[str]:
@@ -190,7 +198,7 @@ def _identifier_item(value: Optional[Any]) -> Optional[Dict[str, str]]:
     doi_match = re.search(r'10\.\d{4,9}/[^\s<>"\']+', text, flags=re.IGNORECASE)
     if doi_match:
         return {'type': 'DOI', 'identifier': doi_match.group(0).rstrip('.,;。；')}
-    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if cstr_match:
         return {'type': 'CSTR', 'identifier': cstr_match.group(1).strip().strip('.,;，；')}
     return None
@@ -203,7 +211,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     if not labels and 'dataSetNameZh' not in content and not fallback_identifier:
         return None
 
-    cstr_identifier = _first_non_empty(fallback_identifier, labels.get('科技资源标识符'))
+    cstr_identifier = _first_non_empty(_extract_cstr(fallback_identifier), _extract_cstr(labels.get('科技资源标识符')))
     doi = _first_non_empty(labels.get('DOI'))
     title_zh = _first_non_empty(_element_text(soup, '#dataSetNameZh'), labels.get('数据集中文名称'), title)
     title_en = _first_non_empty(_element_text(soup, '#dataSetNameEn'), labels.get('数据集英文名称'), _english_text(title_zh), title_zh)
@@ -214,7 +222,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     publish_date = _format_date(labels.get('最新修订日期') or labels.get('创建时间'))
     created_date = _format_date(labels.get('创建时间'))
     version = _first_non_empty(labels.get('版本'))
-    resource_url = _detail_url(identifier) or url
+    resource_url = url or _detail_url(fallback_identifier or identifier)
     data_size = _first_non_empty(labels.get('数据大小'))
     data_format = _first_non_empty(labels.get('数据格式'))
     language = _first_non_empty(labels.get('语种'))
@@ -222,22 +230,23 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     license_text = _first_non_empty(labels.get('数据使用许可'))
     creators = _unique_list(_split_terms(labels.get('资源创建者')))
     creator_org = _first_non_empty(labels.get('数据资源创建机构'), labels.get('资源创建者单位'))
+    contact_person = _first_non_empty(labels.get('数据资源联系人'))
     contact_org = _first_non_empty(labels.get('联系单位'))
-    contact_email = _first_non_empty(labels.get('联系人邮箱'))
+    contributors = _unique_list(_split_terms(contact_person)) or None
     author_info = {
         '作者姓名': creators or None,
         '工作单位': creator_org,
-        '电子邮箱': contact_email,
+        '电子邮箱': None,
         '工作贡献': None,
         '作者简介': None,
-    } if creators or creator_org or contact_email else None
+    } if creators or creator_org else None
     author_info_en = {
         'Author Name': creators or None,
         'Affiliation': _english_text(creator_org),
-        'Email': contact_email,
+        'Email': None,
         'Contribution': None,
         'Biography': None,
-    } if creators or _english_text(creator_org) or contact_email else None
+    } if creators or _english_text(creator_org) else None
     access_url = _first_non_empty(labels.get('数据链接'), resource_url)
     alternative_identifiers = []
     if doi:
@@ -261,7 +270,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         '关键词': keywords or None,
         '学科分类': _first_non_empty(labels.get('学科分类'), labels.get('科学数据分类')),
         '语言': language,
-        '贡献者': [creator_org] if creator_org and creator_org not in creators else None,
+        '贡献者': contributors,
         '替代标识符': alternative_identifiers or None,
         '关联标识符': None,
         '权限': rights,
@@ -307,7 +316,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             '是否特色数据': labels.get('是否特色数据'),
             '数据标准': labels.get('数据标准'),
             '数据质量描述': labels.get('数据质量描述'),
-            '数据资源联系人': labels.get('数据资源联系人'),
+            '数据资源联系人': contact_person,
             '联系单位': contact_org,
             '联系人办公电话': labels.get('联系人办公电话'),
             '公开时间': labels.get('公开时间'),
@@ -331,7 +340,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         'Keywords': [_english_text(item) for item in keywords if _english_text(item)] or None,
         'Discipline Classification': _english_text(labels.get('学科分类')),
         'Language': 'English' if language == '英文' else language,
-        'Contributors': [_english_text(creator_org)] if _english_text(creator_org) else None,
+        'Contributors': [_english_text(item) for item in contributors if _english_text(item)] if contributors else None,
         'Alternative Identifiers': alternative_identifiers or None,
         'Related Identifiers': None,
         'Rights': rights,
@@ -374,7 +383,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             'Update Frequency': _english_text(labels.get('更新频率')),
             'Science Data Category': _english_text(labels.get('科学数据分类')),
             'Species': _english_text(labels.get('物种')),
-            'Contact Person': _english_text(labels.get('数据资源联系人')),
+            'Contact Person': _english_text(contact_person),
             'Contact Organization': _english_text(contact_org),
             'Contact Phone': labels.get('联系人办公电话'),
             'Open Time': _english_text(labels.get('公开时间')),

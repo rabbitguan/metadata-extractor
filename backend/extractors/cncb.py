@@ -17,9 +17,9 @@ RULE_NAME = 'CNCB Database Detail'
 BASE_URL = 'https://www.cncb.ac.cn'
 PUBLISHER_ZH = '国家生物信息中心'
 PUBLISHER_EN = 'China National Center for Bioinformation'
+CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 NGDC_PUBLISHER_ZH = '国家基因组科学数据中心'
 NGDC_PUBLISHER_EN = 'National Genomics Data Center'
-CSTR_PATTERN = re.compile(r'\b(?:CSTR:)?(\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9._-]*(?:\.[A-Za-z0-9][A-Za-z0-9._-]*)+)\b')
 GSA_ACCESSION_PATTERN = re.compile(r'\b(CRA\d+|CRX\d+|CRR\d+)\b', re.IGNORECASE)
 API_HEADERS = {
     'User-Agent': (

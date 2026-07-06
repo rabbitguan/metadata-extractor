@@ -134,7 +134,7 @@ def _extract_cstr(text: str, url: str) -> Optional[str]:
     for source in [text, url]:
         if not source:
             continue
-        match = re.search(r'(?:CSTR\s*[:：]\s*|cstr\.cn/)([A-Za-z0-9._-]+\.[A-Za-z0-9._-]+)', source, flags=re.IGNORECASE)
+        match = re.search(r'(?:CSTR\s*[:：]\s*|cstr\.cn/)([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', source, flags=re.IGNORECASE)
         if match:
             return match.group(1).rstrip('.')
     return None

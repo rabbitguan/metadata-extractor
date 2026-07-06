@@ -113,10 +113,7 @@ def _extract_arxiv_version(html: str, url: str) -> Optional[str]:
 
 
 def _extract_cstr(*values: Optional[str]) -> Optional[str]:
-    pattern = re.compile(
-        r'\b(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[A-Z0-9][A-Z0-9_-]*(?:\.[A-Z0-9][A-Z0-9_-]*)+)\b',
-        re.IGNORECASE,
-    )
+    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
     for value in values:
         text = str(value or '')
         match = pattern.search(text)
