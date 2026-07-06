@@ -90,6 +90,35 @@ def _get_content_type(response):
     return ''
 
 
+def _declared_response_encoding(response):
+    content_type = _get_content_type(response)
+    match = re.search(r'charset=["\']?([^;"\']+)', content_type, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    raw_head = getattr(response, 'content', b'')[:4096]
+    for pattern in (
+        br'<meta[^>]+charset=["\']?([^"\' >]+)',
+        br'<\?xml[^>]+encoding=["\']([^"\']+)',
+    ):
+        match = re.search(pattern, raw_head, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).decode('ascii', errors='ignore').strip()
+    return None
+
+
+def _select_response_encoding(response):
+    declared = _declared_response_encoding(response)
+    if declared:
+        return declared
+
+    current = getattr(response, 'encoding', None)
+    if current and str(current).lower() not in {'iso-8859-1'}:
+        return current
+
+    return getattr(response, 'apparent_encoding', None) or current or 'utf-8'
+
+
 def _raise_for_resolver_error(payload):
     if not isinstance(payload, dict):
         return
@@ -136,7 +165,7 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
         requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10, verify=verify_tls)
     response.raise_for_status()
-    response.encoding = response.apparent_encoding or response.encoding
+    response.encoding = _select_response_encoding(response)
     final_url = response.url if isinstance(response.url, str) and response.url else url
 
     redirect_target = None
@@ -200,6 +229,35 @@ def _select_escience_org_id(cstr, resolved_url=''):
     return None
 
 
+def _append_escience_supplemental(result, cstr):
+    result_url = str(result.get('url') or '').lower()
+    escience_org_id = _select_escience_org_id(cstr, result_url)
+    escience_url = build_escience_metadata_url(cstr, escience_org_id) if escience_org_id else None
+    if escience_url:
+        result['supplemental_urls'] = [
+            {
+                'source': 'escience.org.cn',
+                'url': escience_url,
+                'priority': 'fallback',
+            }
+        ]
+    return result
+
+
+def resolve_cstr_landing_page(cstr, clean_html=None):
+    normalized_cstr = _normalize_cstr(cstr)
+    quoted_cstr = quote(normalized_cstr, safe='._;()/:A-Z0-9-')
+    result = _fetch_page(f'https://cstr.cn/{quoted_cstr}', 'cstr.cn', clean_html)
+    return _append_escience_supplemental(result, cstr)
+
+
+def resolve_cstr_metadata(cstr, clean_html=None):
+    normalized_cstr = _normalize_cstr(cstr)
+    quoted_cstr = quote(normalized_cstr, safe='._;()/:A-Z0-9-')
+    result = _fetch_page(f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}', 'scids.bdware.cn', clean_html)
+    return _append_escience_supplemental(result, cstr)
+
+
 def resolve_cstr(cstr, clean_html=None):
     normalized_cstr = _normalize_cstr(cstr)
     quoted_cstr = quote(normalized_cstr, safe='._;()/:A-Z0-9-')
@@ -215,18 +273,7 @@ def resolve_cstr(cstr, clean_html=None):
     for source, url in candidates:
         try:
             result = _fetch_page(url, source, clean_html)
-            result_url = str(result.get('url') or '').lower()
-            escience_org_id = _select_escience_org_id(cstr, result_url)
-            escience_url = build_escience_metadata_url(cstr, escience_org_id) if escience_org_id else None
-            if escience_url:
-                result['supplemental_urls'] = [
-                    {
-                        'source': 'escience.org.cn',
-                        'url': escience_url,
-                        'priority': 'fallback',
-                    }
-                ]
-            return result
+            return _append_escience_supplemental(result, cstr)
         except Exception as error:
             errors.append(f'{source}: {error}')
             print(f"[WARNING] CSTR resolver {source} failed for {cstr}: {error}")
