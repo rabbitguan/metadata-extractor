@@ -51,6 +51,7 @@ const BACKEND_REGISTER_URL = buildServiceUrl("/register");
 const BACKEND_USER_URL = buildServiceUrl("/user");
 const BACKEND_HISTORY_URL = buildServiceUrl("/history");
 const MAX_CONVERSION_LOGS = 50;
+const DISPLAY_TIME_ZONE = "Asia/Shanghai";
 const UPLOAD_EXAMPLE_JSON = `{
   "resource_type": "dataset",
   "core": {
@@ -1327,11 +1328,33 @@ function getUserInitial() {
     return Array.from(displayName.trim())[0] || "U";
 }
 
-function formatLocalDateTime(value) {
+function parseHistoryDate(value) {
     if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
+    const text = String(value).trim();
+    const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)
+        ? `${text.replace(" ", "T")}Z`
+        : text;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getChinaDateParts(value) {
+    const date = value instanceof Date ? value : parseHistoryDate(value);
+    if (!date) return null;
+    const parts = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: DISPLAY_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).formatToParts(date);
+    return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+}
+
+function formatLocalDateTime(value) {
+    const date = parseHistoryDate(value);
+    if (!date) return "";
     return date.toLocaleString(state.language === "en" ? "en-US" : "zh-CN", {
+        timeZone: DISPLAY_TIME_ZONE,
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -1340,11 +1363,15 @@ function formatLocalDateTime(value) {
 }
 
 function getLocalDateKey(date) {
-    return [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        String(date.getDate()).padStart(2, "0")
-    ].join("-");
+    const parts = getChinaDateParts(date);
+    if (!parts) return "";
+    return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getLocalMonthDayLabel(date) {
+    const parts = getChinaDateParts(date);
+    if (!parts) return "";
+    return `${parts.month}/${parts.day}`;
 }
 
 function getDashboardStats() {
@@ -1354,6 +1381,7 @@ function getDashboardStats() {
         url: logs.filter((item) => item.source === "url").length,
         identifier: logs.filter((item) => item.source === "identifier").length,
         upload: logs.filter((item) => item.source === "upload").length,
+        text: logs.filter((item) => item.source === "text").length,
         latest: logs[0] || null
     };
 }
@@ -1365,18 +1393,17 @@ function getWeeklyActivityBuckets(dayCount = 7) {
     for (let index = dayCount - 1; index >= 0; index -= 1) {
         const date = new Date(today);
         date.setDate(today.getDate() - index);
+        const label = getLocalMonthDayLabel(date);
         buckets.push({
             key: getLocalDateKey(date),
-            dayLabel: String(date.getDate()).padStart(2, "0"),
-            label: `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`,
+            dayLabel: label.split("/")[1] || "",
+            label,
             value: 0
         });
     }
     const byKey = new Map(buckets.map((item) => [item.key, item]));
     (state.conversionLogs || []).forEach((entry) => {
-        const date = new Date(entry.createdAt);
-        if (Number.isNaN(date.getTime())) return;
-        const key = getLocalDateKey(date);
+        const key = getLocalDateKey(entry.createdAt);
         if (byKey.has(key)) byKey.get(key).value += 1;
     });
     return buckets;
@@ -1512,18 +1539,16 @@ function getRecentDayBuckets(dayCount = 10) {
     for (let index = dayCount - 1; index >= 0; index -= 1) {
         const date = new Date(now);
         date.setDate(now.getDate() - index);
-        const key = date.toISOString().slice(0, 10);
+        const key = getLocalDateKey(date);
         buckets.push({
             key,
-            label: `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+            label: getLocalMonthDayLabel(date).replace("/", "-"),
             value: 0
         });
     }
     const byKey = new Map(buckets.map((item) => [item.key, item]));
     state.conversionLogs.forEach((entry) => {
-        const date = new Date(entry.createdAt);
-        if (Number.isNaN(date.getTime())) return;
-        const key = date.toISOString().slice(0, 10);
+        const key = getLocalDateKey(entry.createdAt);
         if (byKey.has(key)) byKey.get(key).value += 1;
     });
     return buckets;
@@ -1586,12 +1611,11 @@ function polarToCartesian(cx, cy, r, angleInDegrees) {
 }
 
 function createDonutSvg(stats) {
-    const total = Math.max(1, stats.url + stats.upload + stats.identifier);
+    const total = Math.max(1, stats.upload + stats.url + stats.identifier);
     const slices = [
-        { label: "URL", value: stats.url, color: "#4F6FD8" },
-        { label: "JSON/XML", value: stats.upload, color: "#B7DD28" },
-        { label: "DOI/CSTR", value: stats.identifier, color: "#555A7D" },
-        { label: "通用", value: Math.max(0, stats.total - stats.url - stats.upload - stats.identifier), color: "#22A9D1" }
+        { label: "文件上传", value: stats.upload, color: "#B7DD28" },
+        { label: "解析URL", value: stats.url, color: "#4F6FD8" },
+        { label: "标识符查询", value: stats.identifier, color: "#555A7D" }
     ].filter((item) => item.value > 0);
     const visibleSlices = slices.length ? slices : [{ label: "暂无数据", value: 1, color: "#DCE2EC" }];
     let angle = 0;
@@ -1607,7 +1631,7 @@ function createDonutSvg(stats) {
         return `<circle cx="${x}" cy="${y}" r="7" fill="${slice.color}"/>
             <text class="admin-donut-label" x="${x + 14}" y="${y + 5}">${slice.label}</text>`;
     }).join("");
-    return `<svg class="admin-chart-svg" viewBox="0 0 420 420" role="img" aria-label="领域占比">
+    return `<svg class="admin-chart-svg" viewBox="0 0 420 420" role="img" aria-label="任务类型占比">
         ${paths}
         <circle cx="210" cy="210" r="72" fill="#FFFFFF"/>
         <text class="admin-chart-label" x="210" y="204" text-anchor="middle">总量</text>
@@ -1618,18 +1642,15 @@ function createDonutSvg(stats) {
 
 function renderOperationsDashboard() {
     const stats = getDashboardStats();
-    const resolvedObjects = state.identifierResults.filter((item) => item && item.status === "ok").length;
-    const mappingCount = stats.url + stats.upload;
-    const mappingTotal = stats.total + resolvedObjects;
     const displayName = getDisplayUserName();
 
     const userNameNode = document.getElementById("dashboardUserName");
     if (!userNameNode) return;
     userNameNode.textContent = displayName;
     document.getElementById("dashboardFlowCount").textContent = stats.total;
-    document.getElementById("dashboardObjectCount").textContent = mappingTotal;
-    document.getElementById("dashboardMappingCount").textContent = mappingCount;
-    document.getElementById("dashboardMappingTotal").textContent = stats.total;
+    document.getElementById("dashboardObjectCount").textContent = stats.upload;
+    document.getElementById("dashboardMappingCount").textContent = stats.url;
+    document.getElementById("dashboardMappingTotal").textContent = stats.identifier;
     document.getElementById("dashboardTrendChart").innerHTML = createTrendSvg(getRecentDayBuckets());
     document.getElementById("dashboardDonutChart").innerHTML = createDonutSvg(stats);
 }
@@ -1961,7 +1982,7 @@ function renderLogs() {
 
         const meta = document.createElement("div");
         meta.className = "log-item-meta";
-        meta.textContent = `${getTaskSummary(entry)} · ${new Date(entry.createdAt).toLocaleString("zh-CN", { hour12: false })}`;
+        meta.textContent = `${getTaskSummary(entry)} · ${formatLocalDateTime(entry.createdAt)}`;
         button.append(title, meta);
         list.appendChild(button);
     });
