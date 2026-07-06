@@ -669,7 +669,10 @@ def _filter_domain_identifiers(value: Any, language: str = 'zh') -> Any:
     filtered = {}
     for key, item in value.items():
         if key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            filtered[key] = _format_identifier_display(item, language=language)
+            filtered[key] = (
+                _format_identifier_display(item, language=language)
+                or (item.get('identifier') or item.get('value') or item.get('id') if isinstance(item, dict) else item)
+            )
         else:
             filtered[key] = _filter_domain_identifiers(item, language=language)
     return filtered

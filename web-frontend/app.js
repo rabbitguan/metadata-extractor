@@ -2055,6 +2055,16 @@ function findValueByKeyOrAlias(payload, key) {
     return undefined;
 }
 
+function findOwnValueByKeyOrAlias(payload, key) {
+    if (!isObject(payload)) return undefined;
+    for (const lookupKey of getFieldLookupKeys(key)) {
+        if (Object.prototype.hasOwnProperty.call(payload, lookupKey) && !isMissingDisplayValue(payload[lookupKey])) {
+            return payload[lookupKey];
+        }
+    }
+    return undefined;
+}
+
 function translateTree(node, language = state.language) {
     if (Array.isArray(node)) return node.map((item) => translateTree(item, language));
     if (!isObject(node)) return node;
@@ -2632,13 +2642,10 @@ function getResourceTypeDisplay(value, language = state.language) {
 
 function isCstrIdentifierLabel(label) {
     return new Set([
-        "identifier",
-        "Identifier",
-        "标识符",
-        "资源标识符",
-        "Resource Identifier",
         "CSTR标识符",
-        "CSTR Identifier"
+        "CSTR Identifier",
+        "cstr_identifier",
+        "cstrIdentifier"
     ]).has(String(label || ""));
 }
 
@@ -2667,6 +2674,7 @@ function renderFieldValue(data, label = "") {
     if (isCstrIdentifierLabel(label)) {
         const cstrDisplay = getCstrIdentifierDisplay(data);
         if (cstrDisplay) return { text: cstrDisplay, isEmpty: false };
+        return { text: ui.noContent, isEmpty: true };
     }
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
         const rawValue = data.value;
@@ -2699,7 +2707,9 @@ function renderSchemaNode(container, schemaNode, valueNode) {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
         if (typeof currentValue === "undefined" || isMissingDisplayValue(currentValue)) {
             for (const lookupKey of getFieldLookupKeys(key)) {
-                const aliasValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                const aliasValue = isCstrIdentifierLabel(key)
+                    ? findOwnValueByKeyOrAlias(valueNode, lookupKey)
+                    : findValueByKeyOrAlias(valueNode, lookupKey);
                 if (typeof aliasValue !== "undefined" && !isMissingDisplayValue(aliasValue)) {
                     currentValue = aliasValue;
                     break;

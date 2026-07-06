@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from cstr_resolver import resolve_cstr
 from doi_resolver import resolve_doi
 from dynamic_renderer import render_url_content
+from extractors.manager import extract_metadata
 from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
 from get_id import get_typed_identifiers
 from identifier import process_source_code
@@ -211,9 +212,44 @@ def _replace_cstr_identifier_value(key, value, cstr):
     if isinstance(value, dict):
         updated = dict(value)
         updated['type'] = 'CSTR'
-        updated['identifier'] = cstr
+        updated['identifier'] = _format_cstr_identifier(cstr)
         return updated
-    return cstr
+    return _format_cstr_identifier(cstr)
+
+
+def _format_cstr_value_if_possible(value):
+    formatted = _format_cstr_identifier(value)
+    return formatted if formatted else value
+
+
+def _format_cstr_identifiers_in_output(node, cstr_context=False):
+    if isinstance(node, list):
+        return [_format_cstr_identifiers_in_output(item, cstr_context=cstr_context) for item in node]
+    if not isinstance(node, dict):
+        return _format_cstr_value_if_possible(node) if cstr_context else node
+
+    item_type = str(node.get('type') or '').strip().upper()
+    normalized = {}
+    for key, value in node.items():
+        key_is_cstr = key in {'CSTR标识符', 'CSTR Identifier', 'cstr_identifier', 'cstrIdentifier'}
+        key_is_generic_identifier = key in {'标识符', 'Identifier', 'identifier', 'value'}
+        child_cstr_context = key_is_cstr or key_is_generic_identifier or ((cstr_context or item_type == 'CSTR') and key_is_generic_identifier)
+        normalized[key] = _format_cstr_identifiers_in_output(value, cstr_context=child_cstr_context)
+    return normalized
+
+
+def _format_unified_cstr_identifiers(metadata):
+    if not isinstance(metadata, dict):
+        return metadata
+
+    formatted = _format_cstr_identifiers_in_output(metadata)
+    core = formatted.get('核心元数据') if isinstance(formatted, dict) else None
+    metadatas = core.get('metadatas') if isinstance(core, dict) else None
+    if isinstance(metadatas, list):
+        for item in metadatas:
+            if isinstance(item, dict) and item.get('identifier'):
+                item['identifier'] = _format_cstr_value_if_possible(item.get('identifier'))
+    return formatted
 
 
 def _apply_queried_cstr_to_payload(payload, queried_cstr):
@@ -242,9 +278,9 @@ def _apply_queried_cstr_to_payload(payload, queried_cstr):
         if isinstance(metadatas, list):
             for item in metadatas:
                 if isinstance(item, dict):
-                    item['identifier'] = cstr
+                    item['identifier'] = _format_cstr_identifier(cstr)
         else:
-            core['identifier'] = cstr
+            core['identifier'] = _format_cstr_identifier(cstr)
 
     patched_payload = patch_node(payload)
     patch_core_section(patched_payload.get('核心元数据'))
@@ -797,7 +833,10 @@ def _normalize_domain_metadata_shape(obj, lang):
         if key in {'数据集作者', '数据论文作者', 'Dataset Authors', 'Data Paper Authors'}:
             normalized[key] = _normalize_agents(value, lang)
         elif key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            normalized[key] = _format_identifier_display(value, language=lang)
+            normalized[key] = (
+                _format_identifier_display(value, language=lang)
+                or (value.get('identifier') or value.get('value') or value.get('id') if isinstance(value, dict) else value)
+            )
         elif key in {'标题', 'Title'}:
             normalized[key] = _language_name_list(value, lang) or value
         elif key in {'摘要', 'Abstract'}:
@@ -1230,13 +1269,13 @@ def _build_already_unified_metadata(answer):
             if isinstance(extracted, dict):
                 domain_data = extracted
 
-    return {
+    return _format_unified_cstr_identifiers({
         '核心元数据': core_section,
         '领域元数据': {
             'metadata_type': domain_type,
             'metadatas': [domain_data if isinstance(domain_data, dict) else {}],
         },
-    }
+    })
 
 
 def _build_unified_metadata(answer):
@@ -1312,7 +1351,7 @@ def _build_unified_metadata(answer):
                 if key not in metadata['领域元数据']['metadatas'][0]
             })
 
-    return metadata
+    return _format_unified_cstr_identifiers(metadata)
 
 
 def _extract_domain_answer(answer, language='zh'):
@@ -1575,8 +1614,25 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
     return merged_answer
 
 
+def build_rule_metadata_payload(text, mode, url='', title='', html=''):
+    rule_content = html or text
+    print(f"[Extractor Debug] url={url}, title={title}, content_len={len(rule_content or '')}")
+    website_result = extract_metadata(url=url, title=title, content=rule_content)
+    if website_result is None:
+        raise ValueError('rule_not_matched')
+    return _build_unified_metadata(normalize_llm_answer(website_result))
+
+
 def build_url_metadata_payload(url, mode, strategy='auto'):
     data = fetch_url_content(url, dynamic_render='auto')
+    if strategy == 'rule':
+        return build_rule_metadata_payload(
+            data.get('text', ''),
+            mode,
+            url=url,
+            title=data.get('title', ''),
+            html=data.get('html', ''),
+        )
     return build_metadata_payload(
         data.get('text', ''),
         mode,
@@ -1592,7 +1648,7 @@ def supplement_payload_from_resource_url(payload, mode, current_url=''):
     for url in _extract_core_resource_urls(payload, current_url=current_url)[:1]:
         try:
             print(f"[Supplemental] Fetching resource URL {url} (dynamic_render={DYNAMIC_RENDER_MODE})")
-            fallback_payload = build_url_metadata_payload(url, mode, strategy='auto')
+            fallback_payload = build_url_metadata_payload(url, mode, strategy='rule')
             return _merge_metadata_payload_missing(payload, fallback_payload), {
                 'source': 'resource_url',
                 'url': url,
@@ -1625,14 +1681,14 @@ def handle_identifier_request(data):
         url = item.get('resolved_url', '')
         title = item.get('title', '')
         try:
-            print("Asking LLM to process identifier content")
+            print("Processing identifier content with extractor rules")
             print(
-                f"[Request Debug] strategy=llm, text_len={len(text or '')}, html_len=0, url={url}"
+                f"[Request Debug] strategy=rule, text_len={len(text or '')}, html_len=0, url={url}"
             )
             payload = None
             primary_error = None
             try:
-                payload = build_metadata_payload(text, mode, url=url, title=title, html='', strategy='auto')
+                payload = build_rule_metadata_payload(text, mode, url=url, title=title, html='')
             except (json.JSONDecodeError, ValueError, TypeError) as error:
                 primary_error = error
                 print(f"[WARNING] Primary identifier metadata failed for {url}: {error}")
@@ -1648,14 +1704,12 @@ def handle_identifier_request(data):
                         f"(dynamic_render={DYNAMIC_RENDER_MODE})"
                     )
                     supplemental_page = fetch_url_content(supplemental_url, dynamic_render='auto')
-                    supplemental_payload = build_metadata_payload(
+                    supplemental_payload = build_rule_metadata_payload(
                         supplemental_page.get('text', ''),
                         mode,
                         url=supplemental_url,
                         title=supplemental_page.get('title', ''),
                         html=supplemental_page.get('html', ''),
-                        strategy='auto',
-                        persist_history=False,
                     )
                     if payload is None:
                         payload = supplemental_payload
@@ -1757,7 +1811,7 @@ def handle_register_request(data):
         return jsonify({"status": "error", "message": "Missing text"}), 400
     if _looks_like_structured_upload(title=title, source=source, strategy=strategy):
         strategy = 'upload_rule'
-    print("Asking LLM to process text" if strategy != 'upload_rule' else "Using upload rule extractor")
+    print("Processing text" if strategy != 'upload_rule' else "Using upload rule extractor")
     print(
         f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
     )
