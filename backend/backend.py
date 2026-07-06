@@ -9,8 +9,8 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-from cstr_resolver import resolve_cstr
-from doi_resolver import resolve_doi
+from cstr_resolver import resolve_cstr, resolve_cstr_landing_page, resolve_cstr_metadata
+from doi_resolver import resolve_doi, resolve_doi_landing_page, resolve_doi_metadata
 from dynamic_renderer import render_url_content
 from extractors.manager import extract_metadata
 from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
@@ -1080,7 +1080,7 @@ def _merge_core_language_variants(core_zh, core_en):
     merged['contributors'] = _merge_agent_lists(zh.get('contributors'), en.get('contributors')) or None
     merged['alternative_identifiers'] = _merge_lists(zh.get('alternative_identifiers'), en.get('alternative_identifiers')) or None
     merged['related_identifiers'] = _merge_lists(zh.get('related_identifiers'), en.get('related_identifiers')) or None
-    merged['rights'] = _merge_lists(zh.get('rights'), en.get('rights')) or None
+    merged['rights'] = _first_non_missing(zh.get('rights'), en.get('rights'))
     merged['funders'] = _merge_lists(zh.get('funders'), en.get('funders')) or None
     merged['version'] = _first_non_missing(zh.get('version'), en.get('version'))
     merged['urls'] = _merge_lists(zh.get('urls'), en.get('urls')) or None
@@ -1195,7 +1195,51 @@ def _merge_lang_lists(primary, secondary):
     return _dedupe_jsonable(items)
 
 
+TIME_RANGE_KEYS = {'起始时间', '结束时间', 'Start Time', 'End Time'}
+
+
+def _is_time_range_node(value):
+    if not isinstance(value, dict) or not value:
+        return False
+    keys = {str(key) for key in value.keys()}
+    return bool(keys & TIME_RANGE_KEYS) and keys <= TIME_RANGE_KEYS
+
+
+def _time_range_scalar(value):
+    if _is_lang_object(value):
+        return value.get('value')
+    if _is_lang_list(value):
+        for item in value:
+            if not _is_domain_missing_value(item.get('value')):
+                return item.get('value')
+        return None
+    return value
+
+
+def _merge_time_range_nodes(zh_value, en_value):
+    merged = {}
+    en_by_zh_key = {
+        _map_key_to_zh(key): value
+        for key, value in (en_value or {}).items()
+    } if isinstance(en_value, dict) else {}
+
+    for key in ('起始时间', '结束时间'):
+        value = None
+        if isinstance(zh_value, dict):
+            value = zh_value.get(key)
+        if _is_domain_missing_value(value):
+            value = en_by_zh_key.get(key)
+        value = _time_range_scalar(value)
+        if not _is_domain_missing_value(value):
+            merged[key] = value
+
+    return merged or None
+
+
 def _merge_language_nodes(zh_value, en_value):
+    if _is_time_range_node(zh_value) or _is_time_range_node(en_value):
+        return _merge_time_range_nodes(zh_value, en_value)
+
     zh_missing = _is_domain_missing_value(zh_value)
     en_missing = _is_domain_missing_value(en_value)
     if zh_missing and en_missing:
@@ -1548,10 +1592,40 @@ def _should_dynamic_render(url='', html='', text='', title='', dynamic_render='a
     return _html_looks_client_rendered(html=html, text=text, title=title)
 
 
+def _declared_response_encoding(response):
+    headers = getattr(response, 'headers', None)
+    content_type = headers.get('content-type', '') if hasattr(headers, 'get') else ''
+    match = re.search(r'charset=["\']?([^;"\']+)', str(content_type or ''), flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    raw_head = getattr(response, 'content', b'')[:4096]
+    for pattern in (
+        br'<meta[^>]+charset=["\']?([^"\' >]+)',
+        br'<\?xml[^>]+encoding=["\']([^"\']+)',
+    ):
+        match = re.search(pattern, raw_head, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).decode('ascii', errors='ignore').strip()
+    return None
+
+
+def _select_response_encoding(response):
+    declared = _declared_response_encoding(response)
+    if declared:
+        return declared
+
+    current = getattr(response, 'encoding', None)
+    if current and str(current).lower() not in {'iso-8859-1'}:
+        return current
+
+    return getattr(response, 'apparent_encoding', None) or current or 'utf-8'
+
+
 def fetch_url_content(url, dynamic_render='auto'):
     response = requests.get(url, headers=FETCH_HEADERS, timeout=15)
     response.raise_for_status()
-    response.encoding = response.apparent_encoding or response.encoding
+    response.encoding = _select_response_encoding(response)
     html = response.text or ''
     text, title = _extract_text_from_html(html)
     render_method = 'static'
@@ -1751,98 +1825,276 @@ def supplement_payload_from_resource_url(payload, mode, current_url=''):
     return payload, None
 
 
+def _resolve_identifier_landing_page(identifier_type, identifier):
+    if identifier_type == 'doi':
+        return resolve_doi_landing_page(identifier, clean_html=process_source_code)
+    if identifier_type == 'cstr':
+        return resolve_cstr_landing_page(identifier, clean_html=process_source_code)
+    raise ValueError(f'Unsupported identifier type: {identifier_type}')
+
+
+def _metadata_source_for_identifier(identifier_type, identifier):
+    if identifier_type == 'doi':
+        return 'doi', resolve_doi_metadata(identifier)
+    if identifier_type == 'cstr':
+        return 'cstr', resolve_cstr_metadata(identifier, clean_html=process_source_code)
+    raise ValueError(f'Unsupported identifier type: {identifier_type}')
+
+
+def _extract_identifiers_from_source(content='', payload=None):
+    chunks = [str(content or '')]
+    if payload is not None:
+        try:
+            chunks.append(json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            pass
+
+    identifiers = []
+    seen = set()
+    for item in get_typed_identifiers('\n'.join(chunks), include_patent=False):
+        if item.get('type') not in {'doi', 'cstr'}:
+            continue
+        normalized = _normalize_allowed_identifier(item.get('id'), preferred_type=item.get('type'))
+        if not normalized:
+            continue
+        normalized_type = normalized['type'].lower()
+        key = (normalized_type, normalized['identifier'].lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        identifiers.append({'type': normalized_type, 'identifier': normalized['identifier']})
+    return identifiers
+
+
+def _build_payload_from_identifier_source(source_item, mode):
+    resolved = source_item.get('resolved') or {}
+    content = resolved.get('content') or ''
+    url = resolved.get('url') or ''
+    title = resolved.get('title') or ''
+    payload = build_rule_metadata_payload(content, mode, url=url, title=title, html='')
+
+    supplemental_results = []
+    if source_item.get('priority') in {'cstr', 'doi'}:
+        for supplemental in resolved.get('supplemental_urls') or []:
+            supplemental_url = supplemental.get('url') if isinstance(supplemental, dict) else str(supplemental or '')
+            if not supplemental_url:
+                continue
+            try:
+                print(
+                    f"[Supplemental] Fetching {supplemental_url} "
+                    f"(dynamic_render={DYNAMIC_RENDER_MODE})"
+                )
+                supplemental_page = fetch_url_content(supplemental_url, dynamic_render='auto')
+                supplemental_payload = build_rule_metadata_payload(
+                    supplemental_page.get('text', ''),
+                    mode,
+                    url=supplemental_url,
+                    title=supplemental_page.get('title', ''),
+                    html=supplemental_page.get('html', ''),
+                )
+                payload = _merge_metadata_payload_missing(payload, supplemental_payload)
+                supplemental_results.append({
+                    'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
+                    'url': supplemental_url,
+                    'status': 'ok',
+                    'priority': source_item.get('priority'),
+                    'render_method': supplemental_page.get('render_method'),
+                })
+            except Exception as supplemental_error:
+                print(f"[WARNING] Supplemental metadata failed for {supplemental_url}: {supplemental_error}")
+                supplemental_results.append({
+                    'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
+                    'url': supplemental_url,
+                    'status': 'error',
+                    'priority': source_item.get('priority'),
+                    'message': str(supplemental_error),
+                })
+
+    if source_item.get('priority') == 'web':
+        payload, resource_result = supplement_payload_from_resource_url(payload, mode, current_url=url)
+        if resource_result:
+            resource_result['priority'] = 'web'
+            supplemental_results.append(resource_result)
+
+    return payload, supplemental_results
+
+
+def _collect_identifier_sources(identifier_type, identifier, mode):
+    sources = []
+    source_results = []
+    seen_metadata_identifiers = {(identifier_type, str(identifier or '').lower())}
+
+    def add_resolved_source(priority, source_type, source_identifier, resolver):
+        try:
+            resolved = resolver(source_type, source_identifier)
+            content = resolved.get('content')
+            if not content:
+                raise ValueError('Resolved page has no readable content')
+            source_item = {
+                'priority': priority,
+                'type': source_type,
+                'identifier': source_identifier,
+                'resolved': resolved,
+            }
+            sources.append(source_item)
+            source_results.append({
+                'priority': priority,
+                'type': source_type,
+                'identifier': source_identifier,
+                'source': resolved.get('source', source_type),
+                'url': resolved.get('url'),
+                'status': 'resolved',
+            })
+            return source_item
+        except Exception as error:
+            print(f"[WARNING] Failed to resolve {priority} source for {source_type.upper()} {source_identifier}: {error}")
+            source_results.append({
+                'priority': priority,
+                'type': source_type,
+                'identifier': source_identifier,
+                'status': 'error',
+                'message': str(error),
+            })
+            return None
+
+    add_resolved_source('web', identifier_type, identifier, _resolve_identifier_landing_page)
+    try:
+        own_priority, own_resolved = _metadata_source_for_identifier(identifier_type, identifier)
+        own_source = add_resolved_source(own_priority, identifier_type, identifier, lambda *_: own_resolved)
+    except Exception as error:
+        own_source = None
+        print(f"[WARNING] Failed to resolve metadata source for {identifier_type.upper()} {identifier}: {error}")
+        source_results.append({
+            'priority': identifier_type,
+            'type': identifier_type,
+            'identifier': identifier,
+            'status': 'error',
+            'message': str(error),
+        })
+
+    if own_source:
+        for related in _extract_identifiers_from_source(
+            content=(own_source.get('resolved') or {}).get('content', ''),
+        ):
+            related_type = related.get('type')
+            if related_type == identifier_type:
+                continue
+            related_identifier = related.get('identifier')
+            key = (related_type, str(related_identifier or '').lower())
+            if key in seen_metadata_identifiers:
+                continue
+            seen_metadata_identifiers.add(key)
+            try:
+                related_priority, related_resolved = _metadata_source_for_identifier(related_type, related_identifier)
+                add_resolved_source(related_priority, related_type, related_identifier, lambda *_: related_resolved)
+            except Exception as error:
+                print(f"[WARNING] Failed to resolve related metadata source for {related_type.upper()} {related_identifier}: {error}")
+                source_results.append({
+                    'priority': related_type,
+                    'type': related_type,
+                    'identifier': related_identifier,
+                    'status': 'error',
+                    'message': str(error),
+                })
+
+    return sources, source_results
+
+
+def _merge_identifier_source_payloads(sources, mode):
+    payloads_by_priority = {'web': [], 'cstr': [], 'doi': []}
+    source_results = []
+    supplemental_results = []
+
+    for source_item in sources:
+        resolved = source_item.get('resolved') or {}
+        try:
+            payload, source_supplemental = _build_payload_from_identifier_source(source_item, mode)
+            payloads_by_priority.setdefault(source_item.get('priority'), []).append(payload)
+            supplemental_results.extend(source_supplemental)
+            source_results.append({
+                'priority': source_item.get('priority'),
+                'type': source_item.get('type'),
+                'identifier': source_item.get('identifier'),
+                'source': resolved.get('source', source_item.get('type')),
+                'url': resolved.get('url'),
+                'status': 'ok',
+            })
+        except Exception as error:
+            print(
+                f"[WARNING] Metadata extraction failed for "
+                f"{source_item.get('priority')} {source_item.get('type')} {source_item.get('identifier')}: {error}"
+            )
+            source_results.append({
+                'priority': source_item.get('priority'),
+                'type': source_item.get('type'),
+                'identifier': source_item.get('identifier'),
+                'source': resolved.get('source', source_item.get('type')),
+                'url': resolved.get('url'),
+                'status': 'error',
+                'message': str(error),
+            })
+
+    merged_payload = None
+    for priority in ('web', 'cstr', 'doi'):
+        for payload in payloads_by_priority.get(priority) or []:
+            if merged_payload is None:
+                merged_payload = payload
+            else:
+                merged_payload = _merge_metadata_payload_missing(merged_payload, payload)
+
+    return merged_payload, source_results, supplemental_results
+
+
 def handle_identifier_request(data):
     mode = data.get('mode', 'common')
-    items, error_payload = resolve_identifier_content(data)
+    identifiers = extract_doi_cstr_identifiers(collect_identifier_text(data))
+    if not identifiers:
+        error_payload = {'message': 'No DOI or CSTR identifier found'}
+    else:
+        error_payload = None
     if error_payload:
         return jsonify({"status": "error", **error_payload}), 400
 
     results = []
-    for item in items:
-        if item.get('status') != 'ok':
-            results.append(item)
-            continue
-        text = item.get('content', '')
-        url = item.get('resolved_url', '')
-        title = item.get('title', '')
+    for item in identifiers:
+        identifier_type = item['type']
+        identifier = item['id']
         try:
-            print("Processing identifier content with extractor rules")
-            print(
-                f"[Request Debug] strategy=rule, text_len={len(text or '')}, html_len=0, url={url}"
-            )
-            payload = None
-            primary_error = None
-            try:
-                payload = build_rule_metadata_payload(text, mode, url=url, title=title, html='')
-            except (json.JSONDecodeError, ValueError, TypeError) as error:
-                primary_error = error
-                print(f"[WARNING] Primary identifier metadata failed for {url}: {error}")
-
-            supplemental_results = []
-            for supplemental in item.get('supplemental_urls') or []:
-                supplemental_url = supplemental.get('url') if isinstance(supplemental, dict) else str(supplemental or '')
-                if not supplemental_url:
-                    continue
-                try:
-                    print(
-                        f"[Supplemental] Fetching {supplemental_url} "
-                        f"(dynamic_render={DYNAMIC_RENDER_MODE})"
-                    )
-                    supplemental_page = fetch_url_content(supplemental_url, dynamic_render='auto')
-                    supplemental_payload = build_rule_metadata_payload(
-                        supplemental_page.get('text', ''),
-                        mode,
-                        url=supplemental_url,
-                        title=supplemental_page.get('title', ''),
-                        html=supplemental_page.get('html', ''),
-                    )
-                    if payload is None:
-                        payload = supplemental_payload
-                    else:
-                        payload = _merge_metadata_payload_missing(payload, supplemental_payload)
-                    supplemental_results.append({
-                        'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
-                        'url': supplemental_url,
-                        'status': 'ok',
-                        'render_method': supplemental_page.get('render_method'),
-                    })
-                except Exception as supplemental_error:
-                    print(f"[WARNING] Supplemental metadata failed for {supplemental_url}: {supplemental_error}")
-                    supplemental_results.append({
-                        'source': supplemental.get('source') if isinstance(supplemental, dict) else 'supplemental',
-                        'url': supplemental_url,
-                        'status': 'error',
-                        'message': str(supplemental_error),
-                    })
+            print(f"Processing identifier sources for {identifier_type.upper()} {identifier}")
+            sources, resolve_results = _collect_identifier_sources(identifier_type, identifier, mode)
+            payload, source_results, supplemental_results = _merge_identifier_source_payloads(sources, mode)
 
             if payload is None:
-                raise primary_error or ValueError('No metadata payload generated')
+                raise ValueError('No metadata payload generated')
 
-            if payload is not None:
-                payload, resource_result = supplement_payload_from_resource_url(payload, mode, current_url=url)
-                if resource_result:
-                    supplemental_results.append(resource_result)
-
-            if item.get('type') == 'cstr':
-                payload = _apply_queried_cstr_to_payload(payload, item.get('identifier'))
+            if identifier_type == 'cstr':
+                payload = _apply_queried_cstr_to_payload(payload, identifier)
 
             results.append({
-                'identifier': _normalize_queried_cstr(item.get('identifier')) if item.get('type') == 'cstr' else item.get('identifier'),
-                'type': item.get('type'),
-                'resolved_url': url,
-                'source': item.get('source'),
+                'identifier': _normalize_queried_cstr(identifier) if identifier_type == 'cstr' else identifier,
+                'type': identifier_type,
+                'resolved_url': next(
+                    (
+                        result.get('url')
+                        for result in source_results
+                        if result.get('priority') == 'web' and result.get('status') == 'ok'
+                    ),
+                    next((result.get('url') for result in source_results if result.get('status') == 'ok'), ''),
+                ),
+                'source': 'merged',
                 'status': 'ok',
                 'payload': payload,
+                'source_results': resolve_results + source_results,
                 'supplemental_sources': supplemental_results,
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
             })
         except (json.JSONDecodeError, ValueError, TypeError) as error:
             print(f"LLM Error: {error}")
             results.append({
-                'identifier': item.get('identifier'),
-                'type': item.get('type'),
-                'resolved_url': url,
-                'source': item.get('source'),
+                'identifier': _normalize_queried_cstr(identifier) if identifier_type == 'cstr' else identifier,
+                'type': identifier_type,
+                'resolved_url': '',
+                'source': 'merged',
                 'status': 'error',
                 'message': 'Invalid bilingual JSON format from LLM',
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
