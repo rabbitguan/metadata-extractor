@@ -230,7 +230,10 @@ def _is_cstr(value: Any) -> bool:
 
 
 def _normalize_cstr_identifier(value: Any) -> Optional[str]:
-    match = CSTR_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    text = str(value or '').strip().strip('.,;，；')
+    while re.match(r'^CSTR\s*[:：]\s*', text, flags=re.IGNORECASE):
+        text = re.sub(r'^CSTR\s*[:：]\s*', '', text, count=1, flags=re.IGNORECASE).strip()
+    match = CSTR_PATTERN.match(text)
     return match.group(1) if match else None
 
 
@@ -263,6 +266,8 @@ def _format_identifier_display(value: Any, language: str = 'zh') -> Optional[str
     )
     if not normalized:
         return None
+    if normalized['type'] == 'CSTR':
+        return f"CSTR:{normalized['identifier']}"
     return f"{normalized['type']}: {normalized['identifier']}"
 
 

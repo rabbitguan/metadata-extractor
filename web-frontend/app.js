@@ -707,7 +707,6 @@ const UI_TEXT = {
         selectedFileEmpty: "尚未选择文件",
         selectedFilePrefix: "已选择：",
         modeSwitcherLabel: "元数据模式切换",
-        extensionTitle: "扩展信息",
         waiting: "等待提取结果",
         noContent: "未提取到",
         updatedAt: "更新于 ",
@@ -788,7 +787,6 @@ const UI_TEXT = {
         selectedFileEmpty: "No file selected yet",
         selectedFilePrefix: "Selected: ",
         modeSwitcherLabel: "Metadata mode switcher",
-        extensionTitle: "Extension Info",
         waiting: "Waiting for results",
         noContent: "Not extracted",
         updatedAt: "Updated at ",
@@ -2429,6 +2427,9 @@ function normalizeDisplayValue(data, language = state.language) {
         if (isObject(identifierValue) || Array.isArray(identifierValue)) {
             return normalizeDisplayValue(identifierValue, language);
         }
+        if (String(data.type || "").trim().toUpperCase() === "CSTR") {
+            return getCstrIdentifierDisplay(identifierValue) || String(identifierValue);
+        }
         return `${data.type}: ${identifierValue}`;
     }
     if (Object.prototype.hasOwnProperty.call(data, "value")) return normalizeDisplayValue(data.value, language);
@@ -2475,6 +2476,112 @@ function displayTextFromValue(value, language = state.language) {
     return "";
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function latexCommandToText(command) {
+    const map = {
+        alpha: "α",
+        beta: "β",
+        gamma: "γ",
+        delta: "δ",
+        epsilon: "ε",
+        varepsilon: "ε",
+        zeta: "ζ",
+        eta: "η",
+        theta: "θ",
+        vartheta: "ϑ",
+        iota: "ι",
+        kappa: "κ",
+        lambda: "λ",
+        mu: "μ",
+        nu: "ν",
+        xi: "ξ",
+        pi: "π",
+        varpi: "ϖ",
+        rho: "ρ",
+        varrho: "ϱ",
+        sigma: "σ",
+        varsigma: "ς",
+        tau: "τ",
+        upsilon: "υ",
+        phi: "φ",
+        varphi: "φ",
+        chi: "χ",
+        psi: "ψ",
+        omega: "ω",
+        Gamma: "Γ",
+        Delta: "Δ",
+        Theta: "Θ",
+        Lambda: "Λ",
+        Xi: "Ξ",
+        Pi: "Π",
+        Sigma: "Σ",
+        Upsilon: "Υ",
+        Phi: "Φ",
+        Psi: "Ψ",
+        Omega: "Ω",
+        pm: "±",
+        times: "×",
+        cdot: "·",
+        le: "≤",
+        leq: "≤",
+        ge: "≥",
+        geq: "≥",
+        neq: "≠",
+        approx: "≈",
+        sim: "∼",
+        infty: "∞",
+        percent: "%",
+        amp: "&"
+    };
+    return map[command] || command;
+}
+
+function cleanMathToken(value) {
+    return String(value || "")
+        .replace(/\\(?:mathrm|text)\{([^{}]+)\}/g, "$1")
+        .replace(/\\rm\s*/g, "")
+        .replace(/\\[,;:!]/g, "")
+        .replace(/\\([A-Za-z]+)/g, (_, command) => latexCommandToText(command))
+        .trim();
+}
+
+function renderMathTextToHtml(value) {
+    const wrappers = [];
+    const wrap = (tag, content) => {
+        const index = wrappers.length;
+        wrappers.push(`<${tag}>${escapeHtml(cleanMathToken(content))}</${tag}>`);
+        return `\uE000${index}\uE001`;
+    };
+
+    let text = String(value || "");
+    text = text
+        .replace(/_\{\\(?:rm|mathrm|text)\s*\{?([^{}]+)\}?\}/g, (_, content) => wrap("sub", content))
+        .replace(/\^\{\\(?:rm|mathrm|text)\s*\{?([^{}]+)\}?\}/g, (_, content) => wrap("sup", content))
+        .replace(/_\{([^{}]+)\}/g, (_, content) => wrap("sub", content))
+        .replace(/\^\{([^{}]+)\}/g, (_, content) => wrap("sup", content))
+        .replace(/_\\rm\s*([A-Za-z0-9]+)/g, (_, content) => wrap("sub", content))
+        .replace(/\^\\rm\s*([A-Za-z0-9]+)/g, (_, content) => wrap("sup", content))
+        .replace(/_\\([A-Za-z]+)/g, (_, command) => wrap("sub", latexCommandToText(command)))
+        .replace(/\^\\([A-Za-z]+)/g, (_, command) => wrap("sup", latexCommandToText(command)))
+        .replace(/_([A-Za-z0-9Α-ωΦφ]+)/g, (_, content) => wrap("sub", content))
+        .replace(/\^([A-Za-z0-9Α-ωΦφ]+)/g, (_, content) => wrap("sup", content))
+        .replace(/\\,/g, " ")
+        .replace(/\\[;:!]/g, "")
+        .replace(/\\rm\s+/g, "")
+        .replace(/\\(?:mathrm|text)\{([^{}]+)\}/g, "$1")
+        .replace(/\\([A-Za-z]+)/g, (_, command) => latexCommandToText(command));
+
+    return escapeHtml(text).replace(/\uE000(\d+)\uE001/g, (_, index) => wrappers[Number(index)] || "");
+}
+
 function isMissingDisplayValue(value) {
     if (value === null || typeof value === "undefined") return true;
     if (typeof value === "string") {
@@ -2486,11 +2593,81 @@ function isMissingDisplayValue(value) {
     return false;
 }
 
-function renderFieldValue(data) {
+function isResourceTypeLabel(label) {
+    return new Set([
+        "resource_type",
+        "ResourceType",
+        "Resource Type",
+        "Resource Type Classification",
+        "资源类型",
+        "资源类型判定"
+    ]).has(String(label || ""));
+}
+
+function normalizeResourceTypeKey(value) {
+    return String(value || "")
+        .trim()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function getResourceTypeDisplay(value, language = state.language) {
+    const text = String(value || "").trim();
+    if (!text) return text;
+
+    const candidates = Array.isArray(STANDARD_SCHEMA["资源类型候选列表"])
+        ? STANDARD_SCHEMA["资源类型候选列表"]
+        : [];
+    const match = candidates.find((item) => {
+        const zhName = normalizeResourceTypeKey(item["类型名称"]);
+        const enName = normalizeResourceTypeKey(item["英文类型"]);
+        const current = normalizeResourceTypeKey(text);
+        return current === zhName || current === enName;
+    });
+
+    if (!match) return text;
+    return language === "en" ? match["英文类型"] : match["类型名称"];
+}
+
+function isCstrIdentifierLabel(label) {
+    return new Set([
+        "identifier",
+        "Identifier",
+        "标识符",
+        "资源标识符",
+        "Resource Identifier",
+        "CSTR标识符",
+        "CSTR Identifier"
+    ]).has(String(label || ""));
+}
+
+function normalizeCstrIdentifier(value) {
+    let text = String(value || "").trim().replace(/[.,;，；]+$/g, "");
+    while (/^CSTR\s*[:：]\s*/i.test(text)) {
+        text = text.replace(/^CSTR\s*[:：]\s*/i, "").trim();
+    }
+    const match = text.match(/^\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/);
+    return match ? match[0] : "";
+}
+
+function getCstrIdentifierDisplay(value) {
+    const normalized = normalizeCstrIdentifier(value);
+    return normalized ? `CSTR:${normalized}` : "";
+}
+
+function renderFieldValue(data, label = "") {
     const ui = getUIText();
     const displayValue = normalizeDisplayValue(data);
     if (displayValue !== data) data = displayValue;
     if (isMissingDisplayValue(data)) return { text: ui.noContent, isEmpty: true };
+    if (isResourceTypeLabel(label)) {
+        return { text: getResourceTypeDisplay(data), isEmpty: false };
+    }
+    if (isCstrIdentifierLabel(label)) {
+        const cstrDisplay = getCstrIdentifierDisplay(data);
+        if (cstrDisplay) return { text: cstrDisplay, isEmpty: false };
+    }
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
         const rawValue = data.value;
         if (isMissingDisplayValue(rawValue)) return { text: ui.noContent, isEmpty: true };
@@ -2507,10 +2684,10 @@ function createFieldRow(label, data) {
     labelElement.className = "field-label";
     labelElement.textContent = label;
 
-    const valueState = renderFieldValue(data);
+    const valueState = renderFieldValue(data, label);
     const valueElement = document.createElement("div");
     valueElement.className = `field-value${valueState.isEmpty ? " empty" : ""}`;
-    valueElement.textContent = valueState.text;
+    valueElement.innerHTML = renderMathTextToHtml(valueState.text);
 
     row.appendChild(labelElement);
     row.appendChild(valueElement);
@@ -2547,16 +2724,6 @@ function renderSchemaNode(container, schemaNode, valueNode) {
         }
         container.appendChild(createFieldRow(key, currentValue));
     });
-}
-
-function extractExtensionText(payload, language = state.language) {
-    if (!isObject(payload)) return "";
-    const extensionKey = "extension_info";
-    const fallbackKey = language === "en" ? "扩展信息" : "Extension Info";
-    const extensionValue = payload[extensionKey] ?? payload[fallbackKey];
-    if (typeof extensionValue === "string") return extensionValue.trim();
-    if (isObject(extensionValue) && typeof extensionValue.value === "string") return extensionValue.value.trim();
-    return "";
 }
 
 function getCurrentIdentifierItem() {
@@ -2621,7 +2788,6 @@ function renderMode(mode) {
     const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
 
     const metadataRoot = document.getElementById("metadataRoot");
-    const extensionInfo = document.getElementById("extensionInfo");
     const modeTitle = document.getElementById("modeTitle");
     const lastUpdated = document.getElementById("lastUpdated");
     const ui = getUIText(language);
@@ -2629,10 +2795,6 @@ function renderMode(mode) {
     modeTitle.textContent = mode === "domain" ? getTranslatedLabel(schemaKey, language) : MODE_LABELS.common[language];
     metadataRoot.innerHTML = "";
     if (schemaRoot) renderSchemaNode(metadataRoot, schemaRoot, sectionPayload);
-
-    const extensionText = extractExtensionText(payload, language);
-    extensionInfo.textContent = extensionText || ui.waiting;
-    extensionInfo.classList.toggle("empty", !extensionText);
 
     let lastUpdatedValue = state.lastFetchedAt;
     const currentItem = getCurrentIdentifierItem();
@@ -2822,7 +2984,6 @@ function updateStaticText() {
     document.getElementById("chooseUploadHint").textContent = ui.chooseUploadHint;
     document.getElementById("chooseIdentifierLabel").textContent = ui.chooseIdentifierLabel;
     document.getElementById("chooseIdentifierHint").textContent = ui.chooseIdentifierHint;
-    document.getElementById("extensionTitle").textContent = ui.extensionTitle;
     document.getElementById("uploadTitle").textContent = ui.uploadTitle;
     const uploadExampleJson = document.getElementById("uploadExampleJson");
     const uploadExampleButton = document.getElementById("uploadExampleButton");
@@ -2892,8 +3053,6 @@ function updateStaticText() {
 
 function clearAnalysisView() {
     document.getElementById("metadataRoot").innerHTML = "";
-    document.getElementById("extensionInfo").textContent = getUIText().waiting;
-    document.getElementById("extensionInfo").classList.add("empty");
     document.getElementById("modeTitle").textContent = MODE_LABELS.common[state.language];
     document.getElementById("lastUpdated").textContent = "";
 }
