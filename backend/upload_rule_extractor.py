@@ -230,7 +230,10 @@ def _is_cstr(value: Any) -> bool:
 
 
 def _normalize_cstr_identifier(value: Any) -> Optional[str]:
-    match = CSTR_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    text = str(value or '').strip().strip('.,;，；')
+    while re.match(r'^CSTR\s*[:：]\s*', text, flags=re.IGNORECASE):
+        text = re.sub(r'^CSTR\s*[:：]\s*', '', text, count=1, flags=re.IGNORECASE).strip()
+    match = CSTR_PATTERN.match(text)
     return match.group(1) if match else None
 
 
@@ -664,7 +667,10 @@ def _filter_domain_identifiers(value: Any, language: str = 'zh') -> Any:
     filtered = {}
     for key, item in value.items():
         if key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            filtered[key] = _format_identifier_display(item, language=language)
+            filtered[key] = (
+                _format_identifier_display(item, language=language)
+                or (item.get('identifier') or item.get('value') or item.get('id') if isinstance(item, dict) else item)
+            )
         else:
             filtered[key] = _filter_domain_identifiers(item, language=language)
     return filtered

@@ -1,4 +1,19 @@
-const SERVICE_PROXY_PREFIX = "/sso/proxy/mapping-tool";
+function normalizeServiceProxyPrefix(prefix) {
+    const text = String(prefix || "").trim();
+    if (!text || text === "/") return "";
+    return `/${text.replace(/^\/+|\/+$/g, "")}`;
+}
+
+const SERVICE_PROXY_PREFIX = normalizeServiceProxyPrefix(
+    window.METADATA_EXTRACTOR_CONFIG && window.METADATA_EXTRACTOR_CONFIG.serviceProxyPrefix
+        ? window.METADATA_EXTRACTOR_CONFIG.serviceProxyPrefix
+        : "/sso/proxy/mapping-tool"
+);
+const PUBLIC_API_BASE_URL = (
+    window.METADATA_EXTRACTOR_CONFIG && window.METADATA_EXTRACTOR_CONFIG.publicApiBaseUrl
+        ? String(window.METADATA_EXTRACTOR_CONFIG.publicApiBaseUrl)
+        : ""
+).replace(/\/+$/, "");
 
 function getServiceBasePath() {
     const pathname = window.location.pathname.replace(/\/+$/, "");
@@ -20,6 +35,15 @@ function buildServiceUrl(path) {
 
 function getServiceBasePathLabel() {
     return getServiceBasePath() || "/";
+}
+
+function getApiDocsBaseLabel() {
+    return PUBLIC_API_BASE_URL || getServiceBasePathLabel();
+}
+
+function getServiceHomePath() {
+    const serviceBasePath = getServiceBasePath();
+    return serviceBasePath ? `${serviceBasePath}/` : "/";
 }
 
 const BACKEND_QUERY_URL = buildServiceUrl("/query");
@@ -683,7 +707,6 @@ const UI_TEXT = {
         selectedFileEmpty: "尚未选择文件",
         selectedFilePrefix: "已选择：",
         modeSwitcherLabel: "元数据模式切换",
-        extensionTitle: "扩展信息",
         waiting: "等待提取结果",
         noContent: "未提取到",
         updatedAt: "更新于 ",
@@ -764,7 +787,6 @@ const UI_TEXT = {
         selectedFileEmpty: "No file selected yet",
         selectedFilePrefix: "Selected: ",
         modeSwitcherLabel: "Metadata mode switcher",
-        extensionTitle: "Extension Info",
         waiting: "Waiting for results",
         noContent: "Not extracted",
         updatedAt: "Updated at ",
@@ -946,7 +968,7 @@ const API_DOCS_TEXT = {
                     html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
                     title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
                 },
-                example: `curl -X POST http://127.0.0.1:4000/register \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -984,7 +1006,7 @@ const API_DOCS_TEXT = {
                     text: "当 identifiers 不传时，后端会从 text 中自动识别 DOI/CSTR。",
                     html: "当 identifiers 和 text 都不传时，后端会从 html 中自动识别 DOI/CSTR。"
                 },
-                example: `curl -X POST http://127.0.0.1:4000/query \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/query \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1045,7 +1067,7 @@ const API_DOCS_TEXT = {
                     html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
                     title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
                 },
-                example: `curl -X POST http://127.0.0.1:4000/register \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1083,7 +1105,7 @@ const API_DOCS_TEXT = {
                     text: "When identifiers is omitted, the backend extracts DOI/CSTR values from text.",
                     html: "When identifiers and text are omitted, the backend extracts DOI/CSTR values from html."
                 },
-                example: `curl -X POST http://127.0.0.1:4000/query \\
+                example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/query \\
   -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
@@ -1657,7 +1679,7 @@ function renderApiDocs() {
     const docs = API_DOCS_TEXT[state.language] || API_DOCS_TEXT.zh;
     const ui = getUIText();
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getApiDocsBaseLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
 
     const root = document.getElementById("apiDocsContent");
@@ -2033,6 +2055,16 @@ function findValueByKeyOrAlias(payload, key) {
     return undefined;
 }
 
+function findOwnValueByKeyOrAlias(payload, key) {
+    if (!isObject(payload)) return undefined;
+    for (const lookupKey of getFieldLookupKeys(key)) {
+        if (Object.prototype.hasOwnProperty.call(payload, lookupKey) && !isMissingDisplayValue(payload[lookupKey])) {
+            return payload[lookupKey];
+        }
+    }
+    return undefined;
+}
+
 function translateTree(node, language = state.language) {
     if (Array.isArray(node)) return node.map((item) => translateTree(item, language));
     if (!isObject(node)) return node;
@@ -2342,6 +2374,33 @@ function filterLocalizedTree(data, language = state.language) {
     return Object.keys(result).length ? result : null;
 }
 
+function splitDisplayParts(value) {
+    if (isMissingDisplayValue(value)) return [];
+    return String(value)
+        .split(/[;；]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function normalizeDisplayPart(part) {
+    return String(part)
+        .replace(/^\s*(许可协议|共享许可协议|数据集共享许可协议|数据论文共享许可协议|license|dataset license|data paper license)\s*[:：]\s*/i, "")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function joinUniqueDisplayParts(values) {
+    const seen = new Set();
+    const parts = [];
+    values.flatMap(splitDisplayParts).forEach((part) => {
+        const normalized = normalizeDisplayPart(part);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        parts.push(part);
+    });
+    return parts.join("；");
+}
+
 function normalizeDisplayValue(data, language = state.language) {
     if (Array.isArray(data)) {
         if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, "lang"))) {
@@ -2358,6 +2417,14 @@ function normalizeDisplayValue(data, language = state.language) {
         return data
             .map((item) => displayTextFromValue(normalizeDisplayValue(item, language), language))
             .filter(Boolean)
+            .reduce((parts, item) => {
+                parts.push(...splitDisplayParts(item));
+                return parts;
+            }, [])
+            .filter((part, index, parts) => {
+                const normalized = normalizeDisplayPart(part);
+                return parts.findIndex((candidate) => normalizeDisplayPart(candidate) === normalized) === index;
+            })
             .join("；");
     }
 
@@ -2369,6 +2436,9 @@ function normalizeDisplayValue(data, language = state.language) {
         const identifierValue = data.identifier || data.value;
         if (isObject(identifierValue) || Array.isArray(identifierValue)) {
             return normalizeDisplayValue(identifierValue, language);
+        }
+        if (String(data.type || "").trim().toUpperCase() === "CSTR") {
+            return getCstrIdentifierDisplay(identifierValue) || String(identifierValue);
         }
         return `${data.type}: ${identifierValue}`;
     }
@@ -2386,7 +2456,7 @@ function normalizeDisplayValue(data, language = state.language) {
         ].join("；");
     }
     if (data.license || data.description || data.cert_num) {
-        return [data.license, data.description, data.cert_num].filter(Boolean).join("；");
+        return joinUniqueDisplayParts([data.license, data.description, data.cert_num].filter(Boolean));
     }
     if (data.name || data.proj_name || data.proj_num) {
         return [data.name, data.proj_type, data.proj_num, data.proj_name].filter(Boolean).join("；");
@@ -2416,6 +2486,112 @@ function displayTextFromValue(value, language = state.language) {
     return "";
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function latexCommandToText(command) {
+    const map = {
+        alpha: "α",
+        beta: "β",
+        gamma: "γ",
+        delta: "δ",
+        epsilon: "ε",
+        varepsilon: "ε",
+        zeta: "ζ",
+        eta: "η",
+        theta: "θ",
+        vartheta: "ϑ",
+        iota: "ι",
+        kappa: "κ",
+        lambda: "λ",
+        mu: "μ",
+        nu: "ν",
+        xi: "ξ",
+        pi: "π",
+        varpi: "ϖ",
+        rho: "ρ",
+        varrho: "ϱ",
+        sigma: "σ",
+        varsigma: "ς",
+        tau: "τ",
+        upsilon: "υ",
+        phi: "φ",
+        varphi: "φ",
+        chi: "χ",
+        psi: "ψ",
+        omega: "ω",
+        Gamma: "Γ",
+        Delta: "Δ",
+        Theta: "Θ",
+        Lambda: "Λ",
+        Xi: "Ξ",
+        Pi: "Π",
+        Sigma: "Σ",
+        Upsilon: "Υ",
+        Phi: "Φ",
+        Psi: "Ψ",
+        Omega: "Ω",
+        pm: "±",
+        times: "×",
+        cdot: "·",
+        le: "≤",
+        leq: "≤",
+        ge: "≥",
+        geq: "≥",
+        neq: "≠",
+        approx: "≈",
+        sim: "∼",
+        infty: "∞",
+        percent: "%",
+        amp: "&"
+    };
+    return map[command] || command;
+}
+
+function cleanMathToken(value) {
+    return String(value || "")
+        .replace(/\\(?:mathrm|text)\{([^{}]+)\}/g, "$1")
+        .replace(/\\rm\s*/g, "")
+        .replace(/\\[,;:!]/g, "")
+        .replace(/\\([A-Za-z]+)/g, (_, command) => latexCommandToText(command))
+        .trim();
+}
+
+function renderMathTextToHtml(value) {
+    const wrappers = [];
+    const wrap = (tag, content) => {
+        const index = wrappers.length;
+        wrappers.push(`<${tag}>${escapeHtml(cleanMathToken(content))}</${tag}>`);
+        return `\uE000${index}\uE001`;
+    };
+
+    let text = String(value || "");
+    text = text
+        .replace(/_\{\\(?:rm|mathrm|text)\s*\{?([^{}]+)\}?\}/g, (_, content) => wrap("sub", content))
+        .replace(/\^\{\\(?:rm|mathrm|text)\s*\{?([^{}]+)\}?\}/g, (_, content) => wrap("sup", content))
+        .replace(/_\{([^{}]+)\}/g, (_, content) => wrap("sub", content))
+        .replace(/\^\{([^{}]+)\}/g, (_, content) => wrap("sup", content))
+        .replace(/_\\rm\s*([A-Za-z0-9]+)/g, (_, content) => wrap("sub", content))
+        .replace(/\^\\rm\s*([A-Za-z0-9]+)/g, (_, content) => wrap("sup", content))
+        .replace(/_\\([A-Za-z]+)/g, (_, command) => wrap("sub", latexCommandToText(command)))
+        .replace(/\^\\([A-Za-z]+)/g, (_, command) => wrap("sup", latexCommandToText(command)))
+        .replace(/_([A-Za-z0-9Α-ωΦφ]+)/g, (_, content) => wrap("sub", content))
+        .replace(/\^([A-Za-z0-9Α-ωΦφ]+)/g, (_, content) => wrap("sup", content))
+        .replace(/\\,/g, " ")
+        .replace(/\\[;:!]/g, "")
+        .replace(/\\rm\s+/g, "")
+        .replace(/\\(?:mathrm|text)\{([^{}]+)\}/g, "$1")
+        .replace(/\\([A-Za-z]+)/g, (_, command) => latexCommandToText(command));
+
+    return escapeHtml(text).replace(/\uE000(\d+)\uE001/g, (_, index) => wrappers[Number(index)] || "");
+}
+
 function isMissingDisplayValue(value) {
     if (value === null || typeof value === "undefined") return true;
     if (typeof value === "string") {
@@ -2427,11 +2603,79 @@ function isMissingDisplayValue(value) {
     return false;
 }
 
-function renderFieldValue(data) {
+function isResourceTypeLabel(label) {
+    return new Set([
+        "resource_type",
+        "ResourceType",
+        "Resource Type",
+        "Resource Type Classification",
+        "资源类型",
+        "资源类型判定"
+    ]).has(String(label || ""));
+}
+
+function normalizeResourceTypeKey(value) {
+    return String(value || "")
+        .trim()
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function getResourceTypeDisplay(value, language = state.language) {
+    const text = String(value || "").trim();
+    if (!text) return text;
+
+    const candidates = Array.isArray(STANDARD_SCHEMA["资源类型候选列表"])
+        ? STANDARD_SCHEMA["资源类型候选列表"]
+        : [];
+    const match = candidates.find((item) => {
+        const zhName = normalizeResourceTypeKey(item["类型名称"]);
+        const enName = normalizeResourceTypeKey(item["英文类型"]);
+        const current = normalizeResourceTypeKey(text);
+        return current === zhName || current === enName;
+    });
+
+    if (!match) return text;
+    return language === "en" ? match["英文类型"] : match["类型名称"];
+}
+
+function isCstrIdentifierLabel(label) {
+    return new Set([
+        "CSTR标识符",
+        "CSTR Identifier",
+        "cstr_identifier",
+        "cstrIdentifier"
+    ]).has(String(label || ""));
+}
+
+function normalizeCstrIdentifier(value) {
+    let text = String(value || "").trim().replace(/[.,;，；]+$/g, "");
+    while (/^CSTR\s*[:：]\s*/i.test(text)) {
+        text = text.replace(/^CSTR\s*[:：]\s*/i, "").trim();
+    }
+    const match = text.match(/^\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/);
+    return match ? match[0] : "";
+}
+
+function getCstrIdentifierDisplay(value) {
+    const normalized = normalizeCstrIdentifier(value);
+    return normalized ? `CSTR:${normalized}` : "";
+}
+
+function renderFieldValue(data, label = "") {
     const ui = getUIText();
     const displayValue = normalizeDisplayValue(data);
     if (displayValue !== data) data = displayValue;
     if (isMissingDisplayValue(data)) return { text: ui.noContent, isEmpty: true };
+    if (isResourceTypeLabel(label)) {
+        return { text: getResourceTypeDisplay(data), isEmpty: false };
+    }
+    if (isCstrIdentifierLabel(label)) {
+        const cstrDisplay = getCstrIdentifierDisplay(data);
+        if (cstrDisplay) return { text: cstrDisplay, isEmpty: false };
+        return { text: ui.noContent, isEmpty: true };
+    }
     if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
         const rawValue = data.value;
         if (isMissingDisplayValue(rawValue)) return { text: ui.noContent, isEmpty: true };
@@ -2448,10 +2692,10 @@ function createFieldRow(label, data) {
     labelElement.className = "field-label";
     labelElement.textContent = label;
 
-    const valueState = renderFieldValue(data);
+    const valueState = renderFieldValue(data, label);
     const valueElement = document.createElement("div");
     valueElement.className = `field-value${valueState.isEmpty ? " empty" : ""}`;
-    valueElement.textContent = valueState.text;
+    valueElement.innerHTML = renderMathTextToHtml(valueState.text);
 
     row.appendChild(labelElement);
     row.appendChild(valueElement);
@@ -2463,7 +2707,9 @@ function renderSchemaNode(container, schemaNode, valueNode) {
         let currentValue = isObject(valueNode) ? valueNode[key] : undefined;
         if (typeof currentValue === "undefined" || isMissingDisplayValue(currentValue)) {
             for (const lookupKey of getFieldLookupKeys(key)) {
-                const aliasValue = findValueByKeyOrAlias(valueNode, lookupKey);
+                const aliasValue = isCstrIdentifierLabel(key)
+                    ? findOwnValueByKeyOrAlias(valueNode, lookupKey)
+                    : findValueByKeyOrAlias(valueNode, lookupKey);
                 if (typeof aliasValue !== "undefined" && !isMissingDisplayValue(aliasValue)) {
                     currentValue = aliasValue;
                     break;
@@ -2488,16 +2734,6 @@ function renderSchemaNode(container, schemaNode, valueNode) {
         }
         container.appendChild(createFieldRow(key, currentValue));
     });
-}
-
-function extractExtensionText(payload, language = state.language) {
-    if (!isObject(payload)) return "";
-    const extensionKey = "extension_info";
-    const fallbackKey = language === "en" ? "扩展信息" : "Extension Info";
-    const extensionValue = payload[extensionKey] ?? payload[fallbackKey];
-    if (typeof extensionValue === "string") return extensionValue.trim();
-    if (isObject(extensionValue) && typeof extensionValue.value === "string") return extensionValue.value.trim();
-    return "";
 }
 
 function getCurrentIdentifierItem() {
@@ -2562,7 +2798,6 @@ function renderMode(mode) {
     const sectionPayload = getEffectiveSectionPayload(payload, getPayloadSectionKey(schemaKey, language));
 
     const metadataRoot = document.getElementById("metadataRoot");
-    const extensionInfo = document.getElementById("extensionInfo");
     const modeTitle = document.getElementById("modeTitle");
     const lastUpdated = document.getElementById("lastUpdated");
     const ui = getUIText(language);
@@ -2570,10 +2805,6 @@ function renderMode(mode) {
     modeTitle.textContent = mode === "domain" ? getTranslatedLabel(schemaKey, language) : MODE_LABELS.common[language];
     metadataRoot.innerHTML = "";
     if (schemaRoot) renderSchemaNode(metadataRoot, schemaRoot, sectionPayload);
-
-    const extensionText = extractExtensionText(payload, language);
-    extensionInfo.textContent = extensionText || ui.waiting;
-    extensionInfo.classList.toggle("empty", !extensionText);
 
     let lastUpdatedValue = state.lastFetchedAt;
     const currentItem = getCurrentIdentifierItem();
@@ -2763,7 +2994,6 @@ function updateStaticText() {
     document.getElementById("chooseUploadHint").textContent = ui.chooseUploadHint;
     document.getElementById("chooseIdentifierLabel").textContent = ui.chooseIdentifierLabel;
     document.getElementById("chooseIdentifierHint").textContent = ui.chooseIdentifierHint;
-    document.getElementById("extensionTitle").textContent = ui.extensionTitle;
     document.getElementById("uploadTitle").textContent = ui.uploadTitle;
     const uploadExampleJson = document.getElementById("uploadExampleJson");
     const uploadExampleButton = document.getElementById("uploadExampleButton");
@@ -2785,7 +3015,7 @@ function updateStaticText() {
     document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
     document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
     document.getElementById("apiDocsTitle").textContent = ui.apiDocsTitle;
-    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getServiceBasePathLabel()}`;
+    document.getElementById("apiDocsSubtitle").textContent = `${ui.apiDocsSubtitle}${getApiDocsBaseLabel()}`;
     document.getElementById("closeApiDocsButton").textContent = ui.closeLogsTitle;
     document.getElementById("formatSupportTitle").textContent = ui.formatSupportTitle;
     document.getElementById("formatSupportSubtitle").textContent = ui.formatSupportSubtitle;
@@ -2833,8 +3063,6 @@ function updateStaticText() {
 
 function clearAnalysisView() {
     document.getElementById("metadataRoot").innerHTML = "";
-    document.getElementById("extensionInfo").textContent = getUIText().waiting;
-    document.getElementById("extensionInfo").classList.add("empty");
     document.getElementById("modeTitle").textContent = MODE_LABELS.common[state.language];
     document.getElementById("lastUpdated").textContent = "";
 }
@@ -2998,7 +3226,7 @@ function bindEvents() {
     document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
     document.getElementById("dashboardRefreshButton").addEventListener("click", loadConversionLogs);
     document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
-        window.location.href = "/";
+        window.location.href = getServiceHomePath();
     });
     document.getElementById("toolOverviewButton").addEventListener("click", showDashboard);
     document.getElementById("toolServiceButton").addEventListener("click", showToolHome);

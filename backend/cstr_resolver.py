@@ -3,6 +3,7 @@ import re
 from urllib.parse import quote, urljoin, urlsplit
 
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 
 FETCH_HEADERS = {
@@ -63,11 +64,17 @@ def _response_to_content(response, clean_html):
     content_type = _get_content_type(response)
     if 'json' in content_type:
         try:
-            return json.dumps(response.json(), ensure_ascii=False, indent=2)
+            payload = response.json()
+            _raise_for_resolver_error(payload)
+            return json.dumps(payload, ensure_ascii=False, indent=2)
         except Exception:
+            if _looks_like_json_text_error(response.text):
+                raise
             return response.text
 
     content = response.text
+    if _looks_like_cstr_error_page(response.url, content):
+        raise ValueError('CSTR landing page did not return metadata')
     # if clean_html is not None:
     #     content = clean_html(content)
     # 这里 clean_html 的逻辑可以去除，因为 extractor 用的是原始 html
@@ -83,8 +90,51 @@ def _get_content_type(response):
     return ''
 
 
+def _raise_for_resolver_error(payload):
+    if not isinstance(payload, dict):
+        return
+    candidates = [payload]
+    data = payload.get('data')
+    if isinstance(data, dict):
+        candidates.append(data)
+        nested = data.get('data')
+        if isinstance(nested, dict):
+            candidates.append(nested)
+    for item in candidates:
+        code = str(item.get('code') or '').strip()
+        status = str(item.get('status') or '').strip()
+        detail = str(item.get('detail') or item.get('message') or '').strip()
+        if code in {'404', '500'} or status in {'8', '404'} or detail.lower() in {'not found', 'notfound'}:
+            raise ValueError(detail or 'CSTR resolver returned no metadata')
+
+
+def _looks_like_json_text_error(text):
+    try:
+        payload = json.loads(text or '')
+    except Exception:
+        return False
+    _raise_for_resolver_error(payload)
+    return False
+
+
+def _looks_like_cstr_error_page(url, content):
+    normalized_url = str(url or '').lower()
+    if 'cstr.cn' not in normalized_url:
+        return False
+    text = str(content or '').lower()
+    return (
+        'error.css' in text
+        or '科技资源标识服务平台' in str(content or '')
+        and '404' in text
+        or 'not found' in text
+    )
+
+
 def _fetch_page(url, source, clean_html, redirect_depth=0):
-    response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
+    verify_tls = 'scids.bdware.cn' not in urlsplit(url).netloc.lower()
+    if not verify_tls:
+        requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+    response = requests.get(url, headers=FETCH_HEADERS, timeout=10, verify=verify_tls)
     response.raise_for_status()
     response.encoding = response.apparent_encoding or response.encoding
     final_url = response.url if isinstance(response.url, str) and response.url else url
@@ -157,8 +207,8 @@ def resolve_cstr(cstr, clean_html=None):
         ('known-resource', KNOWN_CSTR_RESOURCE_URLS[normalized_cstr.lower()]),
     ] if normalized_cstr.lower() in KNOWN_CSTR_RESOURCE_URLS else []
     candidates.extend([
-        ('cstr.cn', f'https://cstr.cn/{quoted_cstr}'),
         ('scids.bdware.cn', f'https://scids.bdware.cn/idutil/resolve?id={quoted_cstr}'),
+        ('cstr.cn', f'https://cstr.cn/{quoted_cstr}'),
     ])
     errors = []
 

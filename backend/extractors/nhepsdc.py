@@ -71,6 +71,17 @@ def _split_terms(value: Optional[Any]) -> list[str]:
     return _unique_list(re.split(r'[;；,，、|]+|\s{2,}', text))
 
 
+def _rights_description(values: Dict[str, Any]) -> Optional[str]:
+    description_parts = []
+    for key, value in values.items():
+        if key == '许可协议':
+            continue
+        cleaned = _clean_text(value)
+        if cleaned:
+            description_parts.append(f'{key}: {cleaned}')
+    return '；'.join(description_parts) or None
+
+
 def _extract_info_rows(soup: BeautifulSoup) -> Dict[str, Any]:
     rows: Dict[str, Any] = {}
     for row in soup.select('.detail-info .info-row'):
@@ -320,6 +331,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '其他': other_note,
     }
     rights = {key: value for key, value in rights.items() if value}
+    rights_description = _rights_description(rights)
 
     core_zh: Dict[str, Any] = {
         'titles': [{'lang': 'zh', 'name': title_zh}] if title_zh else None,
@@ -343,8 +355,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'rights': [{
             'license_type': None,
             'license': license_text,
-            'type': access_right,
-            'description': '；'.join(f'{key}: {value}' for key, value in rights.items()) if rights else None,
+            'type': None,
+            'description': rights_description,
             'cert_num': None,
         }] if (rights or license_text or access_right) else None,
         'funders': None,
@@ -409,8 +421,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'rights': [{
             'license_type': None,
             'license': license_text,
-            'type': access_right,
-            'description': '；'.join(f'{key}: {value}' for key, value in rights.items()) if rights else None,
+            'type': None,
+            'description': rights_description,
             'cert_num': None,
         }] if (rights or license_text or access_right) else None,
         'funders': None,

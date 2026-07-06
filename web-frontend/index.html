@@ -6,7 +6,12 @@
     <title>元数据双向映射工具</title>
     <script>
         (function () {
-            var prefix = "/sso/proxy/mapping-tool/";
+            var servicePrefix = "/sso/proxy/mapping-tool";
+            window.METADATA_EXTRACTOR_CONFIG = {
+                serviceProxyPrefix: servicePrefix,
+                publicApiBaseUrl: "http://8.130.186.178:21005"
+            };
+            var prefix = servicePrefix.replace(/\/+$/, "") + "/";
             var path = window.location.pathname;
             var href = window.location.protocol === "file:"
                 ? "./"
@@ -271,13 +276,6 @@
                         <span id="lastUpdated" class="panel-meta"></span>
                     </div>
                     <div id="metadataRoot" class="metadata-root"></div>
-                </article>
-
-                <article class="result-card">
-                    <div class="card-head">
-                        <h2 id="extensionTitle">扩展信息</h2>
-                    </div>
-                    <pre id="extensionInfo" class="extension-info empty">等待提取结果</pre>
                 </article>
             </section>
         </section>
