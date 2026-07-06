@@ -1587,6 +1587,37 @@ function filterLocalizedTree(data, language = state.language) {
     return Object.keys(result).length ? result : null;
 }
 
+function splitDisplayParts(value) {
+    if (isMissingDisplayValue(value)) {
+        return [];
+    }
+    return String(value)
+        .split(/[;；]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function normalizeDisplayPart(part) {
+    return String(part)
+        .replace(/^\s*(许可协议|共享许可协议|数据集共享许可协议|数据论文共享许可协议|license|dataset license|data paper license)\s*[:：]\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function joinUniqueDisplayParts(values) {
+    const seen = new Set();
+    const parts = [];
+    values.flatMap(splitDisplayParts).forEach((part) => {
+        const normalized = normalizeDisplayPart(part);
+        if (seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        parts.push(part);
+    });
+    return parts.join('；');
+}
+
 function normalizeDisplayValue(data, language = state.language) {
     if (Array.isArray(data)) {
         if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, 'lang'))) {
@@ -1599,7 +1630,7 @@ function normalizeDisplayValue(data, language = state.language) {
             }
             if (Object.prototype.hasOwnProperty.call(localized, 'value')) return normalizeDisplayValue(localized.value, language);
         }
-        return data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean).join('；');
+        return joinUniqueDisplayParts(data.map((item) => normalizeDisplayValue(item, language)).filter(Boolean));
     }
 
     if (!isObject(data)) return data;
@@ -1627,7 +1658,7 @@ function normalizeDisplayValue(data, language = state.language) {
         ].join('；');
     }
     if (data.license || data.description || data.cert_num) {
-        return [data.license, data.description, data.cert_num].filter(Boolean).join('；');
+        return joinUniqueDisplayParts([data.license, data.description, data.cert_num].filter(Boolean));
     }
     if (data.name || data.proj_name || data.proj_num) {
         return [data.name, data.proj_type, data.proj_num, data.proj_name].filter(Boolean).join('；');
