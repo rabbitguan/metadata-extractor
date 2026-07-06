@@ -147,7 +147,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     spatial_range = labels.get('空间范围')
     time_range = _format_time_range(labels.get('数据起始时间'), labels.get('数据终止时间'))
     registration_number = labels.get('数据资源登记编号')
-    identifier = _first_non_empty(registration_number, data_code)
+    identifier = None
     sharing_level = labels.get('共享级别')
     update_frequency = labels.get('更新频率')
     production_time = labels.get('制作时间')
@@ -157,7 +157,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     escience_url = _extract_escience_url(soup)
     related_documents = _extract_related_documents(soup, url)
     resource_url = url or None
-    alternative_identifiers = [data_code] if data_code and data_code != identifier else None
+    alternative_identifiers = None
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',

@@ -118,10 +118,10 @@ def _extract_cstr(value: Optional[Any]) -> Optional[str]:
     text = _clean_text(value)
     if not text:
         return None
-    match = re.search(r'CSTR\s*[:：]\s*([A-Za-z0-9._-]+(?:\.[A-Za-z0-9._-]+)*)', text, flags=re.IGNORECASE)
+    match = re.search(r'CSTR\s*[:：]\s*([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if match:
         return match.group(1).rstrip('.,;。；')
-    match = re.search(r'\b\d{5}\.\d{2}\.[A-Za-z0-9._-]+(?:\.[A-Za-z0-9._-]+)*\b', text)
+    match = re.search(r'\b[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+\b', text, flags=re.IGNORECASE)
     if match:
         return match.group(0).rstrip('.,;。；')
     return None
@@ -213,9 +213,9 @@ def _parse_people(value: Any, fallback: Optional[str] = None) -> list[str]:
     if isinstance(parsed, list):
         for item in parsed:
             if isinstance(item, dict):
-                names.append(item.get('name'))
+                names.extend(_split_terms(item.get('name')))
             else:
-                names.append(item)
+                names.extend(_split_terms(item))
     elif parsed:
         names.extend(_split_terms(parsed))
     if fallback:
@@ -269,10 +269,16 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     other_id = data.get('OtherID')
     alternative_identifiers = _unique_list([
         dataset_doi,
-        paper_doi,
         _extract_doi(other_id),
         _extract_cstr(other_id),
     ])
+    related_identifiers = [
+        {
+            'relation': 'RelatedPaper',
+            'type': 'DOI',
+            'identifier': {'type': 'DOI', 'identifier': paper_doi},
+        }
+    ] if paper_doi else None
 
     authors = _parse_people(data.get('DataPropertyRight'), data.get('Author'))
     producer = _first_non_empty(data.get('Producer'), data.get('PropertyRightUnit'), data.get('Origin'))
@@ -308,7 +314,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         '语言': _first_non_empty(data.get('Languages'), '中文'),
         '贡献者': [producer] if producer and producer not in (creators or []) else None,
         '替代标识符': alternative_identifiers or None,
-        '关联标识符': None,
+        '关联标识符': related_identifiers,
         '权限': rights,
         '资助者': _first_non_empty(data.get('ProjectName'), data.get('ProjectResource')),
         '版本': _first_non_empty(data.get('Version'), data.get('VersionInfo')),
@@ -388,7 +394,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         'Language': 'Chinese',
         'Contributors': None,
         'Alternative Identifiers': alternative_identifiers or None,
-        'Related Identifiers': None,
+        'Related Identifiers': related_identifiers,
         'Rights': rights,
         'Funders': _english_text(data.get('ProjectName')) or data.get('ProjectCode'),
         'Version': _first_non_empty(data.get('Version'), data.get('VersionInfo')),

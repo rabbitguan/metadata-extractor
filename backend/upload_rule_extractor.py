@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, Optional
 
 
 DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
-CSTR_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
+CSTR_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
 
 DOMAIN_KEY_TRANSLATIONS_ZH = {
     'Dataset Basic Information': '数据集基本信息',
@@ -263,7 +263,7 @@ def _format_identifier_display(value: Any, language: str = 'zh') -> Optional[str
     )
     if not normalized:
         return None
-    return f"{normalized['type']}: {normalized['identifier']}"
+    return f"{normalized['type']}:{normalized['identifier']}"
 
 
 def _is_missing_value(value: Any) -> bool:
@@ -607,7 +607,7 @@ def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Opt
 
     normalized_cstr = _normalize_cstr_identifier(raw_cstr)
     if normalized_cstr:
-        cstr_identifier = normalized_cstr
+        cstr_identifier = f'CSTR:{normalized_cstr}'
     else:
         cstr_identifier = None
         identifier = _normalize_identifier_item(raw_cstr)

@@ -84,7 +84,7 @@ def _identifier_item(value: Optional[Any]) -> Optional[Dict[str, str]]:
     doi_match = re.search(r'10\.\d{4,9}/[^\s<>"\']+', text, flags=re.IGNORECASE)
     if doi_match:
         return {'type': 'DOI', 'identifier': doi_match.group(0).rstrip('.,;。；')}
-    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    cstr_match = re.search(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if cstr_match:
         return {'type': 'CSTR', 'identifier': cstr_match.group(1).strip().strip('.,;，；')}
     return None

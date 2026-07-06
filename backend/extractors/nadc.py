@@ -15,7 +15,7 @@ RULE_NAME = 'NADC Resource Detail'
 BASE_URL = 'https://nadc.china-vo.org'
 PUBLISHER_ZH = '国家天文科学数据中心'
 PUBLISHER_EN = 'National Astronomical Data Center'
-CSTR_PATTERN = re.compile(r'\b(?:CSTR:)?(\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9._-]*)\b')
+CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b')
 
 

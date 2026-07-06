@@ -175,8 +175,8 @@ def _extract_by_label(text: str, label: str, labels: list[str]) -> Optional[str]
 
 
 def _extract_cstr_identifier(text: str, url: str, query_cstr: Optional[str], query_id: Optional[str]) -> Optional[str]:
-    labeled_pattern = re.compile(r'\bCSTR\s*[:：]\s*([A-Za-z0-9._-]+)\b', flags=re.IGNORECASE)
-    strict_pattern = re.compile(r'\b\d{5}\.\d{2}\.[A-Za-z0-9._-]+\b')
+    labeled_pattern = re.compile(r'\bCSTR\s*[:：]\s*([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', flags=re.IGNORECASE)
+    strict_pattern = re.compile(r'\b[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+\b', flags=re.IGNORECASE)
 
     for source in (query_cstr or '', text or '', query_id or '', url or ''):
         if not source:
@@ -198,7 +198,7 @@ def _normalize_cstr_candidate(value: Optional[str]) -> Optional[str]:
     if not text:
         return None
 
-    labeled = re.search(r'\bCSTR\s*[:：]\s*([A-Za-z0-9._-]+)\b', text, flags=re.IGNORECASE)
+    labeled = re.search(r'\bCSTR\s*[:：]\s*([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', text, flags=re.IGNORECASE)
     if labeled:
         return f'CSTR:{labeled.group(1)}'
 

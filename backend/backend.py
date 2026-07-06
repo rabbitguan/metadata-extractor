@@ -44,7 +44,7 @@ FETCH_HEADERS = {
 
 URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
 DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
-CSTR_IDENTIFIER_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
+CSTR_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
 
 DYNAMIC_RENDER_DOMAINS = {
     item.strip().lower()
@@ -150,14 +150,14 @@ def _parse_bool(value):
 
 
 def _normalize_queried_cstr(value):
-    match = CSTR_IDENTIFIER_PATTERN.search(str(value or '').strip())
+    match = CSTR_PATTERN.fullmatch(str(value or '').strip())
     if not match:
         return ''
     return f'CSTR:{match.group(1).strip().strip(".,;，；")}'
 
 
 def _normalize_cstr_identifier(value):
-    match = CSTR_IDENTIFIER_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    match = CSTR_PATTERN.fullmatch(str(value or '').strip().strip('.,;，；'))
     return match.group(1) if match else None
 
 
@@ -190,7 +190,93 @@ def _format_identifier_display(identifier, language='zh'):
     )
     if not normalized:
         return None
-    return f"{normalized['type']}: {normalized['identifier']}"
+    return f"{normalized['type']}:{normalized['identifier']}"
+
+
+def _format_identifier_displays(identifier, language='zh'):
+    if isinstance(identifier, dict):
+        display = _format_identifier_display(identifier, language=language)
+        return [display] if display else []
+
+    text = _clean_scalar(identifier)
+    if not text:
+        return []
+
+    displays = []
+    seen = set()
+    for identifier_type, pattern in (('DOI', DOI_PATTERN), ('CSTR', CSTR_PATTERN)):
+        for match in pattern.finditer(text):
+            raw = match.group(1) if identifier_type == 'CSTR' else match.group(0)
+            display = _format_identifier_display({'type': identifier_type, 'identifier': raw}, language=language)
+            if display and display not in seen:
+                seen.add(display)
+                displays.append(display)
+
+    if displays:
+        return displays
+
+    display = _format_identifier_display(text, language=language)
+    return [display] if display else []
+
+
+def _format_identifier_display_value(value, language='zh'):
+    if _is_missing_value(value):
+        return None
+    if isinstance(value, list):
+        formatted = []
+        seen = set()
+        for item in value:
+            for display in _format_identifier_displays(item, language=language):
+                if display and display not in seen:
+                    seen.add(display)
+                    formatted.append(display)
+        return formatted or None
+    formatted = _format_identifier_displays(value, language=language)
+    if len(formatted) > 1:
+        return formatted
+    return formatted[0] if formatted else None
+
+
+def _format_cstr_display_value(value, language='zh'):
+    if _is_missing_value(value):
+        return None
+    values = value if isinstance(value, list) else [value]
+    formatted = []
+    seen = set()
+    for item in values:
+        text = _clean_scalar(item.get('identifier') if isinstance(item, dict) else item)
+        if not text:
+            continue
+        for match in CSTR_PATTERN.finditer(text):
+            display = _format_identifier_display({'type': 'CSTR', 'identifier': match.group(1)}, language=language)
+            if display and display not in seen:
+                seen.add(display)
+                formatted.append(display)
+    if not formatted:
+        return None
+    return formatted if len(formatted) > 1 else formatted[0]
+
+
+def _normalize_domain_related_identifier_value(value, language='zh'):
+    if _is_missing_value(value):
+        return None
+    related = []
+    seen = set()
+    for item in _as_list(value):
+        relation = None
+        candidate = item
+        if isinstance(item, dict):
+            relation = item.get('relation') or item.get('Relation') or item.get('关系')
+            candidate = item.get('identifier') or item.get('value') or item.get('id')
+        for display in _format_identifier_displays(candidate, language=language):
+            if not display or display in seen:
+                continue
+            seen.add(display)
+            if relation:
+                related.append({'relation': relation, 'identifier': display})
+            else:
+                related.append(display)
+    return related or None
 
 
 def _replace_cstr_identifier_value(key, value, cstr):
@@ -762,7 +848,7 @@ def _normalize_core_metadata_shape(core, lang):
     normalized['subjects'] = _normalize_subjects(core.get('subjects'))
     normalized['contributors'] = _normalize_agents(core.get('contributors'), lang, contribution_type='Other')
     identifier = _normalize_allowed_identifier(core.get('identifier'))
-    normalized['identifier'] = identifier.get('identifier') if identifier and identifier.get('type') == 'CSTR' else None
+    normalized['identifier'] = f"CSTR:{identifier.get('identifier')}" if identifier and identifier.get('type') == 'CSTR' else None
 
     alternative_identifiers = _normalize_identifier_list(core.get('alternative_identifiers'))
     if identifier and identifier.get('type') != 'CSTR':
@@ -784,9 +870,13 @@ def _normalize_domain_metadata_shape(obj, lang):
     normalized = {}
     for key, value in obj.items():
         if key in {'数据集作者', '数据论文作者', 'Dataset Authors', 'Data Paper Authors'}:
-            normalized[key] = _normalize_agents(value, lang)
-        elif key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}:
-            normalized[key] = _format_identifier_display(value, language=lang)
+            normalized[key] = _normalize_domain_metadata_shape(value, lang)
+        elif key in {'CSTR标识符', 'CSTR Identifier'}:
+            normalized[key] = _format_cstr_display_value(value, language=lang)
+        elif key in {'标识符', 'Identifier', '资源标识符', 'Resource Identifier', '替代标识符', 'Alternative Identifiers'}:
+            normalized[key] = _format_identifier_display_value(value, language=lang)
+        elif key in {'关联标识符', 'Related Identifiers'}:
+            normalized[key] = _normalize_domain_related_identifier_value(value, language=lang)
         elif key in {'标题', 'Title'}:
             normalized[key] = _language_name_list(value, lang) or value
         elif key in {'摘要', 'Abstract'}:

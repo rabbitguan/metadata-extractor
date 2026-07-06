@@ -16,6 +16,8 @@ RULE_NAME = 'NMDIS Metadata Detail'
 
 PUBLISHER_ZH = '国家海洋科学数据中心'
 PUBLISHER_EN = 'National Marine Data Center'
+SPECIAL_DETAIL_API_URL = 'https://mds.nmdis.org.cn/service/shsp/front/science/specialsciencetechnology/metadata'
+SCIENCE_FILE_BASE_URL = 'https://mds.nmdis.org.cn/science_file'
 
 LABELS = [
     '英文名称',
@@ -60,6 +62,8 @@ def _clean_text(value: Optional[Any]) -> Optional[str]:
         return None
     text = unescape(str(value))
     text = re.sub(r'\s+', ' ', text).strip()
+    if text in {'-', '—', '无', '暂无', 'null', 'None'}:
+        return None
     return text or None
 
 
@@ -102,6 +106,11 @@ def _unique_list(values: Iterable[Any]) -> list[str]:
     return result
 
 
+def _identifier_list(*values: Optional[Any]) -> Optional[list[str]]:
+    identifiers = _unique_list(value for value in values if _clean_text(value))
+    return identifiers or None
+
+
 def _parse_query(url: str) -> Dict[str, str]:
     if not url:
         return {}
@@ -121,12 +130,42 @@ def _is_nmdis_detail_url(url: str) -> bool:
     return 'mds.nmdis.org.cn/pages/dataviewdetail.html' in normalized_url
 
 
+def _is_nmdis_special_url(url: str) -> bool:
+    normalized_url = (url or '').strip().lower()
+    return 'mds.nmdis.org.cn/pages/specialdetailx.html' in normalized_url
+
+
 def _looks_like_static_vue_template(content: str) -> bool:
     return bool(
         '{{pageParams.' in (content or '')
         or '{{ pageParams.' in (content or '')
+        or '{{detail.' in (content or '')
         or 'v-cloak' in (content or '')
     )
+
+
+def _get_json(url: str, params: Optional[Dict[str, str]], referer: str) -> Optional[Dict[str, Any]]:
+    headers = {**API_HEADERS, 'Referer': referer or API_HEADERS['Referer']}
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+    except requests.RequestException:
+        try:
+            session = requests.Session()
+            session.trust_env = False
+            response = session.get(url, params=params, headers=headers, timeout=15)
+            response.raise_for_status()
+        except requests.RequestException as error:
+            print(f'[WARNING] NMDIS API failed for {url}: {error}')
+            return None
+
+    response.encoding = response.apparent_encoding or response.encoding or 'utf-8'
+    try:
+        payload = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        print(f'[WARNING] NMDIS API JSON decode failed for {url}: {error}')
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _fetch_detail_data(url: str) -> Optional[Dict[str, Any]]:
@@ -135,33 +174,56 @@ def _fetch_detail_data(url: str) -> Optional[Dict[str, Any]]:
     if not dataset_id:
         return None
 
-    try:
-        response = requests.get(
-            'https://mds.nmdis.org.cn/service/sdm/front/directory/getDirectoryDataSetRelation',
-            params={'datasetId': dataset_id},
-            headers={**API_HEADERS, 'Referer': url or API_HEADERS['Referer']},
-            timeout=15,
-        )
-        response.raise_for_status()
-        payload = response.json()
-    except Exception as error:
-        print(f"[WARNING] NMDIS detail API failed for datasetId={dataset_id}: {error}")
+    payload = _get_json(
+        'https://mds.nmdis.org.cn/service/sdm/front/directory/getDirectoryDataSetRelation',
+        {'datasetId': dataset_id},
+        url,
+    )
+    if not payload:
         return None
 
     data = payload.get('data') if isinstance(payload, dict) else None
     return data if isinstance(data, dict) and data else None
 
 
+def _fetch_special_detail_data(url: str) -> Optional[Dict[str, Any]]:
+    query = _parse_query(url)
+    project_num = query.get('projectNum')
+    res_id = query.get('resId')
+    if not project_num or not res_id:
+        return None
+
+    payload = _get_json(
+        SPECIAL_DETAIL_API_URL,
+        {'projectNum': project_num, 'resId': res_id},
+        url,
+    )
+    data = payload.get('data') if isinstance(payload, dict) else None
+    if not isinstance(data, dict) or not data:
+        return None
+    data['_nmdisSpecialDetail'] = True
+    return data
+
+
 def _extract_cstr(text: Optional[str]) -> Optional[str]:
     if not text:
         return None
-    match = re.search(r'\bCSTR\s*[:：]\s*([A-Za-z0-9._-]+)', text, flags=re.IGNORECASE)
+    match = re.search(r'\bCSTR\s*[:：]\s*([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
     if match:
         return f'CSTR:{match.group(1).rstrip(".,;。；")}'
-    match = re.search(r'\b\d{5}\.\d{2}\.[A-Za-z0-9._-]+(?:\.[A-Za-z0-9._-]+)*\b', text)
+    match = re.search(r'\b[A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+\b', text, flags=re.IGNORECASE)
     if match:
         return match.group(0).rstrip('.,;。；')
     return None
+
+
+def _extract_doi(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    match = re.search(r'\bDOI\s*[:：]\s*(10\.\S+)', text, flags=re.IGNORECASE)
+    if not match:
+        match = re.search(r'\b(10\.\d{4,9}/\S+)', text, flags=re.IGNORECASE)
+    return match.group(1).rstrip('.,;。；') if match else None
 
 
 def _load_json_payload(content: str) -> Optional[Any]:
@@ -204,10 +266,15 @@ def _score_dataset_dict(item: Dict[str, Any]) -> int:
         'describ',
         'dataTime',
         'shareLevel',
+        'chName',
+        'resDesc',
+        'keyWord',
+        'resTimeCoverage',
+        'resGeogCoverage',
     ):
         if key in keys:
             score += 2
-    if 'dataSetId' in keys or 'datasetId' in keys:
+    if 'dataSetId' in keys or 'datasetId' in keys or 'resId' in keys:
         score += 1
     return score
 
@@ -306,82 +373,147 @@ def _format_data_size(value: Optional[Any]) -> Optional[str]:
     return f'{size:.0f}{units[index]}' if size >= 10 else f'{size:.1f}{units[index]}'
 
 
+def _file_list(data: Dict[str, Any]) -> list[Dict[str, Any]]:
+    files = data.get('fileList')
+    return [item for item in files if isinstance(item, dict)] if isinstance(files, list) else []
+
+
+def _join_file_urls(data: Dict[str, Any], *types: str) -> Optional[str]:
+    wanted = {item.lower() for item in types if item}
+    urls: list[str] = []
+    for item in _file_list(data):
+        file_type = _clean_text(item.get('type'))
+        if wanted and (file_type or '').lower() not in wanted:
+            continue
+        path = _clean_text(item.get('path'))
+        if not path:
+            continue
+        if path.startswith(('http://', 'https://')):
+            urls.append(path)
+        else:
+            urls.append(f'{SCIENCE_FILE_BASE_URL}{path if path.startswith("/") else "/" + path}')
+    return '; '.join(_unique_list(urls)) or None
+
+
+def _file_count(data: Dict[str, Any]) -> Optional[str]:
+    file_number = _first_non_empty(data.get('fileNumber'))
+    if file_number:
+        return file_number
+    files = [item for item in _file_list(data) if (item.get('type') or '').lower() != 'thumbnail']
+    return str(len(files)) if files else None
+
+
+def _agent_list(*values: Optional[Any]) -> Optional[list[str]]:
+    agents = _unique_list(value for value in values if _clean_text(value))
+    return agents or None
+
+
 def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDict:
     query = _parse_query(url)
     full_text = json.dumps(data, ensure_ascii=False)
 
-    dataset_id = _first_non_empty(data.get('dataSetId'), data.get('datasetId'), query.get('dataSetId'))
+    is_special_detail = bool(data.get('_nmdisSpecialDetail'))
+    dataset_id = _first_non_empty(
+        data.get('dataSetId'),
+        data.get('datasetId'),
+        data.get('resId'),
+        query.get('dataSetId'),
+        query.get('resId'),
+    )
+    project_num = _first_non_empty(data.get('projectNum'), data.get('sourceProjectNum'), query.get('projectNum'))
     fallback_title = title if _clean_text(title) != PUBLISHER_ZH else None
     title_zh = _first_non_empty(
         data.get('dataSetName'),
         data.get('datasetName'),
+        data.get('chName'),
+        query.get('name'),
         fallback_title,
         f'{PUBLISHER_ZH}数据集 {dataset_id}' if dataset_id else None,
         '未提取到标题',
     )
-    title_en = _english_text(data.get('datasetNameEn')) or title_zh
-    abstract = _first_non_empty(data.get('describ'), data.get('description'), data.get('summary'))
-    keywords = _unique_list(_split_terms(data.get('datasetKeyword') or data.get('keywords')))
-    subject = _first_non_empty(data.get('subjectClass'), data.get('subjectCategory'))
-    theme = _first_non_empty(data.get('themeCategory'), data.get('themeClass'))
-    owner = _first_non_empty(data.get('owner'), data.get('dataOwner'), PUBLISHER_ZH)
-    identifier = _first_non_empty(data.get('datasetIdentifier'), _extract_cstr(full_text), dataset_id)
+    title_en = _english_text(data.get('datasetNameEn')) or _english_text(data.get('enName')) or title_zh
+    abstract = _first_non_empty(data.get('describ'), data.get('description'), data.get('summary'), data.get('resDesc'))
+    keywords = _unique_list(_split_terms(data.get('datasetKeyword') or data.get('keywords') or data.get('keyWord')))
+    subject = _first_non_empty(data.get('subjectClass'), data.get('subjectCategory'), data.get('disClass'))
+    theme = _first_non_empty(data.get('themeCategory'), data.get('themeClass'), data.get('subClass'))
+    owner = _first_non_empty(data.get('owner'), data.get('dataOwner'), data.get('sourcePartUnit'), data.get('sourceProjectUnit'), PUBLISHER_ZH)
+    creator_name = _first_non_empty(data.get('sourcePartPerson'), data.get('sourceProjectPerson'), owner)
+    if not is_special_detail and owner:
+        creator_name = owner
+    contributor_names = _agent_list(data.get('metadataPerson'), data.get('sourceProjectPerson'))
+    if contributor_names and creator_name:
+        contributor_names = [item for item in contributor_names if item != creator_name] or None
+    doi_identifier = _extract_doi(full_text)
+    identifier = _first_non_empty(data.get('datasetIdentifier'), data.get('metadataIdentifier'), doi_identifier, _extract_cstr(full_text), dataset_id)
     cstr_identifier = _extract_cstr(identifier) or _extract_cstr(full_text)
-    publish_date = _first_non_empty(data.get('publishTime'), data.get('releaseTime'), data.get('createTime'), data.get('updateTime'))
-    data_size = _format_data_size(data.get('dataSize') or data.get('datasetSize'))
-    file_number = _first_non_empty(data.get('fileNumber'))
-    data_format = _first_non_empty(data.get('dataFormat'), data.get('format'), data.get('dataFormatPath'))
-    data_time = _first_non_empty(data.get('dataTime'), data.get('timeRange'))
+    domain_identifiers = _identifier_list(_extract_doi(identifier) or doi_identifier, cstr_identifier) or _identifier_list(identifier)
+    publish_date = _first_non_empty(
+        data.get('publishTime'),
+        data.get('releaseTime'),
+        data.get('createTime'),
+        data.get('updateTime'),
+        data.get('latestRevTime'),
+        data.get('metadataUpdateTime'),
+    )
+    data_size = _format_data_size(data.get('dataSize') or data.get('datasetSize') or data.get('resSize'))
+    file_number = _file_count(data)
+    data_format = _first_non_empty(data.get('dataFormat'), data.get('format'), data.get('dataFormatPath'), data.get('resFormat'))
+    data_time = _first_non_empty(data.get('dataTime'), data.get('timeRange'), data.get('resTimeCoverage'))
+    spatial_range = _first_non_empty(data.get('spatialRange'), data.get('geoRange'), data.get('resGeogCoverage'))
     share_level = _share_level_text(data.get('shareLevel'))
-    sharing_mode = _first_non_empty(data.get('sharingMode'), share_level)
+    sharing_mode = _first_non_empty(data.get('sharingMode'), data.get('shareModel'), share_level)
     timeliness = _first_non_empty(data.get('timeliness'))
     update_frequency = _first_non_empty(data.get('updateFrequency'))
     citation = _first_non_empty(data.get('citationMode'))
+    resource_type = _first_non_empty(data.get('resType'), '数据集')
+    download_url = _join_file_urls(data, 'Document') or _first_non_empty(data.get('onlineLink'))
+    author_affiliation = _first_non_empty(data.get('sourcePartUnit'), data.get('sourceProjectUnit'), owner)
+    author_email = _first_non_empty(data.get('sourcePartEmail'), data.get('metadataEmail'))
 
     resource_url = url or None
-    alternative_identifiers = [dataset_id] if dataset_id and dataset_id != identifier else None
+    alternative_identifiers = _unique_list([item for item in (dataset_id, project_num) if item and item != identifier]) or None
     rights = sharing_mode or share_level
 
     zh: Dict[str, Any] = {
-        '资源类型判定': '数据集',
+        '资源类型判定': resource_type,
         '领域判定': '数据集元数据',
         '标识符': identifier,
         'CSTR标识符': cstr_identifier,
         '资源名称': title_zh,
         '标题': title_zh,
-        '创建者': [owner] if owner else None,
+        '创建者': [creator_name] if creator_name else None,
         '发布机构': PUBLISHER_ZH,
         '发布日期': publish_date,
         '描述': abstract,
         '关键词': keywords or None,
         '学科分类': subject,
         '语言': '中文',
-        '贡献者': [owner] if owner and owner != PUBLISHER_ZH else None,
+        '贡献者': contributor_names,
         '替代标识符': alternative_identifiers,
         '关联标识符': None,
         '权限': rights,
         '资助者': None,
         '版本': None,
         '资源链接': resource_url,
-        '资源类型': '数据集',
+        '资源类型': resource_type,
         '数据集基本信息': {
-            '标识符': identifier,
+            '标识符': domain_identifiers or identifier,
             '标题': title_zh,
             '摘要': abstract,
             '关键词': keywords or None,
             '范围': {
                 '时间范围': data_time,
-                '空间范围': None,
+                '空间范围': spatial_range,
             },
             '语种': '中文',
             '文件内容': f'{file_number}个文件' if file_number else None,
-            '基金项目': None,
+            '基金项目': _first_non_empty(data.get('sourceProjectName')),
             '数据量': data_size,
             '数据格式': data_format,
             '数据集作者': {
-                '作者姓名': [owner] if owner else None,
-                '工作单位': PUBLISHER_ZH,
-                '电子邮箱': None,
+                '作者姓名': [creator_name] if creator_name else None,
+                '工作单位': author_affiliation,
+                '电子邮箱': author_email,
                 '工作贡献': None,
                 '作者简介': None,
             },
@@ -395,7 +527,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             '数据集引用格式': citation,
             '数据集共享许可协议': rights,
             '数据集使用声明': sharing_mode,
-            '数据集下载地址': None,
+            '数据集下载地址': download_url,
             '数据集访问地址': resource_url,
         },
         '扩展信息': {
@@ -410,6 +542,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             '共享方式': sharing_mode,
             '文件数量': file_number,
             '数据集ID': dataset_id,
+            '项目编号': project_num,
+            '元数据编写人': data.get('metadataPerson'),
             '提取状态': data.get('_extractionStatus'),
         },
     }
@@ -418,13 +552,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     english_keywords = [item for item in english_keywords if item]
 
     en: Dict[str, Any] = {
-        'Resource Type Classification': 'Dataset',
+        'Resource Type Classification': resource_type,
         'Domain Classification': 'Dataset Metadata',
         'Identifier': identifier,
         'CSTR Identifier': cstr_identifier,
         'Resource Name': title_en,
         'Title': title_en,
-        'Creators': None,
+        'Creators': [creator_name] if creator_name and not _has_cjk(creator_name) else None,
         'Publisher': PUBLISHER_EN,
         'Publication Date': publish_date,
         'Description': None,
@@ -438,25 +572,25 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         'Funders': None,
         'Version': None,
         'Resource URL': resource_url,
-        'ResourceType': 'Dataset',
+        'ResourceType': resource_type,
         'Dataset Basic Information': {
-            'Identifier': identifier,
+            'Identifier': domain_identifiers or identifier,
             'Title': title_en,
             'Abstract': None,
             'Keywords': english_keywords or None,
             'Coverage': {
                 'Time Range': data_time,
-                'Spatial Range': None,
+                'Spatial Range': spatial_range,
             },
             'Language': 'Chinese',
             'File Content': f'{file_number} files' if file_number else None,
-            'Project/Funder': None,
+            'Project/Funder': _english_text(data.get('sourceProjectName')) or data.get('sourceProjectName'),
             'Data Size': data_size,
             'Data Format': data_format,
             'Dataset Authors': {
-                'Author Name': None,
-                'Affiliation': PUBLISHER_EN,
-                'Email': None,
+                'Author Name': [creator_name] if creator_name and not _has_cjk(creator_name) else None,
+                'Affiliation': _english_text(author_affiliation),
+                'Email': author_email,
                 'Contribution': None,
                 'Biography': None,
             },
@@ -470,7 +604,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             'Dataset Citation Format': citation,
             'Dataset License': rights,
             'Dataset Usage Statement': None,
-            'Dataset Download URL': None,
+            'Dataset Download URL': download_url,
             'Dataset Access URL': resource_url,
         },
         'Extension Info': {
@@ -493,20 +627,29 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 
 
 def _data_from_static_template(content: str, url: str, title: str) -> Optional[Dict[str, Any]]:
-    if not _is_nmdis_detail_url(url) or not _looks_like_static_vue_template(content):
+    if not (_is_nmdis_detail_url(url) or _is_nmdis_special_url(url)) or not _looks_like_static_vue_template(content):
         return None
 
     query = _parse_query(url)
-    dataset_id = query.get('dataSetId') or query.get('datasetId')
+    dataset_id = query.get('dataSetId') or query.get('datasetId') or query.get('resId')
     if not dataset_id:
         return None
 
-    return {
+    data = {
         'dataSetId': dataset_id,
-        'dataSetName': f'{PUBLISHER_ZH}数据集 {dataset_id}',
+        'dataSetName': query.get('name') or f'{PUBLISHER_ZH}数据集 {dataset_id}',
         'owner': PUBLISHER_ZH,
         '_extractionStatus': '静态 Vue 模板，需启用动态渲染后补全 pageParams 字段',
     }
+    if _is_nmdis_special_url(url):
+        data.update({
+            'resId': dataset_id,
+            'projectNum': query.get('projectNum'),
+            'chName': query.get('name'),
+            '_nmdisSpecialDetail': True,
+            '_extractionStatus': '静态 Vue 模板，需调用专题科技资源接口补全 detail 字段',
+        })
+    return data
 
 
 def _data_from_dom(content: str, url: str, title: str) -> Optional[Dict[str, Any]]:
@@ -547,10 +690,13 @@ def matches(url: str, title: str, content: str) -> bool:
 
     return bool(
         _is_nmdis_detail_url(url)
+        or _is_nmdis_special_url(url)
         or 'datasetid=' in normalized_url
         and 'nmdis.org.cn' in normalized_url
+        or ('resid=' in normalized_url and 'projectnum=' in normalized_url and 'nmdis.org.cn' in normalized_url)
         or ('国家海洋科学数据中心' in combined and '数据集摘要' in combined)
         or ('datasetIdentifier' in content and 'datasetKeyword' in content)
+        or ('specialsciencetechnology/metadata' in content or '{{detail.' in content)
     )
 
 
@@ -559,6 +705,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         return None
 
     data = _fetch_detail_data(url) if _is_nmdis_detail_url(url) else None
+    if not data and _is_nmdis_special_url(url):
+        data = _fetch_special_detail_data(url)
     if not data:
         data = _extract_payload_dict(content)
     if not data:

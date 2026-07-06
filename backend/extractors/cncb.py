@@ -17,7 +17,7 @@ RULE_NAME = 'CNCB Database Detail'
 BASE_URL = 'https://www.cncb.ac.cn'
 PUBLISHER_ZH = '国家生物信息中心'
 PUBLISHER_EN = 'China National Center for Bioinformation'
-CSTR_PATTERN = re.compile(r'\b(?:CSTR:)?(\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9._-]*(?:\.[A-Za-z0-9][A-Za-z0-9._-]*)+)\b')
+CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 API_HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
