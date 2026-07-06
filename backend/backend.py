@@ -149,15 +149,24 @@ def _parse_bool(value):
     return bool(value)
 
 
+def _strip_cstr_prefixes(value):
+    text = str(value or '').strip().strip('.,;，；')
+    while re.match(r'^CSTR\s*[:：]\s*', text, flags=re.IGNORECASE):
+        text = re.sub(r'^CSTR\s*[:：]\s*', '', text, count=1, flags=re.IGNORECASE).strip()
+    return text
+
+
+def _format_cstr_identifier(value):
+    normalized = _normalize_cstr_identifier(value)
+    return f'CSTR:{normalized}' if normalized else None
+
+
 def _normalize_queried_cstr(value):
-    match = CSTR_IDENTIFIER_PATTERN.search(str(value or '').strip())
-    if not match:
-        return ''
-    return f'CSTR:{match.group(1).strip().strip(".,;，；")}'
+    return _format_cstr_identifier(value) or ''
 
 
 def _normalize_cstr_identifier(value):
-    match = CSTR_IDENTIFIER_PATTERN.match(str(value or '').strip().strip('.,;，；'))
+    match = CSTR_IDENTIFIER_PATTERN.match(_strip_cstr_prefixes(value))
     return match.group(1) if match else None
 
 
@@ -190,6 +199,8 @@ def _format_identifier_display(identifier, language='zh'):
     )
     if not normalized:
         return None
+    if normalized['type'] == 'CSTR':
+        return _format_cstr_identifier(normalized['identifier'])
     return f"{normalized['type']}: {normalized['identifier']}"
 
 

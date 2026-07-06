@@ -31,6 +31,14 @@ def _identifier_items(*values: Optional[str]) -> Optional[list[dict[str, str]]]:
     return items or None
 
 
+def _arxiv_identifier_items(arxiv_id: Optional[str], doi: Optional[str]) -> Optional[list[dict[str, str]]]:
+    items = _identifier_items(doi) or []
+    cleaned_arxiv_id = _clean_text(arxiv_id)
+    if cleaned_arxiv_id:
+        items.append({'type': 'arXiv', 'identifier': cleaned_arxiv_id})
+    return items or None
+
+
 def _people(names: list[str]) -> Optional[list[dict]]:
     people = []
     for name in names:
@@ -105,7 +113,10 @@ def _extract_arxiv_version(html: str, url: str) -> Optional[str]:
 
 
 def _extract_cstr(*values: Optional[str]) -> Optional[str]:
-    pattern = re.compile(r'(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+    pattern = re.compile(
+        r'\b(?:CSTR\s*[:：]\s*)?(\d{5}\.\d{2}\.[A-Z0-9][A-Z0-9_-]*(?:\.[A-Z0-9][A-Z0-9_-]*)+)\b',
+        re.IGNORECASE,
+    )
     for value in values:
         text = str(value or '')
         match = pattern.search(text)
@@ -155,6 +166,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
     doi_identifier = doi.replace('https://doi.org/', '') if doi else None
     cstr_id = _extract_cstr(title_text, abstract_text, html)
     domain_identifier = cstr_id or (f'DOI: {doi_identifier}' if doi_identifier else None)
+    alternative_identifiers = _arxiv_identifier_items(arxiv_id, doi)
 
     metadata = {
         'zh': {
@@ -172,7 +184,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             '知识产权类别': None,
             '资源使用许可': _clean_text(license_url),
             '资源访问地址': url,
-            '替代标识符': _identifier_items(doi),
+            '替代标识符': alternative_identifiers,
             '共享方式': None,
             '提供方信息': None,
             '服务方信息': None,
@@ -206,6 +218,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             'Resource Type Classification': 'Data Paper',
             'Domain Classification': 'Data Paper Metadata',
             'Identifier': cstr_id,
+            'CSTR Identifier': cstr_id,
             'titles': [{'lang': 'en', 'name': _clean_text(title_text) or arxiv_id or url}],
             'creators': _people(authors),
             'publisher': {'names': [{'lang': 'en', 'name': 'arXiv'}], 'identifiers': None},
@@ -215,7 +228,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             'subjects': [{'standard_gbt': None, 'standard_oecd': [item for item in [subject_name, subject_code] if item]}],
             'language': 'en',
             'contributors': None,
-            'alternative_identifiers': _identifier_items(doi),
+            'alternative_identifiers': alternative_identifiers,
             'related_identifiers': None,
             'rights': [{'license_type': None, 'license': None, 'type': None, 'description': _clean_text(license_url), 'cert_num': None}] if _clean_text(license_url) else None,
             'funders': None,
@@ -233,7 +246,7 @@ def extract(content: str, url: str, title: str) -> Optional[MetadataDict]:
             'Intellectual Property Type': None,
             'Usage License': _clean_text(license_url),
             'Resource Access URL': url,
-            'Alternative Identifiers': _identifier_items(doi),
+            'Alternative Identifiers': alternative_identifiers,
             'Sharing Details': None,
             'Provider Information': None,
             'Service Provider Information': None,
