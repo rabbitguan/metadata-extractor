@@ -2513,6 +2513,15 @@ function normalizeDisplayValue(data, language = state.language) {
     return filterLocalizedTree(data, language);
 }
 
+function orderedDisplayEntries(value) {
+    const entries = Object.entries(value);
+    const timeOrder = ["起始时间", "Start Time", "结束时间", "End Time"];
+    const keys = entries.map(([key]) => key);
+    const isTimeRange = keys.length > 0 && keys.every((key) => timeOrder.includes(key));
+    if (!isTimeRange) return entries;
+    return [...entries].sort(([leftKey], [rightKey]) => timeOrder.indexOf(leftKey) - timeOrder.indexOf(rightKey));
+}
+
 function displayTextFromValue(value, language = state.language) {
     if (isMissingDisplayValue(value)) return "";
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -2524,7 +2533,7 @@ function displayTextFromValue(value, language = state.language) {
         const target = isObject(localized) || Array.isArray(localized) ? localized : value;
         if (Array.isArray(target)) return displayTextFromValue(target, language);
         if (!isObject(target)) return displayTextFromValue(target, language);
-        return Object.entries(target)
+        return orderedDisplayEntries(target)
             .map(([key, item]) => {
                 const text = displayTextFromValue(item, language);
                 const label = getTranslatedLabel(key, language);
