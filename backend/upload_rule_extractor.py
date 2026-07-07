@@ -279,6 +279,82 @@ def _is_missing_value(value: Any) -> bool:
     return False
 
 
+CORE_FIELD_ALIASES = {
+    'resource_type': (
+        'resource_type', 'resourceType', 'type', '@type', '资源类型', 'ResourceType', 'Resource Type',
+    ),
+    'title': (
+        'title', 'titles', 'name', 'datasetName', 'dataset_name', 'resourceName', 'resource_name',
+        'chineseName', 'englishName', '标题', '名称', '数据集名称', '资源名称', 'Title', 'Name',
+        'Dataset Name', 'Resource Name',
+    ),
+    'description': (
+        'description', 'descriptions', 'abstract', 'summary', 'desc', 'introduction',
+        '简介', '摘要', '描述', '说明', 'Description', 'Abstract', 'Summary',
+    ),
+    'keywords': (
+        'keywords', 'keyword', 'tags', 'tag', 'subjectKeywords', '主题词', '关键词',
+        'Keywords', 'Keyword', 'Tags',
+    ),
+    'subjects': (
+        'subjects', 'subject', 'discipline', 'category', 'categories', 'theme', 'topic',
+        '学科', '学科分类', '分类', '主题', 'Subjects', 'Subject', 'Category',
+    ),
+    'creators': (
+        'creators', 'creator', 'authors', 'author', 'principalInvestigator', 'contact',
+        'owner', 'createdBy', '创建者', '作者', '数据集作者', '联系人', 'Creators',
+        'Creator', 'Authors', 'Author',
+    ),
+    'publisher': (
+        'publisher', 'publishingOrganization', 'publicationAgency', 'organization',
+        'institution', 'agency', 'provider', '发布机构', '出版单位', '机构', 'Publisher',
+        'Organization', 'Provider',
+    ),
+    'publication_date': (
+        'publication_date', 'publish_date', 'publicationDate', 'datePublished',
+        'releaseDate', 'created', 'dateCreated', 'issued', '发布日期', '发布时间',
+        '出版日期', 'Publication Date', 'Date Published', 'Release Date',
+    ),
+    'language': (
+        'language', 'inLanguage', 'lang', '语种', '语言', 'Language',
+    ),
+    'contributors': (
+        'contributors', 'contributor', '参与者', '贡献者', 'Contributors', 'Contributor',
+    ),
+    'rights': (
+        'rights', 'license', 'licence', 'usageInfo', 'accessRights', '权限', '许可协议',
+        '共享许可协议', 'Rights', 'License',
+    ),
+    'funders': (
+        'funders', 'funder', 'funding', 'fundingReference', 'fundingAgency',
+        '资助者', '资助机构', '基金项目', 'Funders', 'Funder', 'Funding',
+    ),
+    'version': (
+        'version', 'versionInfo', '版本', '版本信息', 'Version',
+    ),
+    'urls': (
+        'resource_url', 'resource_urls', 'url', 'urls', 'resourceUrl', 'landingPage',
+        'contentUrl', 'downloadUrl', 'distribution', '资源链接', '访问地址', '下载地址',
+        'Resource URL', 'URL',
+    ),
+    'cstr': (
+        'cstr_identifier', 'cstrIdentifier', 'cstr', 'CSTR', 'CSTR标识符', 'CSTR Identifier',
+        'identifier', 'Identifier',
+    ),
+    'doi': (
+        'doi', 'DOI', 'digitalObjectIdentifier',
+    ),
+    'alternative_identifiers': (
+        'alternative_identifiers', 'alternativeIdentifiers', 'alternateIdentifier',
+        'alternateIdentifiers', 'identifiers', 'ids', '替代标识符', 'Alternative Identifiers',
+    ),
+    'related_identifiers': (
+        'related_identifiers', 'relatedIdentifiers', 'relatedIdentifier',
+        '关联标识符', 'Related Identifiers',
+    ),
+}
+
+
 def _lower_key_map(data: Dict[str, Any]) -> Dict[str, Any]:
     return {str(key).strip().lower(): value for key, value in data.items()}
 
@@ -328,6 +404,35 @@ def _first(data: Dict[str, Any], *keys: str) -> Any:
         if canonical_key in canonical:
             return canonical.get(canonical_key)
     return None
+
+
+def _iter_json_objects(value: Any) -> Iterable[Dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for item in value.values():
+            yield from _iter_json_objects(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_json_objects(item)
+
+
+def _deep_first(data: Any, *keys: str) -> Any:
+    canonical_keys = {_canonical_key(key) for key in keys}
+    for obj in _iter_json_objects(data):
+        for key, value in obj.items():
+            if _canonical_key(key) in canonical_keys and not _is_missing_value(value):
+                return value
+    return None
+
+
+def _first_any(primary: Dict[str, Any], fallback: Dict[str, Any], *keys: str) -> Any:
+    value = _first(primary, *keys)
+    if not _is_missing_value(value):
+        return value
+    value = _first(fallback, *keys)
+    if not _is_missing_value(value):
+        return value
+    return _deep_first(fallback, *keys)
 
 
 def _xml_element_to_dict(element: ET.Element) -> Any:
@@ -419,9 +524,10 @@ def _load_payload(text: str) -> Dict[str, Any]:
             return flattened_payload
         raise ValueError(f'Invalid JSON upload: {error}') from error
     if isinstance(payload, list):
-        if len(payload) != 1:
-            raise ValueError('Uploaded JSON array must contain exactly one resource object')
-        payload = payload[0]
+        object_items = [item for item in payload if isinstance(item, dict)]
+        if not object_items:
+            raise ValueError('Uploaded JSON array must contain at least one resource object')
+        payload = object_items[0]
     if not isinstance(payload, dict):
         raise ValueError('Uploaded JSON must be an object')
     return payload
@@ -503,17 +609,36 @@ def _extract_domain(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _normalize_resource_type(value: Any) -> tuple[str, str, str, str]:
+    if isinstance(value, list):
+        value = next((item for item in value if not _is_missing_value(item)), None)
+    if isinstance(value, dict):
+        value = value.get('name') or value.get('@type') or value.get('value') or value.get('type')
     text = _clean_text(value) or ''
     normalized = text.lower()
-    if text in {'数据集'} or normalized in {'dataset', 'data set'}:
+    if text in {'数据集'} or normalized in {'dataset', 'data set'} or normalized.endswith(':dataset'):
         return '数据集', 'Dataset', '数据集元数据', 'Dataset Metadata'
-    if text in {'数据论文'} or normalized in {'data_paper', 'data paper', 'paper'}:
+    if text in {'数据论文'} or normalized in {'data_paper', 'data paper', 'paper', 'scholarlyarticle'} or normalized.endswith(':scholarlyarticle'):
         return '数据论文', 'Data Paper', '数据论文元数据', 'Data Paper Metadata'
     if text in {'标准文献'} or normalized in {'standard_literature', 'standard literature', 'standard'}:
         return '标准文献', 'Standard Literature', '标准文献元数据', 'Standard Literature Metadata'
     if text in {'生态科学数据'} or normalized in {'ecological_data', 'ecological data', 'ecological science data'}:
         return '生态科学数据', 'Ecological Data', '生态科学数据元数据', 'Ecological Science Data Metadata'
     return '其他', 'Other', '核心元数据', 'Core Metadata'
+
+
+def _infer_resource_type_from_payload(payload: Dict[str, Any]) -> Optional[str]:
+    dataset_markers = {
+        'datasetname', 'datasettitle', 'datasetidentifier', 'datasetid',
+        'resourcename', 'resourceidentifier',
+    }
+    data_paper_markers = {'journal', 'papertitle', 'article_title', 'articletitle'}
+    for obj in _iter_json_objects(payload):
+        canonical_keys = {_canonical_key(key) for key in obj.keys()}
+        if canonical_keys & dataset_markers:
+            return 'Dataset'
+        if canonical_keys & data_paper_markers:
+            return 'Data Paper'
+    return None
 
 
 def _list_field(data: Dict[str, Any], *keys: str) -> Optional[list]:
@@ -530,8 +655,27 @@ def _structured_field(data: Dict[str, Any], *keys: str) -> Any:
     return values or None
 
 
+def _structured_field_any(primary: Dict[str, Any], fallback: Dict[str, Any], *keys: str) -> Any:
+    value = _first_any(primary, fallback, *keys)
+    if isinstance(value, (dict, list)):
+        return value
+    values = _unique_list(_ensure_list(value))
+    return values or None
+
+
 def _structured_scalar_field(data: Dict[str, Any], *keys: str) -> Any:
     value = _first(data, *keys)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        if value and isinstance(value[0], dict):
+            return value[0]
+        return _clean_text(value[0]) if value else None
+    return _clean_text(value)
+
+
+def _structured_scalar_field_any(primary: Dict[str, Any], fallback: Dict[str, Any], *keys: str) -> Any:
+    value = _first_any(primary, fallback, *keys)
     if isinstance(value, dict):
         return value
     if isinstance(value, list):
@@ -599,11 +743,20 @@ def _scalar_field(data: Dict[str, Any], *keys: str) -> Optional[str]:
     return _clean_text(value)
 
 
-def _extract_identifier_fields(core: Dict[str, Any]) -> tuple[Optional[str], Optional[list]]:
-    raw_cstr = _scalar_field(core, 'cstr_identifier', 'cstrIdentifier', 'CSTR标识符', 'identifier', 'Identifier')
-    alternative_raw = _structured_field(core, 'alternative_identifiers', 'alternativeIdentifiers', '替代标识符', 'Alternative Identifiers')
+def _scalar_field_any(primary: Dict[str, Any], fallback: Dict[str, Any], *keys: str) -> Optional[str]:
+    value = _first_any(primary, fallback, *keys)
+    if isinstance(value, list):
+        return _clean_text(value[0]) if value else None
+    if isinstance(value, dict):
+        return _clean_text(value.get('@id') or value.get('identifier') or value.get('value') or value.get('id'))
+    return _clean_text(value)
+
+
+def _extract_identifier_fields(core: Dict[str, Any], payload: Dict[str, Any]) -> tuple[Optional[str], Optional[list]]:
+    raw_cstr = _scalar_field_any(core, payload, *CORE_FIELD_ALIASES['cstr'])
+    alternative_raw = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['alternative_identifiers'])
     alternative = _normalize_identifier_list(alternative_raw) or []
-    doi = _scalar_field(core, 'doi', 'DOI')
+    doi = _scalar_field_any(core, payload, *CORE_FIELD_ALIASES['doi'])
     doi_identifier = _normalize_identifier_item(doi, preferred_type='DOI') if doi else None
     if doi_identifier:
         alternative.append(doi_identifier)
@@ -783,38 +936,43 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
     core = _extract_core(payload)
     domain = _extract_domain(payload)
 
-    resource_type_zh, resource_type_en, domain_zh, domain_en = _normalize_resource_type(
-        _first(payload, 'resource_type', 'resourceType', '资源类型', 'ResourceType')
-        or _first(core, 'resource_type', 'resourceType', '资源类型', 'ResourceType')
+    resource_type_aliases = CORE_FIELD_ALIASES['resource_type']
+    resource_type_value = (
+        _first(core, *resource_type_aliases)
+        or _first(payload, *resource_type_aliases)
+        or _deep_first(payload, *(key for key in resource_type_aliases if key not in {'type'}))
+        or _infer_resource_type_from_payload(payload)
     )
-    cstr_identifier, alternative_identifiers = _extract_identifier_fields(core)
+    resource_type_zh, resource_type_en, domain_zh, domain_en = _normalize_resource_type(
+        resource_type_value
+    )
+    cstr_identifier, alternative_identifiers = _extract_identifier_fields(core, payload)
 
-    titles = _structured_field(core, 'title', 'titles', '标题', 'Title') or ([title] if title else None)
-    description = _structured_field(core, 'description', 'descriptions', '描述', 'Description', 'abstract', '摘要')
-    keywords = _structured_field(core, 'keywords', '关键词', 'Keywords')
-    subjects = _structured_field(core, 'subjects', '学科', 'Subjects')
-    resource_urls = _structured_field(core, 'resource_url', 'resource_urls', 'urls', '资源链接', 'Resource URL')
+    titles = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['title']) or ([title] if title else None)
+    description = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['description'])
+    keywords = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['keywords'])
+    subjects = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['subjects'])
+    resource_urls = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['urls'])
 
     zh: Dict[str, Any] = {
         'titles': titles,
         'identifier': cstr_identifier,
-        'creators': _structured_field(core, 'creators', '创建者', 'Creators'),
-        'publisher': _structured_scalar_field(core, 'publisher', '发布机构', 'Publisher'),
-        'publish_date': _scalar_field(core, 'publication_date', 'publish_date', '发布日期', 'Publication Date'),
+        'creators': _structured_field_any(core, payload, *CORE_FIELD_ALIASES['creators']),
+        'publisher': _structured_scalar_field_any(core, payload, *CORE_FIELD_ALIASES['publisher']),
+        'publish_date': _scalar_field_any(core, payload, *CORE_FIELD_ALIASES['publication_date']),
         'descriptions': description,
         'keywords': keywords,
         'subjects': subjects,
-        'language': _scalar_field(core, 'language', '语言', 'Language'),
-        'contributors': _structured_field(core, 'contributors', '贡献者', 'Contributors'),
+        'language': _scalar_field_any(core, payload, *CORE_FIELD_ALIASES['language']),
+        'contributors': _structured_field_any(core, payload, *CORE_FIELD_ALIASES['contributors']),
         'alternative_identifiers': alternative_identifiers,
-        'related_identifiers': _normalize_related_identifier_list(_structured_field(core, 'related_identifiers', '关联标识符', 'Related Identifiers')),
-        'rights': _structured_field(core, 'rights', '权限', 'Rights'),
-        'funders': _structured_field(core, 'funders', '资助者', 'Funders'),
-        'version': _scalar_field(core, 'version', '版本', 'Version'),
+        'related_identifiers': _normalize_related_identifier_list(_structured_field_any(core, payload, *CORE_FIELD_ALIASES['related_identifiers'])),
+        'rights': _structured_field_any(core, payload, *CORE_FIELD_ALIASES['rights']),
+        'funders': _structured_field_any(core, payload, *CORE_FIELD_ALIASES['funders']),
+        'version': _scalar_field_any(core, payload, *CORE_FIELD_ALIASES['version']),
         'urls': resource_urls,
         'resource_type': resource_type_zh,
         'domain_metadata': domain_zh,
-        'extension_info': _scalar_field(payload, 'extension_info', '扩展信息', 'Extension Info'),
     }
     en: Dict[str, Any] = {
         'titles': titles,
@@ -835,7 +993,6 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
         'urls': resource_urls,
         'resource_type': resource_type_en,
         'domain_metadata': domain_en,
-        'extension_info': zh['extension_info'],
     }
 
     domain_zh_sections, domain_en_sections = _domain_sections(

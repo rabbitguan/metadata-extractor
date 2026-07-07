@@ -936,7 +936,7 @@ const API_DOCS_TEXT = {
         errorLabel: "失败响应",
         responseNote: "说明：元数据响应使用统一结构：核心元数据为 核心元数据.metadatas[0]，领域元数据为 领域元数据.metadata_type + 领域元数据.metadatas[0]。历史缓存和查询记录按 X-User-Id 隔离。",
         commonHeaders: {
-            "Content-Type": "application/json",
+            "Content-Type": "application/json；文件上传时使用 multipart/form-data",
             "X-User-Id": "10086",
             "X-User-Name": "Zhang San",
             "X-User-Email": "zhangsan@example.com"
@@ -954,34 +954,30 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     dynamic_render: "auto | always | never",
                     url: "https://example.com/paper",
-                    text: "页面正文文本或上传文件原始内容",
+                    text: "页面正文文本",
+                    file: "metadata.json（multipart/form-data 文件字段）",
                     html: "<html>页面 HTML，可选</html>",
                     title: "页面标题或上传文件名"
                 },
                 requestFields: {
-                    source: "输入来源。url 表示后端按 url 抓取网页；text 表示直接分析文本；web 表示前端传入网页 text/html；upload 表示上传 JSON/XML 原始内容。默认 text。",
+                    source: "输入来源。url 表示后端按 url 抓取网页；text 表示直接分析文本；web 表示前端传入网页 text/html；upload 表示上传 JSON/XML 文件。默认 text。",
                     mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
                     strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；llm 强制模型；rule 只用网站规则；upload_rule 用于结构化 JSON/XML 上传。默认 auto。",
                     force_reanalyze: "是否跳过当前用户的 URL 历史缓存并重新分析。false 时命中缓存会直接返回历史结果。默认 false。",
                     dynamic_render: "source=url 时的动态渲染策略。auto 自动判断；always 强制浏览器渲染；never 只静态抓取。默认 auto。",
-                    url: "待分析页面 URL。source=url 时必填；source=web/text/upload 时可选，用于结果里的资源链接和历史缓存匹配。",
-                    text: "待分析文本。source=text/web/upload 时必填；source=url 时由后端抓取页面后自动生成。",
+                    url: "待分析页面 URL。source=url 时必填；source=web/text 时可选，用于结果里的资源链接和历史缓存匹配。",
+                    text: "待分析文本。source=text/web 时必填；source=url 时由后端抓取页面后自动生成。source=upload 不使用 text。",
+                    file: "source=upload 时必填的文件字段，支持 JSON/XML 文件；使用 multipart/form-data 提交。",
                     html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
                     title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
                 },
                 example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
-  -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
   -H "X-User-Email: zhangsan@example.com" \\
-  -d '{
-    "source": "url",
-    "mode": "common",
-    "strategy": "auto",
-    "force_reanalyze": false,
-    "dynamic_render": "auto",
-    "url": "https://arxiv.org/abs/2303.14524"
-  }'`,
+  -F "source=upload" \\
+  -F "mode=common" \\
+  -F "file=@metadata.json"`,
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -1035,7 +1031,7 @@ const API_DOCS_TEXT = {
         errorLabel: "Error Response",
         responseNote: "Note: metadata responses use a unified structure: core metadata is under Core Metadata.metadatas[0], and domain metadata is under Domain Metadata.metadata_type plus Domain Metadata.metadatas[0]. History cache and logs are isolated by X-User-Id.",
         commonHeaders: {
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; use multipart/form-data for file upload",
             "X-User-Id": "10086",
             "X-User-Name": "Zhang San",
             "X-User-Email": "zhangsan@example.com"
@@ -1053,34 +1049,30 @@ const API_DOCS_TEXT = {
                     force_reanalyze: false,
                     dynamic_render: "auto | always | never",
                     url: "https://example.com/paper",
-                    text: "Page text or raw uploaded file content",
+                    text: "Page text",
+                    file: "metadata.json (multipart/form-data file field)",
                     html: "<html>Optional page HTML</html>",
                     title: "Page title or uploaded file name"
                 },
                 requestFields: {
-                    source: "Input source. url lets the backend fetch the page; text analyzes plain text; web sends page text/html from the frontend; upload sends raw JSON/XML file content. Default: text.",
+                    source: "Input source. url lets the backend fetch the page; text analyzes plain text; web sends page text/html from the frontend; upload sends a JSON/XML file. Default: text.",
                     mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
                     strategy: "Extraction strategy. auto tries site rules first and falls back to the model; llm forces the model; rule only uses site rules; upload_rule parses structured JSON/XML uploads. Default: auto.",
                     force_reanalyze: "Whether to skip the current user's URL history cache and reanalyze. Default: false.",
                     dynamic_render: "Dynamic rendering strategy for source=url. auto decides automatically; always forces browser rendering; never uses static fetching only. Default: auto.",
-                    url: "Target page URL. Required for source=url; optional for web/text/upload to preserve resource links and match history cache.",
-                    text: "Text to analyze. Required for source=text/web/upload; generated by the backend for source=url.",
+                    url: "Target page URL. Required for source=url; optional for web/text to preserve resource links and match history cache.",
+                    text: "Text to analyze. Required for source=text/web; generated by the backend for source=url. source=upload does not use text.",
+                    file: "Required file field for source=upload. Send a JSON/XML file with multipart/form-data.",
                     html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
                     title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
                 },
                 example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
-  -H "Content-Type: application/json" \\
   -H "X-User-Id: 10086" \\
   -H "X-User-Name: Zhang San" \\
   -H "X-User-Email: zhangsan@example.com" \\
-  -d '{
-    "source": "url",
-    "mode": "common",
-    "strategy": "auto",
-    "force_reanalyze": false,
-    "dynamic_render": "auto",
-    "url": "https://arxiv.org/abs/2303.14524"
-  }'`,
+  -F "source=upload" \\
+  -F "mode=common" \\
+  -F "file=@metadata.json"`,
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
@@ -2221,6 +2213,24 @@ async function requestBackend(url, payload, loadingText) {
     return responseBody;
 }
 
+async function requestUploadBackend(file, mode) {
+    updateStatus(getUIText().loadingSend, "loading");
+    const formData = new FormData();
+    formData.append("source", "upload");
+    formData.append("mode", mode);
+    formData.append("file", file, file.name);
+
+    const response = await fetch(BACKEND_REGISTER_URL, {
+        method: "POST",
+        body: formData
+    });
+
+    const responseBody = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(responseBody.message || `HTTP ${response.status}`);
+    if (responseBody && responseBody.status === "error") throw new Error(responseBody.message || "Unknown error");
+    return responseBody;
+}
+
 async function requestMetadataFromText(mode, text, { title = "", url = "", html = "", strategy = "auto", source = "text" } = {}) {
     if (!text) throw new Error(state.language === "zh" ? "没有可分析的内容" : "No text to analyze");
     const payload = await requestBackend(BACKEND_REGISTER_URL, {
@@ -2355,7 +2365,22 @@ async function requestMetadataForUploadedFile(mode) {
     if (!normalizedText) throw new Error(state.language === "zh" ? "文件内容为空" : "File content is empty");
     state.uploadedText = normalizedText;
     state.uploadedTitle = file.name;
-    return requestMetadataFromText(mode, normalizedText, { title: file.name, url: "", strategy: "upload_rule", source: "upload" });
+    const payload = await requestUploadBackend(file, mode);
+
+    state.resultCache.common = payload;
+    state.resultCache.domain = payload;
+    state.resultCache[state.mode] = payload;
+    state.lastFetchedAt = new Date();
+    recordConversionLog({
+        source: "upload",
+        mode,
+        strategy: "upload_rule",
+        title: file.name,
+        url: "",
+        inputText: normalizedText,
+        payload
+    });
+    return payload;
 }
 
 function getFallbackLanguage(language = state.language) {

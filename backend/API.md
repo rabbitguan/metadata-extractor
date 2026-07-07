@@ -101,7 +101,21 @@ python backend.py -d
 
 #### 上传文件模式（`source=upload`）
 
-上传仅支持 JSON/XML 原始结构化内容，不支持 TXT 等非结构化文本。推荐 JSON 结构：
+上传仅支持 JSON/XML 原始结构化内容，不支持 TXT 等非结构化文本。请求必须使用 `multipart/form-data` 文件上传，文件字段名为 `file`。
+
+`source=upload` 时后端会强制使用 `upload_rule`，不会调用大模型。
+
+文件上传示例：
+
+```bash
+curl -X POST http://127.0.0.1:4000/register \
+  -H "X-User-Id: 10086" \
+  -F "source=upload" \
+  -F "mode=common" \
+  -F "file=@metadata.json"
+```
+
+推荐 JSON 结构：
 
 ```json
 {

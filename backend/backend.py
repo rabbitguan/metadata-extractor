@@ -2103,6 +2103,45 @@ def handle_identifier_request(data):
     return jsonify({'items': results})
 
 
+def _decode_uploaded_text(file_storage):
+    raw = file_storage.read()
+    if not raw:
+        return ''
+    try:
+        return raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return raw.decode('utf-8', errors='replace')
+
+
+def _build_register_request_data():
+    if request.files or request.content_type and 'multipart/form-data' in request.content_type:
+        uploaded_file = request.files.get('file') or next(iter(request.files.values()), None)
+        form_data = request.form.to_dict(flat=True)
+        if not uploaded_file:
+            return None, (jsonify({"status": "error", "message": "Missing file"}), 400)
+
+        text = _decode_uploaded_text(uploaded_file)
+        if not text.strip():
+            return None, (jsonify({"status": "error", "message": "Empty file"}), 400)
+
+        form_data['text'] = text
+        form_data['source'] = form_data.get('source') or 'upload'
+        form_data['title'] = form_data.get('title') or uploaded_file.filename or ''
+        return form_data, None
+
+    data = request.get_json(silent=True)
+    if data is None:
+        return {}, None
+    if not isinstance(data, dict):
+        return None, (jsonify({"status": "error", "message": "Request body must be a JSON object"}), 400)
+    if data.get('source') == 'upload':
+        return None, (jsonify({
+            "status": "error",
+            "message": "source=upload requires multipart/form-data with file field"
+        }), 400)
+    return data, None
+
+
 def handle_register_request(data):
     source = data.get('source', 'text')
     mode = data.get('mode', 'common')
@@ -2179,7 +2218,9 @@ def query():
 @app.route('/register', methods=['POST'])
 def register():
     print("Received register request")
-    data = request.get_json() or {}
+    data, error_response = _build_register_request_data()
+    if error_response:
+        return error_response
     return handle_register_request(data)
 
 
