@@ -195,7 +195,10 @@ def _normalize_allowed_identifier(value, preferred_type=None):
 
 def _format_identifier_display(identifier, language='zh'):
     normalized = _normalize_allowed_identifier(
-        identifier.get('identifier') if isinstance(identifier, dict) else identifier,
+        (
+            identifier.get('identifier') or identifier.get('标识符') or identifier.get('Identifier')
+            or identifier.get('value') or identifier.get('id')
+        ) if isinstance(identifier, dict) else identifier,
         preferred_type=identifier.get('type') if isinstance(identifier, dict) else None,
     )
     if not normalized:
@@ -663,7 +666,10 @@ def _language_name_list(value, lang, field='name'):
 
 def _normalize_identifier(value):
     if isinstance(value, dict):
-        identifier = value.get('identifier') or value.get('value') or value.get('id')
+        identifier = (
+            value.get('identifier') or value.get('标识符') or value.get('Identifier')
+            or value.get('value') or value.get('id')
+        )
         if identifier:
             return _normalize_allowed_identifier(identifier, preferred_type=value.get('type'))
         return None
@@ -805,6 +811,8 @@ def _normalize_subjects(value):
     subjects = []
     for item in _as_list(value):
         if isinstance(item, dict):
+            if not any(not _is_missing_value(field_value) for field_value in item.values()):
+                continue
             subjects.append(item)
             continue
         text = _clean_scalar(item)
@@ -893,9 +901,24 @@ def _normalize_core_metadata_shape(core, lang):
     normalized['subjects'] = _normalize_subjects(core.get('subjects'))
     normalized['contributors'] = _normalize_agents(core.get('contributors'), lang, contribution_type='Other')
     identifier = _normalize_allowed_identifier(core.get('identifier'))
-    normalized['identifier'] = f"CSTR:{identifier.get('identifier')}" if identifier and identifier.get('type') == 'CSTR' else None
 
     alternative_identifiers = _normalize_identifier_list(core.get('alternative_identifiers'))
+    cstr_identifier = identifier if identifier and identifier.get('type') == 'CSTR' else None
+    if not cstr_identifier:
+        cstr_identifier = next(
+            (
+                item for item in (alternative_identifiers or [])
+                if isinstance(item, dict) and item.get('type') == 'CSTR'
+            ),
+            None,
+        )
+    normalized['identifier'] = f"CSTR:{cstr_identifier.get('identifier')}" if cstr_identifier else None
+
+    if alternative_identifiers:
+        alternative_identifiers = [
+            item for item in alternative_identifiers
+            if not (isinstance(item, dict) and item.get('type') == 'CSTR')
+        ] or None
     if identifier and identifier.get('type') != 'CSTR':
         alternative_identifiers = _merge_lists(alternative_identifiers, [identifier]) or None
     normalized['alternative_identifiers'] = alternative_identifiers
@@ -1075,7 +1098,7 @@ def _merge_core_language_variants(core_zh, core_en):
     merged['creators'] = _merge_agent_lists(zh.get('creators'), en.get('creators')) or None
     merged['publisher'] = _merge_named_entity(zh.get('publisher'), en.get('publisher'))
     merged['publish_date'] = _first_non_missing(zh.get('publish_date'), en.get('publish_date'))
-    merged['subjects'] = _merge_lists(zh.get('subjects'), en.get('subjects')) or None
+    merged['subjects'] = _normalize_subjects(_merge_lists(zh.get('subjects'), en.get('subjects'))) or None
     merged['language'] = _first_non_missing(zh.get('language'), en.get('language'))
     merged['contributors'] = _merge_agent_lists(zh.get('contributors'), en.get('contributors')) or None
     merged['alternative_identifiers'] = _merge_lists(zh.get('alternative_identifiers'), en.get('alternative_identifiers')) or None
@@ -1090,6 +1113,10 @@ def _merge_core_language_variants(core_zh, core_en):
 
 
 LABEL_TRANSLATIONS_ZH = {value: key for key, value in LABEL_TRANSLATIONS_EN.items()}
+LABEL_TRANSLATIONS_ZH.update({
+    'identifier': '标识符',
+    'value': '值',
+})
 
 DOMAIN_WRAPPER_KEYS_ZH = {
     '领域元数据',
@@ -1179,8 +1206,54 @@ def _json_equal(left, right):
 
 def _language_item(language, value):
     if _is_lang_object(value):
-        return value
+        formatted = _format_identifier_objects_for_domain(value.get('value'), language=language)
+        return {**value, 'value': formatted} if formatted is not None else value
+    formatted = _format_identifier_objects_for_domain(value, language=language)
+    if formatted is not None:
+        value = formatted
     return {'lang': language, 'value': value}
+
+
+def _identifier_object_display(value, language='zh'):
+    if not isinstance(value, dict):
+        return None
+    if (
+        not value.get('type')
+        and any(key in value for key in ('标识符', 'Identifier'))
+        and not any(key in value for key in ('identifier', 'value', 'id'))
+    ):
+        return None
+    identifier = (
+        value.get('identifier') or value.get('标识符') or value.get('Identifier')
+        or value.get('value') or value.get('id')
+    )
+    if _is_missing_value(identifier):
+        return None
+    if value.get('type'):
+        return _format_identifier_display({**value, 'identifier': identifier}, language=language)
+    return _format_identifier_display(identifier, language=language)
+
+
+def _format_identifier_objects_for_domain(value, language='zh'):
+    if isinstance(value, list):
+        items = []
+        changed = False
+        for item in value:
+            formatted = _format_identifier_objects_for_domain(item, language=language)
+            if formatted is None:
+                if not _is_missing_value(item):
+                    items.append(item)
+                continue
+            changed = True
+            if _is_missing_value(formatted):
+                continue
+            if isinstance(formatted, list):
+                items.extend(formatted)
+            else:
+                items.append(formatted)
+        return (_dedupe_jsonable(items) or None) if changed else None
+    display = _identifier_object_display(value, language=language)
+    return display if display else None
 
 
 def _merge_lang_lists(primary, secondary):
@@ -1189,9 +1262,9 @@ def _merge_lang_lists(primary, secondary):
         if _is_missing_value(value):
             continue
         if _is_lang_list(value):
-            items.extend(value)
+            items.extend(_language_item(item.get('lang'), item.get('value')) for item in value)
         elif _is_lang_object(value):
-            items.append(value)
+            items.append(_language_item(value.get('lang'), value.get('value')))
     return _dedupe_jsonable(items)
 
 
@@ -1245,6 +1318,9 @@ def _merge_language_nodes(zh_value, en_value):
     if zh_missing and en_missing:
         return None
     if zh_missing:
+        formatted = _format_identifier_objects_for_domain(en_value, language='en')
+        if formatted is not None:
+            return formatted if _is_lang_list(formatted) else [_language_item('en', formatted)]
         if isinstance(en_value, dict) and not _is_lang_object(en_value):
             return {
                 _map_key_to_zh(key): _merge_language_nodes(None, value)
@@ -1253,6 +1329,9 @@ def _merge_language_nodes(zh_value, en_value):
             }
         return en_value if _is_lang_list(en_value) else [_language_item('en', en_value)]
     if en_missing:
+        formatted = _format_identifier_objects_for_domain(zh_value, language='zh')
+        if formatted is not None:
+            return formatted if _is_lang_list(formatted) else [_language_item('zh', formatted)]
         if isinstance(zh_value, dict) and not _is_lang_object(zh_value):
             return {
                 _map_key_to_zh(key): _merge_language_nodes(value, None)
@@ -1260,6 +1339,11 @@ def _merge_language_nodes(zh_value, en_value):
                 if not _is_domain_missing_value(value)
             }
         return zh_value if _is_lang_list(zh_value) else [_language_item('zh', zh_value)]
+
+    formatted_zh = _format_identifier_objects_for_domain(zh_value, language='zh')
+    formatted_en = _format_identifier_objects_for_domain(en_value, language='en')
+    if formatted_zh is not None or formatted_en is not None:
+        return _dedupe_jsonable(_as_list(formatted_zh) + _as_list(formatted_en)) or None
 
     if isinstance(zh_value, dict) and isinstance(en_value, dict) and not _is_lang_object(zh_value) and not _is_lang_object(en_value):
         en_by_zh_key = {_map_key_to_zh(key): value for key, value in en_value.items()}
@@ -1407,6 +1491,48 @@ def _build_already_unified_metadata(answer):
     })
 
 
+DOMAIN_IDENTIFIER_LIST_KEYS = {'替代标识符', 'Alternative Identifiers', 'related_identifiers', 'Related Identifiers'}
+DOMAIN_IDENTIFIER_VALUE_KEYS = {'标识符', 'Identifier', '资源标识符', 'Resource Identifier'}
+
+
+def _format_domain_identifier_objects(node, key_context=None, list_item=False):
+    display = _identifier_object_display(node) if isinstance(node, dict) and (
+        list_item or key_context in DOMAIN_IDENTIFIER_LIST_KEYS
+    ) else None
+    if display:
+        return display
+
+    if isinstance(node, list):
+        formatted = [
+            _format_domain_identifier_objects(
+                item,
+                key_context=key_context,
+                list_item=key_context in DOMAIN_IDENTIFIER_LIST_KEYS,
+            )
+            for item in node
+        ]
+        return [item for item in formatted if not _is_domain_missing_value(item)]
+
+    if isinstance(node, dict):
+        formatted = {}
+        for key, value in node.items():
+            if key in {'CSTR标识符', 'CSTR Identifier'}:
+                formatted[key] = _format_cstr_display_value(value)
+            elif key in DOMAIN_IDENTIFIER_VALUE_KEYS:
+                formatted_value = _format_identifier_display_value(value)
+                formatted[key] = formatted_value if formatted_value is not None else value
+            elif _is_lang_object(value):
+                formatted[key] = {
+                    **value,
+                    'value': _format_domain_identifier_objects(value.get('value'), key_context=key),
+                }
+            else:
+                formatted[key] = _format_domain_identifier_objects(value, key_context=key)
+        return formatted
+
+    return node
+
+
 def _build_unified_metadata(answer):
     if not isinstance(answer, dict):
         raise ValueError('LLM response must be a metadata object')
@@ -1479,6 +1605,12 @@ def _build_unified_metadata(answer):
                 key: value for key, value in extra.items()
                 if key not in metadata['领域元数据']['metadatas'][0]
             })
+
+    domain_items = metadata.get('领域元数据', {}).get('metadatas')
+    if isinstance(domain_items, list):
+        metadata['领域元数据']['metadatas'] = [
+            _format_domain_identifier_objects(item) for item in domain_items
+        ]
 
     return _format_unified_cstr_identifiers(metadata)
 

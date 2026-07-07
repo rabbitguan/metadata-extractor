@@ -19,3 +19,6 @@ env/
 *.tmp
 *.bak
 *.sqlite3
+
+# 本地导出材料
+docs/user-manual-pdf.html

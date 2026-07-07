@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, Optional
 
 DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
 CSTR_PATTERN = re.compile(r'^(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)$', re.IGNORECASE)
+URL_PATTERN = re.compile(r'https?://[^\s<>"\'\)\]\}]+', re.IGNORECASE)
 
 DOMAIN_KEY_TRANSLATIONS_ZH = {
     'Dataset Basic Information': '数据集基本信息',
@@ -221,6 +222,33 @@ def _unique_list(values: Iterable[Any]) -> list:
     return result
 
 
+def _iter_url_values(value: Any) -> Iterable[str]:
+    if _is_missing_value(value):
+        return
+    if isinstance(value, str):
+        for match in URL_PATTERN.finditer(value):
+            yield match.group(0).rstrip('.,;，；')
+        return
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_url_values(item)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_url_values(item)
+
+
+def _normalize_url_list(value: Any) -> Optional[list]:
+    urls = []
+    seen = set()
+    for url in _iter_url_values(value):
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls or None
+
+
 def _is_doi(value: Any) -> bool:
     return bool(_normalize_doi_identifier(value))
 
@@ -233,6 +261,9 @@ def _normalize_cstr_identifier(value: Any) -> Optional[str]:
     text = str(value or '').strip().strip('.,;，；')
     while re.match(r'^CSTR\s*[:：]\s*', text, flags=re.IGNORECASE):
         text = re.sub(r'^CSTR\s*[:：]\s*', '', text, count=1, flags=re.IGNORECASE).strip()
+    url_match = re.search(r'cstr\.cn/(?:CSTR[:：]?)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', text, flags=re.IGNORECASE)
+    if url_match:
+        return url_match.group(1).rstrip('.,;，；')
     match = CSTR_PATTERN.match(text)
     return match.group(1) if match else None
 
@@ -259,10 +290,26 @@ def _normalize_identifier_item(value: Any, preferred_type: Any = None) -> Option
     return None
 
 
+def _identifier_value_from_dict(value: Dict[str, Any]) -> Any:
+    return (
+        value.get('identifier') or value.get('标识符') or value.get('Identifier')
+        or value.get('alternateIdentifier') or value.get('Alternate Identifier')
+        or value.get('value') or value.get('id') or value.get('@id')
+    )
+
+
+def _identifier_type_from_dict(value: Dict[str, Any]) -> Any:
+    return (
+        value.get('type') or value.get('identifierType') or value.get('identifier_type')
+        or value.get('alternateIdentifierType') or value.get('alternate_identifier_type')
+        or value.get('propertyID') or value.get('propertyId')
+    )
+
+
 def _format_identifier_display(value: Any, language: str = 'zh') -> Optional[str]:
     normalized = _normalize_identifier_item(
-        value.get('identifier') if isinstance(value, dict) else value,
-        preferred_type=value.get('type') if isinstance(value, dict) else None,
+        _identifier_value_from_dict(value) if isinstance(value, dict) else value,
+        preferred_type=_identifier_type_from_dict(value) if isinstance(value, dict) else None,
     )
     if not normalized:
         return None
@@ -688,7 +735,7 @@ def _structured_scalar_field_any(primary: Dict[str, Any], fallback: Dict[str, An
 def _identifier_candidates(value: Any) -> Iterable[tuple[Any, Any]]:
     for item in _ensure_list(value):
         if isinstance(item, dict):
-            yield item.get('identifier') or item.get('value') or item.get('id'), item.get('type')
+            yield _identifier_value_from_dict(item), _identifier_type_from_dict(item)
         else:
             yield item, None
 
@@ -712,10 +759,13 @@ def _normalize_related_identifier_list(value: Any) -> Optional[list]:
     items = []
     for item in _ensure_list(value):
         if isinstance(item, dict):
-            raw_identifier = item.get('identifier')
+            raw_identifier = (
+                item.get('identifier') or item.get('标识符') or item.get('Identifier')
+                or item.get('value') or item.get('id')
+            )
             if isinstance(raw_identifier, dict):
                 identifier = _normalize_identifier_item(
-                    raw_identifier.get('identifier') or raw_identifier.get('value') or raw_identifier.get('id'),
+                    _identifier_value_from_dict(raw_identifier),
                     preferred_type=raw_identifier.get('type'),
                 )
             else:
@@ -748,7 +798,7 @@ def _scalar_field_any(primary: Dict[str, Any], fallback: Dict[str, Any], *keys: 
     if isinstance(value, list):
         return _clean_text(value[0]) if value else None
     if isinstance(value, dict):
-        return _clean_text(value.get('@id') or value.get('identifier') or value.get('value') or value.get('id'))
+        return _clean_text(_identifier_value_from_dict(value))
     return _clean_text(value)
 
 
@@ -952,7 +1002,7 @@ def extract_upload_metadata(text: str, title: str = '') -> Dict[str, Any]:
     description = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['description'])
     keywords = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['keywords'])
     subjects = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['subjects'])
-    resource_urls = _structured_field_any(core, payload, *CORE_FIELD_ALIASES['urls'])
+    resource_urls = _normalize_url_list(_structured_field_any(core, payload, *CORE_FIELD_ALIASES['urls']))
 
     zh: Dict[str, Any] = {
         'titles': titles,
