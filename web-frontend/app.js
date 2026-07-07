@@ -722,7 +722,17 @@ const UI_TEXT = {
         languageZh: "中",
         languageEn: "EN",
         errorPrefix: "提取失败: ",
-        initErrorPrefix: "初始化失败: "
+        initErrorPrefix: "初始化失败: ",
+        errorMessages: {
+            missingFile: "请先选择 JSON/XML 文件后再分析。",
+            uploadRequiresFile: "上传模式需要使用文件上传，文件字段名必须为 file。",
+            emptyFile: "文件内容为空，请重新选择文件。",
+            missingUrl: "请输入需要分析的网页 URL。",
+            missingText: "请输入需要分析的文本内容。",
+            invalidJsonUpload: "JSON 格式不合法，请检查文件内容后重新上传。",
+            invalidRequestBody: "请求体格式不正确，请检查接口调用参数。",
+            httpPrefix: "接口请求失败，请确认后端服务是否正常运行："
+        }
     },
     en: {
         startTitle: "Metadata Bidirectional Mapping Tool",
@@ -802,7 +812,17 @@ const UI_TEXT = {
         languageZh: "中",
         languageEn: "EN",
         errorPrefix: "Extraction failed: ",
-        initErrorPrefix: "Initialization failed: "
+        initErrorPrefix: "Initialization failed: ",
+        errorMessages: {
+            missingFile: "Please choose a JSON/XML file before analyzing.",
+            uploadRequiresFile: "Upload mode requires multipart file upload with field name file.",
+            emptyFile: "The file is empty. Please choose another file.",
+            missingUrl: "Please enter a URL to analyze.",
+            missingText: "Please enter text to analyze.",
+            invalidJsonUpload: "Invalid JSON. Please check the file content and upload again.",
+            invalidRequestBody: "Invalid request body. Please check the API parameters.",
+            httpPrefix: "Request failed. Please check whether the backend service is running: "
+        }
     }
 };
 
@@ -929,8 +949,8 @@ const API_DOCS_TEXT = {
     zh: {
         descriptionLabel: "接口说明",
         headersLabel: "请求头",
-        requestLabel: "标准请求体",
-        requestFieldsLabel: "请求体字段说明",
+        requestLabel: "请求参数格式",
+        requestFieldsLabel: "参数字段说明",
         exampleLabel: "请求示例",
         successLabel: "成功响应（200）",
         errorLabel: "失败响应",
@@ -948,28 +968,34 @@ const API_DOCS_TEXT = {
                 description: "用于 URL、网页文本、普通文本和上传 JSON/XML 内容的元数据提取。",
                 headers: "common",
                 request: {
-                    source: "url | text | web | upload",
-                    mode: "common | domain",
-                    strategy: "auto | llm | rule | upload_rule",
-                    force_reanalyze: false,
-                    dynamic_render: "auto | always | never",
-                    url: "https://example.com/paper",
-                    text: "页面正文文本",
-                    file: "metadata.json（multipart/form-data 文件字段）",
-                    html: "<html>页面 HTML，可选</html>",
-                    title: "页面标题或上传文件名"
+                    "application/json（URL/文本/网页）": {
+                        source: "url | text | web",
+                        mode: "common | domain",
+                        strategy: "auto | rule",
+                        force_reanalyze: false,
+                        dynamic_render: "auto | always | never",
+                        url: "https://example.com/paper",
+                        text: "页面正文文本",
+                        html: "<html>页面 HTML，可选</html>",
+                        title: "页面标题"
+                    },
+                    "multipart/form-data（文件上传）": {
+                        source: "upload",
+                        mode: "common | domain",
+                        file: "metadata.json 或 metadata.xml"
+                    }
                 },
                 requestFields: {
                     source: "输入来源。url 表示后端按 url 抓取网页；text 表示直接分析文本；web 表示前端传入网页 text/html；upload 表示上传 JSON/XML 文件。默认 text。",
                     mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
-                    strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；llm 强制模型；rule 只用网站规则；upload_rule 用于结构化 JSON/XML 上传。默认 auto。",
+                    strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；rule 只用网站规则。source=upload 时无需传 strategy，后端固定使用 upload_rule 且不调用大模型。",
                     force_reanalyze: "是否跳过当前用户的 URL 历史缓存并重新分析。false 时命中缓存会直接返回历史结果。默认 false。",
                     dynamic_render: "source=url 时的动态渲染策略。auto 自动判断；always 强制浏览器渲染；never 只静态抓取。默认 auto。",
                     url: "待分析页面 URL。source=url 时必填；source=web/text 时可选，用于结果里的资源链接和历史缓存匹配。",
                     text: "待分析文本。source=text/web 时必填；source=url 时由后端抓取页面后自动生成。source=upload 不使用 text。",
-                    file: "source=upload 时必填的文件字段，支持 JSON/XML 文件；使用 multipart/form-data 提交。",
+                    file: "source=upload 时必填的文件字段，支持 .json/.xml 文件；必须使用 multipart/form-data 提交，字段名固定为 file。",
                     html: "页面原始 HTML。source=web 时建议传；用于网站规则提取、动态字段补充和历史保存。",
-                    title: "页面标题或上传文件名。上传 .json/.xml 时会触发结构化上传解析。"
+                    title: "页面标题。文件上传时不需要传 title，后端会使用上传文件名。"
                 },
                 example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "X-User-Id: 10086" \\
@@ -981,7 +1007,7 @@ const API_DOCS_TEXT = {
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
-                    message: "Missing URL / Missing text / Invalid bilingual JSON format from LLM"
+                    message: "Missing URL / Missing text / Missing file / source=upload requires multipart/form-data with file field"
                 }
             },
             {
@@ -1024,8 +1050,8 @@ const API_DOCS_TEXT = {
     en: {
         descriptionLabel: "Description",
         headersLabel: "Request Headers",
-        requestLabel: "Standard Request Body",
-        requestFieldsLabel: "Request Body Fields",
+        requestLabel: "Request Format",
+        requestFieldsLabel: "Request Field Notes",
         exampleLabel: "Request Example",
         successLabel: "Success Response (200)",
         errorLabel: "Error Response",
@@ -1043,28 +1069,34 @@ const API_DOCS_TEXT = {
                 description: "Extract metadata from URLs, web text, plain text, or uploaded JSON/XML content.",
                 headers: "common",
                 request: {
-                    source: "url | text | web | upload",
-                    mode: "common | domain",
-                    strategy: "auto | llm | rule | upload_rule",
-                    force_reanalyze: false,
-                    dynamic_render: "auto | always | never",
-                    url: "https://example.com/paper",
-                    text: "Page text",
-                    file: "metadata.json (multipart/form-data file field)",
-                    html: "<html>Optional page HTML</html>",
-                    title: "Page title or uploaded file name"
+                    "application/json (URL/text/web)": {
+                        source: "url | text | web",
+                        mode: "common | domain",
+                        strategy: "auto | rule",
+                        force_reanalyze: false,
+                        dynamic_render: "auto | always | never",
+                        url: "https://example.com/paper",
+                        text: "Page text",
+                        html: "<html>Optional page HTML</html>",
+                        title: "Page title"
+                    },
+                    "multipart/form-data (file upload)": {
+                        source: "upload",
+                        mode: "common | domain",
+                        file: "metadata.json or metadata.xml"
+                    }
                 },
                 requestFields: {
                     source: "Input source. url lets the backend fetch the page; text analyzes plain text; web sends page text/html from the frontend; upload sends a JSON/XML file. Default: text.",
                     mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
-                    strategy: "Extraction strategy. auto tries site rules first and falls back to the model; llm forces the model; rule only uses site rules; upload_rule parses structured JSON/XML uploads. Default: auto.",
+                    strategy: "Extraction strategy. auto tries site rules first and falls back to the model; rule only uses site rules. For source=upload, do not send strategy; the backend always uses upload_rule and does not call the model.",
                     force_reanalyze: "Whether to skip the current user's URL history cache and reanalyze. Default: false.",
                     dynamic_render: "Dynamic rendering strategy for source=url. auto decides automatically; always forces browser rendering; never uses static fetching only. Default: auto.",
                     url: "Target page URL. Required for source=url; optional for web/text to preserve resource links and match history cache.",
                     text: "Text to analyze. Required for source=text/web; generated by the backend for source=url. source=upload does not use text.",
-                    file: "Required file field for source=upload. Send a JSON/XML file with multipart/form-data.",
+                    file: "Required file field for source=upload. Send a .json/.xml file with multipart/form-data; the field name must be file.",
                     html: "Raw page HTML. Recommended for source=web; used by site rules, enrichment, and history persistence.",
-                    title: "Page title or uploaded file name. .json/.xml file names trigger structured upload parsing."
+                    title: "Page title. File upload does not need title; the backend uses the uploaded filename."
                 },
                 example: `curl -X POST ${PUBLIC_API_BASE_URL || "http://127.0.0.1:4000"}/register \\
   -H "X-User-Id: 10086" \\
@@ -1076,7 +1108,7 @@ const API_DOCS_TEXT = {
                 success: REGISTER_SUCCESS_RESPONSE,
                 error: {
                     status: "error",
-                    message: "Missing URL / Missing text / Invalid bilingual JSON format from LLM"
+                    message: "Missing URL / Missing text / Missing file / source=upload requires multipart/form-data with file field"
                 }
             },
             {
@@ -2186,6 +2218,34 @@ function updateStatus(message, type = "info") {
     status.hidden = !message;
 }
 
+function formatErrorMessage(error, language = state.language) {
+    const rawMessage = String(error && error.message ? error.message : error || "").trim();
+    const ui = getUIText(language);
+    const messages = ui.errorMessages || {};
+    if (!rawMessage) return messages.httpPrefix || "";
+
+    if (/source=upload requires multipart\/form-data with file field/i.test(rawMessage)) {
+        return messages.uploadRequiresFile || rawMessage;
+    }
+    if (/missing file/i.test(rawMessage)) return messages.missingFile || rawMessage;
+    if (/empty file/i.test(rawMessage)) return messages.emptyFile || rawMessage;
+    if (/missing url/i.test(rawMessage)) return messages.missingUrl || rawMessage;
+    if (/missing text/i.test(rawMessage)) return messages.missingText || rawMessage;
+    if (/invalid json upload|json 格式不合法|invalid json/i.test(rawMessage)) {
+        return messages.invalidJsonUpload || rawMessage;
+    }
+    if (/request body must be a json object/i.test(rawMessage)) {
+        return messages.invalidRequestBody || rawMessage;
+    }
+    if (/^http\s*\d+/i.test(rawMessage)) {
+        return `${messages.httpPrefix || ""}${rawMessage}`;
+    }
+    if (/failed to fetch|networkerror|load failed/i.test(rawMessage)) {
+        return `${messages.httpPrefix || ""}${rawMessage}`;
+    }
+    return rawMessage;
+}
+
 async function loadSchema(mode) {
     if (state.schemaCache[mode]) return state.schemaCache[mode];
     state.schemaCache[mode] = STANDARD_SCHEMA;
@@ -3139,7 +3199,7 @@ async function refreshCurrentMode() {
         setTimeout(() => updateStatus("", "info"), 1200);
     } catch (error) {
         console.error(error);
-        updateStatus(`${getUIText().errorPrefix}${error.message}`, "error");
+        updateStatus(`${getUIText().errorPrefix}${formatErrorMessage(error)}`, "error");
     } finally {
         state.isRefreshing = false;
     }
@@ -3369,6 +3429,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     } catch (error) {
         console.error(error);
-        updateStatus(`${getUIText(state.language).initErrorPrefix}${error.message}`, "error");
+        updateStatus(`${getUIText(state.language).initErrorPrefix}${formatErrorMessage(error)}`, "error");
     }
 });
