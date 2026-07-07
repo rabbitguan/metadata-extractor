@@ -1025,6 +1025,31 @@ def _merge_agent_lists(primary, secondary):
     return _dedupe_jsonable(merged)
 
 
+def _merge_funder(first, second):
+    if not isinstance(first, dict) and not isinstance(second, dict):
+        return _first_non_missing(first, second)
+
+    primary = first if isinstance(first, dict) else {}
+    secondary = second if isinstance(second, dict) else {}
+    return {
+        'name': _merge_language_nodes(primary.get('name'), secondary.get('name')),
+        'proj_type': _merge_language_nodes(primary.get('proj_type'), secondary.get('proj_type')),
+        'proj_num': _first_non_missing(primary.get('proj_num'), secondary.get('proj_num')),
+        'proj_name': _merge_language_nodes(primary.get('proj_name'), secondary.get('proj_name')),
+    }
+
+
+def _merge_funder_lists(primary, secondary):
+    primary_list = _as_list(primary) if not _is_missing_value(primary) else []
+    secondary_list = _as_list(secondary) if not _is_missing_value(secondary) else []
+    merged = []
+    for index in range(max(len(primary_list), len(secondary_list))):
+        first = primary_list[index] if index < len(primary_list) else None
+        second = secondary_list[index] if index < len(secondary_list) else None
+        merged.append(_merge_funder(first, second))
+    return _dedupe_jsonable(merged)
+
+
 def _standard_resource_type(value):
     normalized = str(value or '').strip()
     return {
@@ -1081,7 +1106,7 @@ def _merge_core_language_variants(core_zh, core_en):
     merged['alternative_identifiers'] = _merge_lists(zh.get('alternative_identifiers'), en.get('alternative_identifiers')) or None
     merged['related_identifiers'] = _merge_lists(zh.get('related_identifiers'), en.get('related_identifiers')) or None
     merged['rights'] = _first_non_missing(zh.get('rights'), en.get('rights'))
-    merged['funders'] = _merge_lists(zh.get('funders'), en.get('funders')) or None
+    merged['funders'] = _merge_funder_lists(zh.get('funders'), en.get('funders')) or None
     merged['version'] = _first_non_missing(zh.get('version'), en.get('version'))
     merged['urls'] = _merge_lists(zh.get('urls'), en.get('urls')) or None
     merged['resource_type'] = _standard_resource_type(_first_non_missing(en.get('resource_type'), zh.get('resource_type')))

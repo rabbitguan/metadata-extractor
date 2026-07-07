@@ -377,6 +377,13 @@ const LABEL_TRANSLATIONS_EN = {
     "范围": "Scope",
     "时间范围": "Time Range",
     "空间范围": "Spatial Range",
+    "起始时间": "Start Time",
+    "结束时间": "End Time",
+    "地理范围描述": "Geographic Description",
+    "西部边界经度": "West Bounding Longitude",
+    "东部边界经度": "East Bounding Longitude",
+    "南部边界纬度": "South Bounding Latitude",
+    "北部边界纬度": "North Bounding Latitude",
     "语种": "Language",
     "文件内容": "File Content",
     "基金项目": "Funding Project",
@@ -2367,29 +2374,30 @@ function hasUsableLocalizedContent(item) {
     return Object.entries(item).some(([key, value]) => key !== "lang" && !isMissingDisplayValue(value));
 }
 
-function pickLocalizedItem(items, language = state.language) {
+function pickLocalizedItem(items, language = state.language, allowFallback = true) {
     const list = Array.isArray(items) ? items : [];
     const preferred = list.find((item) => isObject(item) && item.lang === language) || null;
     if (preferred && hasUsableLocalizedContent(preferred)) return preferred;
+    if (!allowFallback) return null;
     const fallbackLanguage = getFallbackLanguage(language);
     const fallback = list.find((item) => isObject(item) && item.lang === fallbackLanguage && hasUsableLocalizedContent(item)) || null;
     return fallback || preferred;
 }
 
-function filterLocalizedTree(data, language = state.language) {
+function filterLocalizedTree(data, language = state.language, options = {}) {
     if (Array.isArray(data)) {
         if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, "lang"))) {
-            const localized = pickLocalizedItem(data, language);
-            return localized ? filterLocalizedTree(localized, language) : null;
+            const localized = pickLocalizedItem(data, language, options.allowFallback !== false);
+            return localized ? filterLocalizedTree(localized, language, options) : null;
         }
-        const items = data.map((item) => filterLocalizedTree(item, language)).filter((item) => !isMissingDisplayValue(item));
+        const items = data.map((item) => filterLocalizedTree(item, language, options)).filter((item) => !isMissingDisplayValue(item));
         return items.length ? items : null;
     }
     if (!isObject(data)) return data;
     const result = {};
     Object.entries(data).forEach(([key, value]) => {
         if (key === "lang") return;
-        const localized = filterLocalizedTree(value, language);
+        const localized = filterLocalizedTree(value, language, options);
         if (!isMissingDisplayValue(localized)) result[key] = localized;
     });
     return Object.keys(result).length ? result : null;
@@ -2451,7 +2459,12 @@ function normalizeDisplayValue(data, language = state.language) {
 
     if (!isObject(data)) return data;
 
-    if (Array.isArray(data.names)) return normalizeDisplayValue(data.names, language);
+    if (data.names) return normalizeDisplayValue(data.names, language);
+    if (Object.prototype.hasOwnProperty.call(data, "name") && Object.keys(data).every((key) => key === "name" || key === "lang")) return data.name;
+    if (Object.prototype.hasOwnProperty.call(data, "description") && Object.keys(data).every((key) => key === "description" || key === "lang")) return data.description;
+    if (Object.prototype.hasOwnProperty.call(data, "keyword") && Object.keys(data).every((key) => key === "keyword" || key === "lang")) {
+        return Array.isArray(data.keyword) ? data.keyword.join("；") : data.keyword;
+    }
     if (Array.isArray(data.keyword)) return data.keyword.join("；");
     if ((data.identifier || data.value) && data.type) {
         const identifierValue = data.identifier || data.value;
@@ -2480,7 +2493,12 @@ function normalizeDisplayValue(data, language = state.language) {
         return joinUniqueDisplayParts([data.license, data.description, data.cert_num].filter(Boolean));
     }
     if (data.name || data.proj_name || data.proj_num) {
-        return [data.name, data.proj_type, data.proj_num, data.proj_name].filter(Boolean).join("；");
+        return joinUniqueDisplayParts([
+            normalizeDisplayValue(data.name, language),
+            normalizeDisplayValue(data.proj_type, language),
+            normalizeDisplayValue(data.proj_num, language),
+            normalizeDisplayValue(data.proj_name, language)
+        ].filter(Boolean));
     }
     return filterLocalizedTree(data, language);
 }
@@ -2499,7 +2517,8 @@ function displayTextFromValue(value, language = state.language) {
         return Object.entries(target)
             .map(([key, item]) => {
                 const text = displayTextFromValue(item, language);
-                return text ? `${key}: ${text}` : "";
+                const label = getTranslatedLabel(key, language);
+                return text ? `${label}: ${text}` : "";
             })
             .filter(Boolean)
             .join("；");
@@ -2923,10 +2942,12 @@ function getDisplayPayload(payloadBundle, language = state.language) {
     if (!isObject(payloadBundle)) return {};
     const preferred = payloadBundle[language];
     const fallback = payloadBundle[getFallbackLanguage(language)];
-    if (isObject(preferred) && isObject(fallback)) return mergeDisplayFallback(preferred, fallback);
-    if (isObject(preferred)) return preferred;
-    if (isObject(fallback)) return fallback;
-    return payloadBundle;
+    if (isObject(preferred) && isObject(fallback)) {
+        return filterLocalizedTree(mergeDisplayFallback(preferred, fallback), language) || {};
+    }
+    if (isObject(preferred)) return filterLocalizedTree(preferred, language) || {};
+    if (isObject(fallback)) return filterLocalizedTree(fallback, language) || {};
+    return filterLocalizedTree(payloadBundle, language) || {};
 }
 
 function buildDownloadPayloadForItem(mode, payloadBundle, schema, language) {
