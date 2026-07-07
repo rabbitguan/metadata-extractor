@@ -1870,7 +1870,7 @@ def _build_payload_from_identifier_source(source_item, mode):
     resolved = source_item.get('resolved') or {}
     content = resolved.get('content') or ''
     url = resolved.get('url') or ''
-    title = resolved.get('title') or ''
+    title = resolved.get('title') or source_item.get('identifier') or ''
     payload = build_rule_metadata_payload(content, mode, url=url, title=title, html='')
 
     supplemental_results = []

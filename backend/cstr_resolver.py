@@ -60,6 +60,17 @@ def _should_extract_embedded_redirect(request_url, final_url):
     return _same_netloc(request_url, final_url)
 
 
+def _redirect_url_with_fragment(response):
+    for item in reversed(getattr(response, 'history', []) or []):
+        location = ''
+        headers = getattr(item, 'headers', None)
+        if hasattr(headers, 'get'):
+            location = headers.get('Location') or headers.get('location') or ''
+        if '#' in str(location):
+            return urljoin(getattr(item, 'url', '') or '', location)
+    return None
+
+
 def _response_to_content(response, clean_html):
     content_type = _get_content_type(response)
     if 'json' in content_type:
@@ -166,7 +177,7 @@ def _fetch_page(url, source, clean_html, redirect_depth=0):
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10, verify=verify_tls)
     response.raise_for_status()
     response.encoding = _select_response_encoding(response)
-    final_url = response.url if isinstance(response.url, str) and response.url else url
+    final_url = _redirect_url_with_fragment(response) or (response.url if isinstance(response.url, str) and response.url else url)
 
     redirect_target = None
     if _should_extract_embedded_redirect(url, final_url):

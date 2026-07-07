@@ -1,6 +1,6 @@
 import re
 import requests
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin
 
 
 FETCH_HEADERS = {
@@ -46,27 +46,15 @@ def _select_response_encoding(response):
     return getattr(response, 'apparent_encoding', None) or current or 'utf-8'
 
 
-def _vsso_detail_url_from_hash(url):
-    parsed = urlsplit(str(url or ''))
-    if str(parsed.hostname or '').lower() != 'vsso.nssdc.ac.cn':
-        return None
-    if parsed.path.rstrip('/') != '/page.html':
-        return None
-
-    match = re.search(r'^/view/([0-9a-f-]{36})$', parsed.fragment or '', flags=re.IGNORECASE)
-    if not match:
-        return None
-    return f'https://vsso.nssdc.ac.cn/mhsy/html/datadec.html?{match.group(1)}'
-
-
-def _follow_known_landing_page_redirect(response):
-    detail_url = _vsso_detail_url_from_hash(response.url)
-    if not detail_url:
-        return response
-
-    detail_response = requests.get(detail_url, headers=FETCH_HEADERS, timeout=10)
-    detail_response.raise_for_status()
-    return detail_response
+def _redirect_url_with_fragment(response):
+    for item in reversed(getattr(response, 'history', []) or []):
+        location = ''
+        headers = getattr(item, 'headers', None)
+        if hasattr(headers, 'get'):
+            location = headers.get('Location') or headers.get('location') or ''
+        if '#' in str(location):
+            return urljoin(getattr(item, 'url', '') or '', location)
+    return None
 
 
 def _flatten_crossref_value(value):
@@ -118,7 +106,6 @@ def _fetch_landing_page(doi, clean_html):
     url = f"https://doi.org/{_quote_doi(doi)}"
     response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
     response.raise_for_status()
-    response = _follow_known_landing_page_redirect(response)
     response.encoding = _select_response_encoding(response)
     content = response.text
     # if clean_html is not None:
@@ -128,7 +115,7 @@ def _fetch_landing_page(doi, clean_html):
 
     return {
         'content': content,
-        'url': response.url if isinstance(response.url, str) and response.url else url,
+        'url': _redirect_url_with_fragment(response) or (response.url if isinstance(response.url, str) and response.url else url),
         'source': 'doi.org',
     }
 
