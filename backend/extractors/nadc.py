@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 from html import unescape
 from typing import Any, Dict, Iterable, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import MetadataDict
@@ -17,6 +18,10 @@ PUBLISHER_ZH = '国家天文科学数据中心'
 PUBLISHER_EN = 'National Astronomical Data Center'
 CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b')
+FETCH_HEADERS = {
+    'User-Agent': 'Mozilla/5.0',
+    'Accept-Language': 'zh-CN,zh;q=0.9',
+}
 
 
 def _clean_text(value: Optional[Any]) -> Optional[str]:
@@ -101,6 +106,59 @@ def _valid_http_url(value: Optional[str], base_url: str = BASE_URL) -> Optional[
 
 def _selector_text(soup: BeautifulSoup, selector: str) -> Optional[str]:
     return _text_or_none(soup.select_one(selector))
+
+
+def _has_chinese(value: Optional[str]) -> bool:
+    return bool(value and re.search(r'[\u4e00-\u9fff]', value))
+
+
+def _fetch_chinese_html(url: str) -> Optional[str]:
+    parsed = urlparse(url or '')
+    if parsed.netloc.lower() != 'nadc.china-vo.org':
+        return None
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.pop('lang', None)
+    query['language'] = 'zh'
+    zh_url = urlunparse(parsed._replace(query=urlencode(query)))
+    try:
+        response = requests.get(zh_url, headers=FETCH_HEADERS, timeout=15)
+        response.raise_for_status()
+        response.encoding = response.encoding or 'utf-8'
+        return response.text
+    except Exception:
+        return None
+
+
+def _plain_lines(content: str) -> list[str]:
+    return [line for line in (_clean_text(item) for item in re.split(r'[\r\n]+', content or '')) if line]
+
+
+def _extract_plain_title(content: str) -> Optional[str]:
+    for line in _plain_lines(content):
+        if line in {'| NADC', 'NADC', '登录', '注册', 'English'}:
+            continue
+        if line.startswith(('http://', 'https://')):
+            continue
+        return line
+    return None
+
+
+def _extract_plain_label_value(content: str, labels: Iterable[str]) -> Optional[str]:
+    normalized_labels = {label.strip().rstrip(':：') for label in labels}
+    lines = _plain_lines(content)
+    for index, line in enumerate(lines):
+        normalized = line.rstrip(':：')
+        for label in normalized_labels:
+            prefix_match = re.match(rf'^{re.escape(label)}\s*[:：]\s*(.+)$', line, re.IGNORECASE)
+            if prefix_match:
+                return prefix_match.group(1)
+        if normalized not in normalized_labels:
+            continue
+        for value in lines[index + 1:]:
+            if value in {'♦', '· 数据访问 ·'}:
+                continue
+            return value
+    return None
 
 
 def _extract_paper_info_value(soup: BeautifulSoup, label: str) -> Optional[str]:
@@ -212,27 +270,60 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         return None
 
     soup = BeautifulSoup(content, 'html.parser')
+    full_text = soup.get_text('\n', strip=True)
+    if not _has_chinese(_selector_text(soup, '#title') or _extract_plain_title(full_text)):
+        chinese_html = _fetch_chinese_html(url)
+        if chinese_html:
+            chinese_soup = BeautifulSoup(chinese_html, 'html.parser')
+            chinese_text = chinese_soup.get_text('\n', strip=True)
+            if _has_chinese(_selector_text(chinese_soup, '#title') or _extract_plain_title(chinese_text)):
+                soup = chinese_soup
+                full_text = chinese_text
     paper_layout = bool(soup.select_one('#pd-title'))
-    title_zh = _first_non_empty(_selector_text(soup, '#title'), _selector_text(soup, '#pd-title'), title)
+    title_zh = _first_non_empty(
+        _selector_text(soup, '#title'),
+        _selector_text(soup, '#pd-title'),
+        _extract_plain_title(full_text),
+        title,
+    )
     if not title_zh:
         return None
 
-    title_en = _first_non_empty(_selector_text(soup, '#title_en'), _selector_text(soup, '#pd-title') if paper_layout else None)
+    title_en = _first_non_empty(
+        _selector_text(soup, '#title_en'),
+        _extract_plain_label_value(full_text, ['英文名称']),
+        _selector_text(soup, '#pd-title') if paper_layout else None,
+    )
     publish_date = _first_non_empty(
         _strip_updated_prefix(_selector_text(soup, '#updated')),
+        _strip_updated_prefix(_extract_plain_label_value(full_text, ['发布时间'])),
         _extract_paper_info_value(soup, 'Publication Date') if paper_layout else None,
     )
     description = _first_non_empty(_selector_text(soup, '#description'), _selector_text(soup, '#pd-description'))
-    keywords = _split_terms(_selector_text(soup, '#keywords'))
-    data_amount = _selector_text(soup, '#data_amount')
-    sharing_method = _selector_text(soup, '#sharemode')
-    sharing_scope = _selector_text(soup, '#sharescope')
-    procedure = _selector_text(soup, '#procedure')
-    doi = _extract_doi(_selector_text(soup, '#doi'), _extract_paper_info_value(soup, 'DOI'))
-    cstr_identifier = _extract_cstr(_selector_text(soup, '#cstr'), _extract_paper_info_value(soup, 'CSTR'))
-    ivo_identifier = _first_non_empty(_selector_text(soup, '#ivo'), _extract_paper_info_value(soup, 'VO Identifier'))
-    author_name = _first_non_empty(_selector_text(soup, '#author_name'), _selector_text(soup, '#pd-authors'))
-    author_email = _selector_text(soup, '#author_email')
+    if not description and publish_date:
+        lines = _plain_lines(full_text)
+        for index, line in enumerate(lines):
+            if line == f'发布时间：{publish_date}' or line == f'发布时间:{publish_date}':
+                description = lines[index + 1] if index + 1 < len(lines) else None
+                break
+    keywords = _split_terms(_first_non_empty(_selector_text(soup, '#keywords'), _extract_plain_label_value(full_text, ['关键字', '关键词'])))
+    data_amount = _first_non_empty(_selector_text(soup, '#data_amount'), _extract_plain_label_value(full_text, ['数据量']))
+    sharing_method = _first_non_empty(_selector_text(soup, '#sharemode'), _extract_plain_label_value(full_text, ['共享途径']))
+    sharing_scope = _first_non_empty(_selector_text(soup, '#sharescope'), _extract_plain_label_value(full_text, ['共享范围']))
+    procedure = _first_non_empty(_selector_text(soup, '#procedure'), _extract_plain_label_value(full_text, ['申请流程']))
+    doi = _extract_doi(_selector_text(soup, '#doi'), _extract_plain_label_value(full_text, ['DOI']), _extract_paper_info_value(soup, 'DOI'), full_text)
+    cstr_identifier = _extract_cstr(_selector_text(soup, '#cstr'), _extract_plain_label_value(full_text, ['CSTR']), _extract_paper_info_value(soup, 'CSTR'), full_text)
+    ivo_identifier = _first_non_empty(
+        _selector_text(soup, '#ivo'),
+        _extract_plain_label_value(full_text, ['VO标识符', 'VO Identifier']),
+        _extract_paper_info_value(soup, 'VO Identifier'),
+    )
+    author_name = _first_non_empty(
+        _selector_text(soup, '#author_name'),
+        _extract_plain_label_value(full_text, ['作者']),
+        _selector_text(soup, '#pd-authors'),
+    )
+    author_email = _first_non_empty(_selector_text(soup, '#author_email'), _extract_plain_label_value(full_text, ['邮件']))
     resource_id = _extract_resource_id(url)
     page_url = _valid_http_url(url) or (urljoin(BASE_URL, f'/res/{resource_id}/') if resource_id else None)
     access_links = _extract_access_links(soup)
@@ -300,10 +391,11 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     titles = [{'lang': 'zh', 'name': title_zh}]
     if title_en and title_en != title_zh:
         titles.append({'lang': 'en', 'name': title_en})
+    cstr_display = f'CSTR:{cstr_identifier}' if cstr_identifier else None
 
     core_zh: Dict[str, Any] = {
         'titles': titles,
-        'identifier': cstr_identifier,
+        'identifier': cstr_display,
         'creators': creators,
         'publisher': {
             'names': [
@@ -389,7 +481,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
 
     core_en: Dict[str, Any] = {
         'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
-        'identifier': cstr_identifier,
+        'identifier': cstr_display,
         'creators': creators,
         'publisher': {
             'names': [{'lang': 'en', 'name': PUBLISHER_EN}],

@@ -519,6 +519,16 @@ const WEBSITE_FORMAT_SUPPORT = [
         }
     },
     {
+        name: "NFGSDC 国家林业和草原科学数据中心",
+        rule: "nfgsdc",
+        domains: ["forestdata.cn/dataDetail.html", "api.forestdata.cn/ssl/portal.unauth/api/v1/Data/detail"],
+        resourceType: { zh: "数据集", en: "Dataset" },
+        summary: {
+            zh: "识别 NFGSDC 数据详情页，通过 Data/detail 接口格式化标题、CSTR、摘要、关键词、学科、时空范围、数据量、联系人和引用方式。",
+            en: "Handles NFGSDC data detail pages and formats title, CSTR, abstract, keywords, subjects, coverage, data size, contact details, and citation."
+        }
+    },
+    {
         name: "GEODATA 国家地球系统科学数据中心",
         rule: "geodata",
         domains: ["geodata.cn/main/face_science_detail"],
@@ -2694,7 +2704,7 @@ function normalizeCstrIdentifier(value) {
     while (/^CSTR\s*[:：]\s*/i.test(text)) {
         text = text.replace(/^CSTR\s*[:：]\s*/i, "").trim();
     }
-    const match = text.match(/^\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/);
+    const match = text.match(/^\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/);
     return match ? match[0] : "";
 }
 
