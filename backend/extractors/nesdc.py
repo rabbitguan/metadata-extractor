@@ -311,7 +311,7 @@ def _dataset_author(creator_text: Optional[str], email: Optional[str], contribut
         '工作单位': None,
         '电子邮箱': email,
         '工作贡献': '数据生产、整理与发布',
-        '作者简介': '；'.join(_split_terms(contributor_text)) or None,
+        '作者简介': None,
     }
 
 
@@ -423,10 +423,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             '关键词': keyword_values,
             '范围': {
                 '时间范围': _clean_text(_value(values, data, 'temporalCoverage')),
-                '空间范围': {
-                    '地理范围描述': _clean_text(_value(values, data, 'spatialCoverage')),
-                    '空间分辨率': _clean_text(_value(values, data, 'spatialResolution')),
-                },
+                '空间范围': _clean_text(_value(values, data, 'spatialCoverage')),
             },
             '语种': '中文',
             '文件内容': '；'.join(_unique_list([_value(values, data, 'dataSource'), _value(values, data, 'tag'), storage_type])) or None,

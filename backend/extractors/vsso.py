@@ -14,11 +14,18 @@ from .base import MetadataDict
 RULE_NAME = 'VSSO Metadata Detail'
 BASE_URL = 'https://vsso.nssdc.ac.cn'
 API_URL = f'{BASE_URL}/nssdc/coreMetadata/getDetail'
+LIST_API_URL = f'{BASE_URL}/nssdc/coreMetadata/coreMetadataList'
 API_HEADERS = {
     'User-Agent': 'metadata-extractor/1.0 (+https://localhost)',
     'Accept': 'application/json,text/plain,*/*',
     'Referer': f'{BASE_URL}/nssdc_zh/html/vssoinfo.html',
 }
+LIST_HEADERS = {
+    **API_HEADERS,
+    'Content-Type': 'application/json; charset=UTF-8',
+}
+DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
+CSTR_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
 
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
@@ -74,7 +81,7 @@ def _extract_id_text(soup: BeautifulSoup, element_id: str) -> Optional[str]:
     return _strip_label_value(_text_or_none(element))
 
 
-def _extract_link_id(url: str, html: str = '') -> Optional[str]:
+def _extract_link_id(url: str, html: str = '', title: str = '') -> Optional[str]:
     parsed = urlparse(url or '')
     if parsed.query:
         query = parse_qs(parsed.query)
@@ -87,11 +94,86 @@ def _extract_link_id(url: str, html: str = '') -> Optional[str]:
     match = re.search(r'vssoinfo\.html\?(\d+)', url or html)
     if match:
         return match.group(1)
+    return _resolve_link_id_from_identifiers(url, html, title)
+
+
+def _identifier_candidates(*values: str) -> list[str]:
+    seen = set()
+    candidates = []
+    text = '\n'.join(str(value or '') for value in values)
+
+    for match in DOI_PATTERN.findall(text):
+        candidate = match.strip().strip('.,;，；')
+        key = candidate.lower()
+        if candidate and key not in seen:
+            seen.add(key)
+            candidates.append(candidate)
+
+    for match in CSTR_PATTERN.findall(text):
+        candidate = match.strip().strip('.,;，；')
+        key = candidate.lower()
+        if candidate and key not in seen:
+            seen.add(key)
+            candidates.append(candidate)
+
+    return candidates
+
+
+def _resolve_link_id_from_identifiers(*values: str) -> Optional[str]:
+    for candidate in _identifier_candidates(*values):
+        link_id = _search_link_id(candidate)
+        if link_id:
+            return link_id
     return None
 
 
-def _fetch_detail_data(url: str, html: str = '') -> Dict[str, Any]:
-    link_id = _extract_link_id(url, html)
+def _search_link_id(keyword: str) -> Optional[str]:
+    payload = {
+        'releaseStatus': 5,
+        'releaseDateSort': 'DESC',
+        'datasetViewsSort': {'sort': None},
+        'searchKeywords': keyword,
+        'pageSize': 10,
+        'pageNum': 1,
+        'slidervalue': 5,
+    }
+    try:
+        response = requests.post(LIST_API_URL, json=payload, headers=LIST_HEADERS, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+    except Exception as error:
+        print(f'[WARNING] VSSO list API failed for keyword={keyword}: {error}')
+        return None
+
+    if not isinstance(result, dict) or result.get('code') != 0:
+        return None
+
+    data = result.get('data') if isinstance(result.get('data'), dict) else {}
+    dataset_page = data.get('datasetPage') if isinstance(data.get('datasetPage'), dict) else {}
+    datasets = dataset_page.get('datasetList') or data.get('coreMetadataList') or data.get('mergedList') or []
+    if not isinstance(datasets, list):
+        return None
+
+    normalized_keyword = keyword.strip().lower()
+    for item in datasets:
+        if not isinstance(item, dict):
+            continue
+        doi = _clean_text(item.get('doi')) or ''
+        cstr = _clean_text(item.get('cstr')) or ''
+        if normalized_keyword not in {doi.lower(), cstr.lower(), cstr.lower().removeprefix('cstr:')}:
+            continue
+        link_id = _clean_text(item.get('linkId'))
+        if link_id:
+            return link_id
+
+    for item in datasets:
+        if isinstance(item, dict) and item.get('linkId'):
+            return _clean_text(item.get('linkId'))
+    return None
+
+
+def _fetch_detail_data(url: str, html: str = '', title: str = '') -> Dict[str, Any]:
+    link_id = _extract_link_id(url, html, title)
     if not link_id:
         return {}
     try:
@@ -209,6 +291,8 @@ def matches(url: str, title: str, content: str) -> bool:
 
     return bool(
         'vsso.nssdc.ac.cn/nssdc_zh/html/vssoinfo.html' in normalized_url
+        or 'vsso.nssdc.ac.cn/page.html#/view/' in normalized_url
+        or 'vsso.nssdc.ac.cn/mhsy/html/datadec.html' in normalized_url
         or 'page-vssoinfo' in combined
         or 'virtual space science observatory' in combined
         or '空间科学虚拟观测台' in combined
@@ -221,7 +305,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
 
     soup = BeautifulSoup(content, 'html.parser')
     html = content
-    data = _fetch_detail_data(url, html)
+    data = _fetch_detail_data(url, html, title)
 
     title_zh = _first_non_empty(_data_value(data, 'dataNameCh'), _extract_id_text(soup, 'dataNameCh'), title, _text_or_none(soup.title), url)
     title_en = _first_non_empty(_data_value(data, 'dataNameEn'), _extract_id_text(soup, 'dataNameEn'), title_zh, title)

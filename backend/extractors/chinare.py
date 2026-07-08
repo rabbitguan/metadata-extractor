@@ -16,6 +16,21 @@ RULE_NAME = 'CHINARE Dataset Detail'
 BASE_URL = 'https://datacenter.chinare.org.cn'
 PUBLISHER_ZH = '国家极地科学数据中心'
 PUBLISHER_EN = 'National Arctic and Antarctic Data Center'
+DEFAULT_USE_AGREEMENT = '国家极地科学数据中心数据共享协议'
+DEFAULT_USE_AGREEMENT_DETAIL = (
+    '使用协议 为尊重知识产权，保障数据作者的权益，推动数据共享，'
+    '用户在申请和使用国家极地科学数据中心发布的数据时应遵守以下协议：'
+    '（1）用户不得恶意下载或传播数据，在使用数据时，不得损害数据作者的权益；'
+    '（2）用户在使用数据时，需要按照引用格式在参考文献或适当的位置标注数据来源；'
+    '（3）用户在使用数据时，应在成果中说明数据的来源。参考格式如下：'
+    '中文格式：数据来源于国家极地科学数据中心 (https://datacenter.chinare.org.cn)；'
+    '英文格式：The data set is provided by National Arctic and Antarctic Data Center (https://datacenter.chinare.org.cn)'
+    '（4）本数据禁止用于商业用途。如需进行商业利用，请与国家极地科学数据中心和数据原作者协商，'
+    '签署书面使用协议，获得特殊许可；'
+    '（5）增值服务用户或以任何形式散发和传播（包括通过计算机服务器）“数据”的用户需要与国家极地科学数据中心签署书面协议，获得许可；'
+    '（6）摘取“数据”中的部分记录创作新数据的作者需要遵循10%引用原则，'
+    '即从本数据集中摘取的数据记录少于新数据集总记录量的10%，同时需要对摘取的数据记录标注数据来源。'
+)
 CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b')
 UUID_PATTERN = re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', re.I)
@@ -44,6 +59,15 @@ def _first_non_empty(*values: Optional[Any]) -> Optional[str]:
         if cleaned:
             return cleaned
     return None
+
+
+def _clean_person_name(value: Optional[Any]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    if re.fullmatch(r'[\u4e00-\u9fff\s·•]+', text):
+        return re.sub(r'\s+', '', text)
+    return text
 
 
 def _unique_list(values: Iterable[Any]) -> list[str]:
@@ -192,7 +216,31 @@ def _organization_agent(name: Optional[str], organization: Optional[str] = None)
     }
 
 
+def _person_agent(name: Optional[str], organization: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    person_name = _clean_person_name(name)
+    if not person_name:
+        return None
+    affiliation_name = _clean_text(organization)
+    return {
+        'type': 'Person',
+        'person': {
+            'names': [{'lang': 'zh', 'name': person_name}],
+            'emails': None,
+            'identifiers': None,
+            'affiliations': [{
+                'names': [{'lang': 'zh', 'name': affiliation_name}],
+                'identifiers': None,
+            }] if affiliation_name else None,
+        },
+        'affiliation': None,
+    }
+
+
 def _creators(data: Dict[str, Any]) -> list[Dict[str, Any]]:
+    data_author = _person_agent(data.get('data_author'), data.get('data_author_org'))
+    if data_author:
+        return [data_author]
+
     authors = data.get('authors') if isinstance(data.get('authors'), list) else []
     creators: list[Dict[str, Any]] = []
     for author in authors:
@@ -234,7 +282,7 @@ def _contributors(data: Dict[str, Any]) -> Optional[list[Dict[str, Any]]]:
 
 def _spatial_range(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     values = {
-        '地理范围描述': _first_non_empty(data.get('sites_name'), data.get('survey_station'), data.get('keyword_place')),
+        '地理范围描述': _first_non_empty(data.get('survey_area'), data.get('sites_name'), data.get('survey_station'), data.get('keyword_place')),
         '西部边界经度': _clean_text(data.get('longitude_west')),
         '东部边界经度': _clean_text(data.get('longitude_east')),
         '南部边界纬度': _clean_text(data.get('latitude_south')),
@@ -247,7 +295,7 @@ def _spatial_range(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _time_range(data: Dict[str, Any]) -> Optional[Dict[str, str]]:
     values = {
-        '开始时间': _clean_text(data.get('survey_start_date')),
+        '起始时间': _clean_text(data.get('survey_start_date')),
         '结束时间': _clean_text(data.get('survey_end_date')),
     }
     return {key: value for key, value in values.items() if value} or None
@@ -263,6 +311,7 @@ def _file_content(data: Dict[str, Any]) -> Optional[str]:
         data.get('survey_method'),
         data.get('survey_instrument'),
         data.get('survey_factor'),
+        data.get('quality'),
         data.get('quality_information'),
         data.get('normative_reference'),
     ])) or None
@@ -288,9 +337,10 @@ def _funders(data: Dict[str, Any]) -> Optional[list[Dict[str, Optional[str]]]]:
 
 def _rights(data: Dict[str, Any]) -> Optional[list[Dict[str, Any]]]:
     share_method = _clean_text(data.get('share_method'))
-    agreement = _clean_text(data.get('use_agreement'))
+    agreement = DEFAULT_USE_AGREEMENT
     protection = _clean_text(data.get('data_protection_period'))
-    description = '；'.join(_unique_list([share_method, agreement, protection])) or None
+    agreement_detail = DEFAULT_USE_AGREEMENT_DETAIL or _clean_text(data.get('use_agreement_detail'))
+    description = '；'.join(_unique_list([share_method, agreement, protection, agreement_detail])) or None
     if not description:
         return None
     return [{
@@ -303,6 +353,17 @@ def _rights(data: Dict[str, Any]) -> Optional[list[Dict[str, Any]]]:
 
 
 def _dataset_author(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    author_name = _clean_person_name(data.get('data_author'))
+    author_org = _clean_text(data.get('data_author_org'))
+    if author_name or author_org:
+        return {
+            '作者姓名': [author_name] if author_name else ([author_org] if author_org else None),
+            '工作单位': author_org,
+            '电子邮箱': None,
+            '工作贡献': '数据集建设、发布与服务',
+            '作者简介': None,
+        }
+
     authors = data.get('authors') if isinstance(data.get('authors'), list) else []
     names = _unique_list(author.get('name') for author in authors if isinstance(author, dict))
     organizations = _unique_list(author.get('organization') for author in authors if isinstance(author, dict))
@@ -376,9 +437,15 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     funders = _funders(data)
     urls = _unique_list([page_url, api_url])
     citation = _first_non_empty(data.get('data_citation'), data.get('citation_format'), data.get('references'), data.get('references_en'))
-    data_amount = '；'.join(_unique_list([data.get('filesize_name'), data.get('filesize')])) or None
+    data_amount = _first_non_empty(data.get('filesize_name'), data.get('filesize'))
     data_format = _clean_text(data.get('format'))
     domain_identifier = cstr_identifier or doi or detail_id
+    agreement = _first_non_empty(DEFAULT_USE_AGREEMENT, data.get('use_agreement'))
+    usage_statement = _first_non_empty(
+        DEFAULT_USE_AGREEMENT_DETAIL,
+        data.get('use_agreement_detail'),
+        '；'.join(_unique_list([data.get('share_method'), data.get('use_agreement'), data.get('data_protection_period')])) or None,
+    )
 
     core_zh: Dict[str, Any] = {
         'titles': title_values,
@@ -425,10 +492,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         },
         '数据集服务信息': {
             '数据集引用格式': citation,
-            '数据集共享许可协议': _clean_text(data.get('use_agreement')),
-            '数据集使用声明': '；'.join(_unique_list([data.get('share_method'), data.get('use_agreement'), data.get('data_protection_period')])) or None,
+            '数据集共享许可协议': agreement,
+            '数据集使用声明': usage_statement,
             '数据集下载地址': None,
-            '数据论文访问地址': page_url,
+            '数据集访问地址': page_url,
         },
     }
 
@@ -439,20 +506,23 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'descriptions': [{'lang': 'en', 'description': data.get('summary_en')}] if _clean_text(data.get('summary_en')) else None,
             'keywords': [{'lang': 'en', 'keyword': _split_terms(data.get('keyword_other_en'), data.get('keyword_place_en'))}] if _split_terms(data.get('keyword_other_en'), data.get('keyword_place_en')) else None,
             'publisher': {'names': [{'lang': 'en', 'name': PUBLISHER_EN}], 'identifiers': None},
+            'creators': None,
+            'contributors': None,
+            'funders': None,
         }]},
         'Dataset Basic Information': {
             'Identifier': domain_identifier,
             'Title': _clean_text(data.get('entry_title_en')),
             'Abstract': _clean_text(data.get('summary_en')),
             'Keywords': _split_terms(data.get('keyword_other_en'), data.get('keyword_place_en')) or None,
-            'Coverage': {
+            'Scope': {
                 'Time Range': _time_range(data),
                 'Spatial Range': _spatial_range(data),
             },
             'Language': language,
             'File Content': _file_content(data),
             'Project/Funder': funders,
-            'Data Size': data_amount,
+            'Data Volume': data_amount,
             'Data Format': data_format,
             'Dataset Authors': _dataset_author(data),
         },
@@ -463,10 +533,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         },
         'Dataset Service Information': {
             'Dataset Citation Format': citation,
-            'Dataset License': _clean_text(data.get('use_agreement')),
-            'Dataset Usage Statement': '；'.join(_unique_list([data.get('share_method'), data.get('use_agreement'), data.get('data_protection_period')])) or None,
+            'Dataset License': agreement,
+            'Dataset Usage Statement': usage_statement,
             'Dataset Download URL': None,
-            'Dataset Paper URL': page_url,
+            'Dataset Access URL': page_url,
         },
     }
 

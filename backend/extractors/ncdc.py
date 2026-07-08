@@ -392,7 +392,8 @@ def _extract_file_list(soup: BeautifulSoup) -> list[str]:
             if len(cells) >= 2:
                 file_name = _text_or_none(cells[1])
                 if file_name:
-                    file_names.append(file_name)
+                    file_size = _text_or_none(cells[2]) if len(cells) >= 3 else None
+                    file_names.append(f'{file_name}（{file_size}）' if file_size else file_name)
         if file_names:
             return file_names
     return []
@@ -440,6 +441,16 @@ def _extract_range(soup: BeautifulSoup) -> Dict[str, Optional[object]]:
     }
 
 
+def _extract_citation_authors(citation: Optional[str]) -> list[str]:
+    text = _clean_text(citation)
+    if not text:
+        return []
+    author_text = re.split(r'[.。]', text, maxsplit=1)[0]
+    if not author_text or _looks_like_url(author_text):
+        return []
+    return _split_terms(author_text)
+
+
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip().lower()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
@@ -475,8 +486,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     reference_citation = _extract_reference_citation(soup)
     license_text = _extract_license_text(soup)
 
-    contributors = _unique_list(_extract_definition_list_values(soup, ['数据贡献者']))
-    creators = None
+    data_contributors = _unique_list(_extract_definition_list_values(soup, ['数据贡献者']))
+    creators = _unique_list([*_extract_citation_authors(reference_citation), *data_contributors]) or None
+    contributors = None
     publisher = '国家冰川冻土沙漠科学数据中心'
 
     tags = _extract_list_values(soup, ['主题', '时间', '地点'])
@@ -492,24 +504,28 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     resolution = range_info['resolution']
     projection = range_info['projection']
 
-    spatial_range = None
+    spatial_range = location
     if location or any([soup.find(string=re.compile(r'东:')), soup.find(string=re.compile(r'西:')), soup.find(string=re.compile(r'南:')), soup.find(string=re.compile(r'北:'))]):
         east = _clean_text(re.search(r'东:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'东:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
         west = _clean_text(re.search(r'西:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'西:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
         south = _clean_text(re.search(r'南:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'南:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
         north = _clean_text(re.search(r'北:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'北:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
-        spatial_range = {
-            '地理范围描述': location,
-            '西部边界经度': west,
-            '东部边界经度': east,
-            '南部边界纬度': south,
-            '北部边界纬度': north,
-        }
+        if not location and any([east, west, south, north]):
+            spatial_range = '；'.join(
+                item
+                for item in [
+                    f'西部边界经度: {west}' if west else None,
+                    f'东部边界经度: {east}' if east else None,
+                    f'南部边界纬度: {south}' if south else None,
+                    f'北部边界纬度: {north}' if north else None,
+                ]
+                if item
+            ) or None
 
     cstr_identifier = _extract_cstr(cstr_text or '') or _extract_cstr(reference_citation or '') or _extract_cstr(full_text)
     doi_identifier = _extract_doi(doi_text or '') or _extract_doi(reference_citation or '') or _extract_doi(full_text)
     identifier = cstr_identifier or doi_identifier
-    alternative_identifiers = [item for item in [doi_identifier] if item]
+    alternative_identifiers = [{'type': 'DOI', 'identifier': doi_identifier}] if doi_identifier else None
 
     funders = _extract_project_support(soup)
     contact_info = _extract_contact_info(soup)
@@ -535,8 +551,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '关键词': keywords,
         '学科分类': _first_non_empty(*keywords) or '荒漠化',
         '语言': '中文',
-        '贡献者': contributors if contributors else None,
-        '替代标识符': alternative_identifiers if alternative_identifiers else None,
+        '贡献者': contributors,
+        '替代标识符': alternative_identifiers,
         '关联标识符': None,
         '权限': rights_text,
         '资助者': funders,
@@ -607,8 +623,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Keywords': keywords,
         'Discipline Classification': _first_non_empty(*keywords) or 'Desertification',
         'Language': 'Chinese',
-        'Contributors': contributors if contributors else None,
-        'Alternative Identifiers': alternative_identifiers if alternative_identifiers else None,
+        'Contributors': contributors,
+        'Alternative Identifiers': alternative_identifiers,
         'Related Identifiers': None,
         'Rights': rights_text,
         'Funders': funders,
