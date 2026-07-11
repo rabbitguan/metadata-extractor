@@ -37,21 +37,13 @@
                     <span class="admin-nav-icon">▣</span>
                     <span>系统运行总览</span>
                 </button>
-                <button id="dashboardServiceButton" class="admin-nav-item" type="button">
+                <button id="dashboardCoreToDomainButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">⌁</span>
-                    <span>服务功能接口</span>
+                    <span>核心到领域映射</span>
                 </button>
-                <button id="dashboardFormatButton" class="admin-nav-item" type="button">
+                <button id="dashboardDomainToCoreButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">◇</span>
-                    <span>网页格式化支持</span>
-                </button>
-                <button id="dashboardLogsButton" class="admin-nav-item" type="button">
-                    <span class="admin-nav-icon">□</span>
-                    <span>历史任务记录</span>
-                </button>
-                <button id="dashboardApiButton" class="admin-nav-item" type="button">
-                    <span class="admin-nav-icon">◫</span>
-                    <span>接口配置文档</span>
+                    <span>领域到核心映射</span>
                 </button>
             </aside>
             <main class="admin-content">
@@ -98,8 +90,10 @@
         <header class="admin-topbar tool-topbar">
             <h1>元数据双向映射工具</h1>
             <button id="brandHomeButton" class="brand" type="button" hidden>元数据双向映射工具</button>
-            <button id="openApiDocsButton" class="nav-log-button" type="button" hidden>接口文档</button>
-            <button id="openLogsButton" class="nav-log-button" type="button" hidden>转换日志</button>
+            <div class="tool-page-links">
+                <button id="openLogsButton" class="nav-log-button" type="button">历史任务记录</button>
+                <button id="openApiDocsButton" class="nav-log-button" type="button">接口配置文档</button>
+            </div>
             <div class="tool-topbar-actions">
                 <div class="lang-toggle" role="group" aria-label="Language switcher">
                     <button id="langZhButton" class="lang-button active" type="button" data-language="zh">中</button>
@@ -118,21 +112,13 @@
                     <span class="admin-nav-icon">▣</span>
                     <span>系统运行总览</span>
                 </button>
-                <button id="toolServiceButton" class="admin-nav-item active" type="button">
+                <button id="toolCoreToDomainButton" class="admin-nav-item active" type="button">
                     <span class="admin-nav-icon">⌁</span>
-                    <span>服务功能接口</span>
+                    <span>核心到领域映射</span>
                 </button>
-                <button id="toolFormatButton" class="admin-nav-item" type="button">
+                <button id="toolDomainToCoreButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">◇</span>
-                    <span>网页格式化支持</span>
-                </button>
-                <button id="toolLogsButton" class="admin-nav-item" type="button">
-                    <span class="admin-nav-icon">□</span>
-                    <span>历史任务记录</span>
-                </button>
-                <button id="toolApiButton" class="admin-nav-item" type="button">
-                    <span class="admin-nav-icon">◫</span>
-                    <span>接口配置文档</span>
+                    <span>领域到核心映射</span>
                 </button>
             </aside>
             <div class="tool-content">
@@ -178,8 +164,30 @@
                 </div>
             </section>
 
-            <div class="start-actions">
-                <section class="start-menu">
+            <section class="api-key-panel" aria-label="大模型 API Key 设置">
+                <div>
+                    <label id="llmApiKeyHomeLabel" for="llmApiKeyHomeInput">大模型 API Key（可选）</label>
+                    <p id="llmApiKeyHomeHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
+                </div>
+                <div class="api-key-controls">
+                    <label class="sr-only" id="llmProviderHomeLabel" for="llmProviderHomeSelect">大模型平台</label>
+                    <select id="llmProviderHomeSelect" class="form-select" aria-labelledby="llmProviderHomeLabel"></select>
+                    <input id="llmApiKeyHomeInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
+                </div>
+            </section>
+
+            <div class="mapping-home">
+                <section class="mapping-intro">
+                    <p id="mappingIntroKicker" class="mapping-intro-kicker">功能说明</p>
+                    <h2 id="mappingIntroTitle">领域元数据到核心元数据</h2>
+                    <p id="mappingIntroDescription">面向已经存在于网页、JSON 或 XML 文件中的领域元数据，系统会抽取资源描述信息，并按照核心元数据规范进行整理。</p>
+                    <ul class="mapping-intro-list">
+                        <li id="mappingIntroPointA">适用于数据集、数据论文、标准文献、生态科学数据等多种资源描述。</li>
+                        <li id="mappingIntroPointB">系统会保留可识别的标题、标识符、摘要、关键词、责任者、时间、空间范围等核心字段。</li>
+                        <li id="mappingIntroPointC">转换结果可在页面中查看、切换中英文结构，并下载为标准 JSON。</li>
+                    </ul>
+                </section>
+                <section id="domainToCorePanel" class="start-menu">
                     <div class="start-menu-head">
                         <h2 id="domainToCoreTitle">领域元数据到核心元数据</h2>
                         <p id="domainToCoreHint">从 URL 或文件内容抽取并映射为核心元数据</p>
@@ -195,7 +203,7 @@
                         </button>
                     </div>
                 </section>
-                <section class="start-menu">
+                <section id="coreToDomainPanel" class="start-menu">
                     <div class="start-menu-head">
                         <h2 id="coreToDomainTitle">核心元数据到领域元数据</h2>
                         <p id="coreToDomainHint">通过标识符解析资源并补全领域元数据</p>
@@ -218,6 +226,18 @@
                     <button id="downloadButton" class="btn primary" type="button">下载</button>
                 </div>
             </div>
+
+            <section class="api-key-panel" aria-label="大模型 API Key 设置">
+                <div>
+                    <label id="llmApiKeyLabel" for="llmApiKeyInput">大模型 API Key（可选）</label>
+                    <p id="llmApiKeyHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
+                </div>
+                <div class="api-key-controls">
+                    <label class="sr-only" id="llmProviderLabel" for="llmProviderSelect">大模型平台</label>
+                    <select id="llmProviderSelect" class="form-select" aria-labelledby="llmProviderLabel"></select>
+                    <input id="llmApiKeyInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
+                </div>
+            </section>
 
             <section id="urlPanel" class="input-panel" hidden>
                 <h2 id="urlTitle">输入 URL</h2>
@@ -315,7 +335,7 @@
             <div class="log-header">
                 <button id="closeApiDocsButton" class="btn secondary" type="button">返回主页</button>
                 <div>
-                    <h2 id="apiDocsTitle">接口文档</h2>
+                    <h2 id="apiDocsTitle">接口配置文档</h2>
                     <p id="apiDocsSubtitle">后端接口基址：/</p>
                 </div>
             </div>
@@ -333,6 +353,6 @@
         </div>
     </section>
 
-    <script src="app.js?v=20260705-api-docs-update"></script>
+    <script src="app.js?v=20260711-llm-provider-select"></script>
 </body>
 </html>

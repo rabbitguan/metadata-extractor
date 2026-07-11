@@ -13,7 +13,7 @@ from cstr_resolver import resolve_cstr, resolve_cstr_landing_page, resolve_cstr_
 from doi_resolver import resolve_doi, resolve_doi_landing_page, resolve_doi_metadata
 from dynamic_renderer import render_url_content
 from extractors.manager import extract_metadata
-from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN
+from llm_api import qwen_chat, LABEL_TRANSLATIONS_EN, _clean_api_key
 from get_id import get_typed_identifiers
 from identifier import process_source_code
 from upload_rule_extractor import extract_upload_metadata
@@ -1903,12 +1903,12 @@ def _resource_type_from_domain(domain_value, language='zh'):
     }.get(domain, '其他')
 
 
-def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto', persist_history=True):
+def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto', persist_history=True, llm_api_key='', llm_provider='siliconflow'):
     if strategy == 'upload_rule':
         llm_answer = normalize_llm_answer(extract_upload_metadata(text, title=title))
     else:
         llm_answer = normalize_llm_answer(
-            qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy)
+            qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy, api_key=llm_api_key, provider=llm_provider)
         )
     merged_answer = _build_unified_metadata(llm_answer)
 
@@ -1998,6 +1998,24 @@ def _metadata_source_for_identifier(identifier_type, identifier):
     raise ValueError(f'Unsupported identifier type: {identifier_type}')
 
 
+def _build_rule_or_llm_payload(content, mode, url='', title='', html='', llm_api_key='', llm_provider='siliconflow'):
+    try:
+        return build_rule_metadata_payload(content, mode, url=url, title=title, html=html)
+    except Exception as rule_error:
+        print(f"[LLM Fallback] Rule extraction failed for {url or title}: {rule_error}")
+        return build_metadata_payload(
+            content,
+            mode,
+            url=url,
+            title=title,
+            html=html,
+            strategy='llm',
+            persist_history=False,
+            llm_api_key=llm_api_key,
+            llm_provider=llm_provider,
+        )
+
+
 def _extract_identifiers_from_source(content='', payload=None):
     chunks = [str(content or '')]
     if payload is not None:
@@ -2023,12 +2041,20 @@ def _extract_identifiers_from_source(content='', payload=None):
     return identifiers
 
 
-def _build_payload_from_identifier_source(source_item, mode):
+def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
     resolved = source_item.get('resolved') or {}
     content = resolved.get('content') or ''
     url = resolved.get('url') or ''
     title = resolved.get('title') or source_item.get('identifier') or ''
-    payload = build_rule_metadata_payload(content, mode, url=url, title=title, html='')
+    payload = _build_rule_or_llm_payload(
+        content,
+        mode,
+        url=url,
+        title=title,
+        html='',
+        llm_api_key=llm_api_key,
+        llm_provider=llm_provider,
+    )
 
     supplemental_results = []
     if source_item.get('priority') in {'cstr', 'doi'}:
@@ -2042,12 +2068,14 @@ def _build_payload_from_identifier_source(source_item, mode):
                     f"(dynamic_render={DYNAMIC_RENDER_MODE})"
                 )
                 supplemental_page = fetch_url_content(supplemental_url, dynamic_render='auto')
-                supplemental_payload = build_rule_metadata_payload(
+                supplemental_payload = _build_rule_or_llm_payload(
                     supplemental_page.get('text', ''),
                     mode,
                     url=supplemental_url,
                     title=supplemental_page.get('title', ''),
                     html=supplemental_page.get('html', ''),
+                    llm_api_key=llm_api_key,
+                    llm_provider=llm_provider,
                 )
                 payload = _merge_metadata_payload_missing(payload, supplemental_payload)
                 supplemental_results.append({
@@ -2157,7 +2185,7 @@ def _collect_identifier_sources(identifier_type, identifier, mode):
     return sources, source_results
 
 
-def _merge_identifier_source_payloads(sources, mode):
+def _merge_identifier_source_payloads(sources, mode, llm_api_key='', llm_provider='siliconflow'):
     payloads_by_priority = {'web': [], 'cstr': [], 'doi': []}
     source_results = []
     supplemental_results = []
@@ -2165,7 +2193,12 @@ def _merge_identifier_source_payloads(sources, mode):
     for source_item in sources:
         resolved = source_item.get('resolved') or {}
         try:
-            payload, source_supplemental = _build_payload_from_identifier_source(source_item, mode)
+            payload, source_supplemental = _build_payload_from_identifier_source(
+                source_item,
+                mode,
+                llm_api_key=llm_api_key,
+                llm_provider=llm_provider,
+            )
             payloads_by_priority.setdefault(source_item.get('priority'), []).append(payload)
             supplemental_results.extend(source_supplemental)
             source_results.append({
@@ -2204,6 +2237,8 @@ def _merge_identifier_source_payloads(sources, mode):
 
 def handle_identifier_request(data):
     mode = data.get('mode', 'common')
+    llm_api_key = _clean_api_key(data.get('llm_api_key') or data.get('api_key') or '')
+    llm_provider = str(data.get('llm_provider') or data.get('provider') or 'siliconflow').strip().lower()
     identifiers = extract_doi_cstr_identifiers(collect_identifier_text(data))
     if not identifiers:
         error_payload = {'message': 'No DOI or CSTR identifier found'}
@@ -2219,7 +2254,12 @@ def handle_identifier_request(data):
         try:
             print(f"Processing identifier sources for {identifier_type.upper()} {identifier}")
             sources, resolve_results = _collect_identifier_sources(identifier_type, identifier, mode)
-            payload, source_results, supplemental_results = _merge_identifier_source_payloads(sources, mode)
+            payload, source_results, supplemental_results = _merge_identifier_source_payloads(
+                sources,
+                mode,
+                llm_api_key=llm_api_key,
+                llm_provider=llm_provider,
+            )
 
             if payload is None:
                 raise ValueError('No metadata payload generated')
@@ -2254,6 +2294,22 @@ def handle_identifier_request(data):
                 'source': 'merged',
                 'status': 'error',
                 'message': 'Invalid bilingual JSON format from LLM',
+                'updated_at': datetime.utcnow().isoformat() + 'Z',
+            })
+        except Exception as error:
+            print(f"Identifier Processing Error: {error}")
+            error_message = str(error)
+            if '401' in error_message or 'Invalid token' in error_message or 'Unauthorized' in error_message:
+                message = 'Invalid LLM API key. Please check the selected LLM provider and API Key.'
+            else:
+                message = f'Failed to process identifier: {error}'
+            results.append({
+                'identifier': _normalize_queried_cstr(identifier) if identifier_type == 'cstr' else identifier,
+                'type': identifier_type,
+                'resolved_url': '',
+                'source': 'merged',
+                'status': 'error',
+                'message': message,
                 'updated_at': datetime.utcnow().isoformat() + 'Z',
             })
 
@@ -2304,6 +2360,8 @@ def handle_register_request(data):
     mode = data.get('mode', 'common')
     strategy = data.get('strategy', 'auto')
     force_reanalyze = _parse_bool(data.get('force_reanalyze', False))
+    llm_api_key = _clean_api_key(data.get('llm_api_key') or data.get('api_key') or '')
+    llm_provider = str(data.get('llm_provider') or data.get('provider') or 'siliconflow').strip().lower()
 
     if source == 'url':
         url = str(data.get('url') or '').strip()
@@ -2346,11 +2404,11 @@ def handle_register_request(data):
         strategy = 'upload_rule'
     print("Processing text" if strategy != 'upload_rule' else "Using upload rule extractor")
     print(
-        f"[Request Debug] strategy={strategy}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
+        f"[Request Debug] strategy={strategy}, llm_provider={llm_provider or 'siliconflow'}, has_llm_api_key={bool(llm_api_key)}, text_len={len(text or '')}, html_len={len(html or '')}, url={url}"
     )
 
     try:
-        merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy)
+        merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy, llm_api_key=llm_api_key, llm_provider=llm_provider)
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
         if strategy == 'upload_rule':
@@ -2358,6 +2416,12 @@ def handle_register_request(data):
         return jsonify({"status": "error", "message": "Invalid bilingual JSON format from LLM"}), 400
     except Exception as error:
         print(f"Processing Error: {error}")
+        error_message = str(error)
+        if '401' in error_message or 'Invalid token' in error_message or 'Unauthorized' in error_message:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid LLM API key. Please check the API Key entered on the page or the platform default SILICONFLOW_API_KEY."
+            }), 401
         return jsonify({"status": "error", "message": f"Failed to process text: {error}"}), 500
 
     print("Processing complete")

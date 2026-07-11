@@ -665,14 +665,38 @@ const UI_TEXT = {
         startTitle: "元数据双向映射工具",
         startDescription: "请选择分析方式：领域元数据到核心元数据 / 核心元数据到领域元数据",
         domainToCoreTitle: "领域元数据到核心元数据",
-        domainToCoreHint: "从 URL 或文件内容抽取并映射为核心元数据",
+        domainToCoreHint: "从 URL 或文件内容抽取并映射为核心元数据，适合把分散的领域描述整理成统一规范。",
         coreToDomainTitle: "核心元数据到领域元数据",
-        coreToDomainHint: "通过标识符解析资源并补全领域元数据",
+        coreToDomainHint: "通过 DOI/CSTR 标识符解析资源，在核心元数据基础上补充领域结构。",
+        llmApiKeyLabel: "大模型 API Key（可选）",
+        llmApiKeyHint: "系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。",
+        llmApiKeyPlaceholder: "sk-...",
+        mappingIntroKicker: "功能说明",
+        mappingIntro: {
+            domainToCore: {
+                title: "领域到核心映射",
+                description: "面向已经存在于网页、JSON 或 XML 文件中的领域元数据，系统会抽取资源描述信息，并按照核心元数据规范进行整理，便于跨领域检索、汇交、交换和后续接口调用。",
+                points: [
+                    "适用于数据集、数据论文、标准文献、生态科学数据等多种资源描述。",
+                    "系统会保留可识别的标题、标识符、摘要、关键词、责任者、时间、空间范围、权限等核心字段。",
+                    "转换结果可在页面中查看、切换中英文结构，并下载为标准 JSON。"
+                ]
+            },
+            coreToDomain: {
+                title: "核心到领域映射",
+                description: "面向已有 DOI/CSTR 等核心标识符的资源，系统会解析标识符对应的信息，在核心元数据基础上生成可用于领域场景的结构化描述。",
+                points: [
+                    "适合从统一标识符出发，快速补全资源标题、发布机构、摘要、关键词与相关链接。",
+                    "系统会根据资源类型组织领域元数据，降低人工查找和字段对齐成本。",
+                    "支持单个或多个标识符批量解析，结果可逐条查看并导出。"
+                ]
+            }
+        },
         homeTitle: "返回主页",
-        openApiDocsTitle: "接口文档",
-        apiDocsTitle: "接口文档",
+        openApiDocsTitle: "接口配置文档",
+        apiDocsTitle: "接口配置文档",
         apiDocsSubtitle: "后端接口基址：",
-        openLogsTitle: "转换日志",
+        openLogsTitle: "历史任务记录",
         formatSupportTitle: "网页格式化支持",
         formatSupportSubtitle: "后端已内置专门格式化处理的网站规则",
         formatSupportRuleLabel: "后端规则",
@@ -748,6 +772,7 @@ const UI_TEXT = {
             missingText: "请输入需要分析的文本内容。",
             invalidJsonUpload: "JSON 格式不合法，请检查文件内容后重新上传。",
             invalidRequestBody: "请求体格式不正确，请检查接口调用参数。",
+            invalidLlmToken: "大模型平台或 API Key 不匹配。请确认已选择正确平台，并检查页面中填写的 API Key；如果未填写，请联系管理员确认平台默认 Key 配置。",
             httpPrefix: "接口请求失败，请确认后端服务是否正常运行："
         }
     },
@@ -755,14 +780,38 @@ const UI_TEXT = {
         startTitle: "Metadata Bidirectional Mapping Tool",
         startDescription: "Choose a mapping direction: domain metadata to core metadata / core metadata to domain metadata",
         domainToCoreTitle: "Domain Metadata to Core Metadata",
-        domainToCoreHint: "Extract URL or file content and map it to core metadata",
+        domainToCoreHint: "Extract URL or file content and map it to the core metadata schema.",
         coreToDomainTitle: "Core Metadata to Domain Metadata",
-        coreToDomainHint: "Resolve identifiers and enrich domain metadata",
+        coreToDomainHint: "Resolve DOI/CSTR identifiers and enrich domain metadata.",
+        llmApiKeyLabel: "LLM API Key (optional)",
+        llmApiKeyHint: "Built-in extraction rules run first. If rules cannot cover the page, this key is used for LLM-assisted analysis. Leave it empty to use the platform default.",
+        llmApiKeyPlaceholder: "sk-...",
+        mappingIntroKicker: "Function Guide",
+        mappingIntro: {
+            domainToCore: {
+                title: "Domain To Core Mapping",
+                description: "Use existing domain metadata from URLs, JSON, or XML files and normalize the resource description into the shared core metadata schema for search, exchange, and downstream API use.",
+                points: [
+                    "Works with resource descriptions such as datasets, data papers, standard literature, and ecological science data.",
+                    "Preserves recognizable titles, identifiers, abstracts, keywords, contributors, temporal and spatial coverage, and rights fields.",
+                    "Results can be reviewed on the page, switched between Chinese and English structures, and downloaded as standard JSON."
+                ]
+            },
+            coreToDomain: {
+                title: "Core To Domain Mapping",
+                description: "Start from core identifiers such as DOI or CSTR, resolve the corresponding resource information, and expand it into a domain-oriented metadata structure.",
+                points: [
+                    "Useful for completing titles, publishers, abstracts, keywords, and related links from unified identifiers.",
+                    "Organizes domain metadata according to resource type and reduces manual field alignment.",
+                    "Supports single or batch identifier parsing, with per-item review and export."
+                ]
+            }
+        },
         homeTitle: "Back To Home",
-        openApiDocsTitle: "API Docs",
-        apiDocsTitle: "API Docs",
+        openApiDocsTitle: "API Configuration",
+        apiDocsTitle: "API Configuration",
         apiDocsSubtitle: "Backend API base path: ",
-        openLogsTitle: "Conversion Logs",
+        openLogsTitle: "History",
         formatSupportTitle: "Website Formatting Support",
         formatSupportSubtitle: "Dedicated backend formatting rules are enabled for these websites",
         formatSupportRuleLabel: "Backend rule",
@@ -838,6 +887,7 @@ const UI_TEXT = {
             missingText: "Please enter text to analyze.",
             invalidJsonUpload: "Invalid JSON. Please check the file content and upload again.",
             invalidRequestBody: "Invalid request body. Please check the API parameters.",
+            invalidLlmToken: "The LLM provider and API key do not match. Select the correct provider and check the API key entered on the page; if none was entered, ask the administrator to verify the platform default key.",
             httpPrefix: "Request failed. Please check whether the backend service is running: "
         }
     }
@@ -991,6 +1041,8 @@ const API_DOCS_TEXT = {
                         strategy: "auto | rule",
                         force_reanalyze: false,
                         dynamic_render: "auto | always | never",
+                        llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
+                        llm_api_key: "可选。规则无法覆盖时用于大模型辅助分析",
                         url: "https://example.com/paper",
                         text: "页面正文文本",
                         html: "<html>页面 HTML，可选</html>",
@@ -1008,6 +1060,8 @@ const API_DOCS_TEXT = {
                     strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；rule 只用网站规则。source=upload 时无需传 strategy，后端固定使用 upload_rule 且不调用大模型。",
                     force_reanalyze: "是否跳过当前用户的 URL 历史缓存并重新分析。false 时命中缓存会直接返回历史结果。默认 false。",
                     dynamic_render: "source=url 时的动态渲染策略。auto 自动判断；always 强制浏览器渲染；never 只静态抓取。默认 auto。",
+                    llm_provider: "可选。大模型平台，支持 siliconflow / openai / deepseek / dashscope / zhipu。默认 siliconflow。",
+                    llm_api_key: "可选。后端仍优先使用内置网站规则；规则无法覆盖且需要调用大模型时，才使用该 Key。不传则使用平台默认配置。",
                     url: "待分析页面 URL。source=url 时必填；source=web/text 时可选，用于结果里的资源链接和历史缓存匹配。",
                     text: "待分析文本。source=text/web 时必填；source=url 时由后端抓取页面后自动生成。source=upload 不使用 text。",
                     file: "source=upload 时必填的文件字段，支持 .json/.xml 文件；必须使用 multipart/form-data 提交，字段名固定为 file。",
@@ -1035,6 +1089,8 @@ const API_DOCS_TEXT = {
                 request: {
                     source: "identifier",
                     mode: "common | domain",
+                    llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
+                    llm_api_key: "可选。规则无法覆盖时用于大模型辅助分析",
                     identifiers: "10.1000/xyz123 或 CSTR:14804.11.05.70.00079-V01",
                     text: "不传 identifiers 时，可从文本中自动提取 DOI/CSTR",
                     html: "不传 identifiers 和 text 时，可从 HTML 中自动提取 DOI/CSTR"
@@ -1042,6 +1098,8 @@ const API_DOCS_TEXT = {
                 requestFields: {
                     source: "输入来源。建议固定传 identifier；后端会按 DOI/CSTR 标识符解析资源页面。",
                     mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
+                    llm_provider: "可选。大模型平台，支持 siliconflow / openai / deepseek / dashscope / zhipu。默认 siliconflow。",
+                    llm_api_key: "可选。标识符解析到的资源页面规则无法覆盖时，才使用该 Key 调用大模型。不传则使用平台默认配置。",
                     identifiers: "DOI/CSTR 标识符，支持字符串或数组。优先级最高；可一次传多个 DOI/CSTR。",
                     text: "当 identifiers 不传时，后端会从 text 中自动识别 DOI/CSTR。",
                     html: "当 identifiers 和 text 都不传时，后端会从 html 中自动识别 DOI/CSTR。"
@@ -1092,6 +1150,8 @@ const API_DOCS_TEXT = {
                         strategy: "auto | rule",
                         force_reanalyze: false,
                         dynamic_render: "auto | always | never",
+                        llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
+                        llm_api_key: "Optional. Used for LLM-assisted analysis only when rules cannot cover the page",
                         url: "https://example.com/paper",
                         text: "Page text",
                         html: "<html>Optional page HTML</html>",
@@ -1109,6 +1169,8 @@ const API_DOCS_TEXT = {
                     strategy: "Extraction strategy. auto tries site rules first and falls back to the model; rule only uses site rules. For source=upload, do not send strategy; the backend always uses upload_rule and does not call the model.",
                     force_reanalyze: "Whether to skip the current user's URL history cache and reanalyze. Default: false.",
                     dynamic_render: "Dynamic rendering strategy for source=url. auto decides automatically; always forces browser rendering; never uses static fetching only. Default: auto.",
+                    llm_provider: "Optional LLM provider. Supports siliconflow / openai / deepseek / dashscope / zhipu. Default: siliconflow.",
+                    llm_api_key: "Optional. Built-in site rules still run first; this key is used only if rule extraction cannot cover the page and the model is needed. If omitted, the platform default is used.",
                     url: "Target page URL. Required for source=url; optional for web/text to preserve resource links and match history cache.",
                     text: "Text to analyze. Required for source=text/web; generated by the backend for source=url. source=upload does not use text.",
                     file: "Required file field for source=upload. Send a .json/.xml file with multipart/form-data; the field name must be file.",
@@ -1136,6 +1198,8 @@ const API_DOCS_TEXT = {
                 request: {
                     source: "identifier",
                     mode: "common | domain",
+                    llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
+                    llm_api_key: "Optional. Used for LLM-assisted analysis only when rules cannot cover the resolved resource page",
                     identifiers: "10.1000/xyz123 or CSTR:14804.11.05.70.00079-V01",
                     text: "If identifiers is omitted, DOI/CSTR can be extracted from text",
                     html: "If identifiers and text are omitted, DOI/CSTR can be extracted from HTML"
@@ -1143,6 +1207,8 @@ const API_DOCS_TEXT = {
                 requestFields: {
                     source: "Input source. Recommended value: identifier; the backend resolves DOI/CSTR identifiers to resource pages.",
                     mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
+                    llm_provider: "Optional LLM provider. Supports siliconflow / openai / deepseek / dashscope / zhipu. Default: siliconflow.",
+                    llm_api_key: "Optional. Used only if rule extraction cannot cover the resolved resource page and the model is needed. If omitted, the platform default is used.",
                     identifiers: "DOI/CSTR identifier string or array. Highest priority; multiple DOI/CSTR values are supported.",
                     text: "When identifiers is omitted, the backend extracts DOI/CSTR values from text.",
                     html: "When identifiers and text are omitted, the backend extracts DOI/CSTR values from html."
@@ -1234,8 +1300,19 @@ const FIELD_VALUE_ALIASES = {
     "Resource URL": ["urls", "资源链接", "Resource Access URL"]
 };
 
+const LLM_PROVIDER_OPTIONS = [
+    { value: "siliconflow", label: "SiliconFlow" },
+    { value: "openai", label: "OpenAI" },
+    { value: "deepseek", label: "DeepSeek" },
+    { value: "dashscope", label: "阿里百炼" },
+    { value: "zhipu", label: "智谱 GLM" }
+];
+
 const state = {
     sourceMode: "url",
+    mappingDirection: "domainToCore",
+    llmApiKey: "",
+    llmProvider: "siliconflow",
     mode: "common",
     language: "zh",
     schemaCache: {},
@@ -1559,7 +1636,9 @@ function showDashboard() {
     renderOperationsDashboard();
 }
 
-function showToolHome() {
+function showMappingHome(direction = state.mappingDirection || "domainToCore") {
+    state.mappingDirection = direction;
+    state.sourceMode = direction === "coreToDomain" ? "identifier" : "url";
     document.getElementById("dashboardScreen").hidden = true;
     setAppShellVisible(true);
     document.getElementById("pageHero").hidden = false;
@@ -1570,8 +1649,16 @@ function showToolHome() {
     document.getElementById("apiDocsWorkspace").hidden = true;
     state.previousWorkspace = "start";
     updateStatus("", "info");
-    setSidebarActive("Service");
+    setSidebarActive(direction === "coreToDomain" ? "CoreToDomain" : "DomainToCore");
     updateStaticText();
+}
+
+function showDomainToCoreHome() {
+    showMappingHome("domainToCore");
+}
+
+function showCoreToDomainHome() {
+    showMappingHome("coreToDomain");
 }
 
 function getRecentDayBuckets(dayCount = 10) {
@@ -1824,7 +1911,6 @@ function showLogs() {
     document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = false;
-    setSidebarActive("Logs");
     renderLogs();
     loadConversionLogs().then(renderLogs).catch(() => {});
 }
@@ -1853,7 +1939,6 @@ function showApiDocs() {
     document.getElementById("logWorkspace").hidden = true;
     document.getElementById("formatSupportWorkspace").hidden = true;
     document.getElementById("apiDocsWorkspace").hidden = false;
-    setSidebarActive("Api");
     renderApiDocs();
 }
 
@@ -2254,6 +2339,9 @@ function formatErrorMessage(error, language = state.language) {
     if (/request body must be a json object/i.test(rawMessage)) {
         return messages.invalidRequestBody || rawMessage;
     }
+    if (/invalid token|invalid llm api key|error code:\s*401|unauthorized/i.test(rawMessage)) {
+        return messages.invalidLlmToken || rawMessage;
+    }
     if (/^http\s*\d+/i.test(rawMessage)) {
         return `${messages.httpPrefix || ""}${rawMessage}`;
     }
@@ -2278,10 +2366,19 @@ async function loadModeSchema(mode) {
 
 async function requestBackend(url, payload, loadingText) {
     updateStatus(loadingText, "loading");
+    const requestPayload = { ...payload };
+    const llmApiKey = String(state.llmApiKey || "").trim();
+    const supportsLlmOptions = url === BACKEND_REGISTER_URL || url === BACKEND_QUERY_URL;
+    if (llmApiKey && supportsLlmOptions) {
+        requestPayload.llm_api_key = llmApiKey;
+    }
+    if (supportsLlmOptions) {
+        requestPayload.llm_provider = state.llmProvider || "siliconflow";
+    }
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(requestPayload)
     });
 
     const responseBody = await response.json().catch(() => ({}));
@@ -3134,12 +3231,50 @@ function updateStaticText() {
     document.getElementById("domainToCoreHint").textContent = ui.domainToCoreHint;
     document.getElementById("coreToDomainTitle").textContent = ui.coreToDomainTitle;
     document.getElementById("coreToDomainHint").textContent = ui.coreToDomainHint;
+    const activeIntro = (ui.mappingIntro || {})[state.mappingDirection] || (ui.mappingIntro || {}).domainToCore;
+    if (activeIntro) {
+        document.getElementById("mappingIntroKicker").textContent = ui.mappingIntroKicker;
+        document.getElementById("mappingIntroTitle").textContent = activeIntro.title;
+        document.getElementById("mappingIntroDescription").textContent = activeIntro.description;
+        ["A", "B", "C"].forEach((suffix, index) => {
+            document.getElementById(`mappingIntroPoint${suffix}`).textContent = activeIntro.points[index] || "";
+        });
+    }
+    document.getElementById("domainToCorePanel").hidden = state.mappingDirection !== "domainToCore";
+    document.getElementById("coreToDomainPanel").hidden = state.mappingDirection !== "coreToDomain";
     document.getElementById("chooseUrlLabel").textContent = ui.chooseUrlLabel;
     document.getElementById("chooseUrlHint").textContent = ui.chooseUrlHint;
     document.getElementById("chooseUploadLabel").textContent = ui.chooseUploadLabel;
     document.getElementById("chooseUploadHint").textContent = ui.chooseUploadHint;
     document.getElementById("chooseIdentifierLabel").textContent = ui.chooseIdentifierLabel;
     document.getElementById("chooseIdentifierHint").textContent = ui.chooseIdentifierHint;
+    [
+        ["llmApiKeyLabel", "llmApiKeyHint", "llmApiKeyInput"],
+        ["llmApiKeyHomeLabel", "llmApiKeyHomeHint", "llmApiKeyHomeInput"]
+    ].forEach(([labelId, hintId, inputId]) => {
+        const label = document.getElementById(labelId);
+        const hint = document.getElementById(hintId);
+        const input = document.getElementById(inputId);
+        if (label) label.textContent = ui.llmApiKeyLabel;
+        if (hint) hint.textContent = ui.llmApiKeyHint;
+        if (input) {
+            input.setAttribute("placeholder", ui.llmApiKeyPlaceholder);
+            if (input.value !== state.llmApiKey) input.value = state.llmApiKey;
+        }
+    });
+    ["llmProviderSelect", "llmProviderHomeSelect"].forEach((id) => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        if (!select.options.length) {
+            LLM_PROVIDER_OPTIONS.forEach((option) => {
+                const node = document.createElement("option");
+                node.value = option.value;
+                node.textContent = option.label;
+                select.appendChild(node);
+            });
+        }
+        select.value = state.llmProvider;
+    });
     document.getElementById("uploadTitle").textContent = ui.uploadTitle;
     const uploadExampleJson = document.getElementById("uploadExampleJson");
     const uploadExampleButton = document.getElementById("uploadExampleButton");
@@ -3260,6 +3395,7 @@ function setMode(mode) {
 
 function selectSourceMode(sourceMode) {
     activateSourceMode(sourceMode);
+    state.mappingDirection = sourceMode === "identifier" ? "coreToDomain" : "domainToCore";
     document.getElementById("dashboardScreen").hidden = true;
     setAppShellVisible(true);
     document.getElementById("pageHero").hidden = true;
@@ -3277,7 +3413,7 @@ function selectSourceMode(sourceMode) {
     state.uploadedText = "";
     state.uploadedTitle = "";
 
-    setSidebarActive("Service");
+    setSidebarActive(state.mappingDirection === "coreToDomain" ? "CoreToDomain" : "DomainToCore");
     updateStaticText();
     clearAnalysisView();
 
@@ -3361,24 +3497,36 @@ function setLanguage(language) {
     if (state.resultCache.common || state.resultCache.domain) renderMode(state.mode);
 }
 
+function setLlmApiKey(value) {
+    state.llmApiKey = value;
+    ["llmApiKeyInput", "llmApiKeyHomeInput"].forEach((id) => {
+        const input = document.getElementById(id);
+        if (input && input.value !== value) input.value = value;
+    });
+}
+
+function setLlmProvider(value) {
+    state.llmProvider = value || "siliconflow";
+    ["llmProviderSelect", "llmProviderHomeSelect"].forEach((id) => {
+        const select = document.getElementById(id);
+        if (select && select.value !== state.llmProvider) select.value = state.llmProvider;
+    });
+}
+
 function bindEvents() {
     document.getElementById("homeButton").addEventListener("click", goHome);
     document.getElementById("brandHomeButton").addEventListener("click", goHome);
     document.getElementById("analysisHomeButton").addEventListener("click", goHome);
     document.getElementById("dashboardOverviewButton").addEventListener("click", showDashboard);
-    document.getElementById("dashboardServiceButton").addEventListener("click", showToolHome);
-    document.getElementById("dashboardFormatButton").addEventListener("click", showFormatSupport);
-    document.getElementById("dashboardLogsButton").addEventListener("click", showLogs);
-    document.getElementById("dashboardApiButton").addEventListener("click", showApiDocs);
+    document.getElementById("dashboardCoreToDomainButton").addEventListener("click", showCoreToDomainHome);
+    document.getElementById("dashboardDomainToCoreButton").addEventListener("click", showDomainToCoreHome);
     document.getElementById("dashboardRefreshButton").addEventListener("click", loadConversionLogs);
     document.getElementById("dashboardLogoutButton").addEventListener("click", () => {
         window.location.href = getServiceHomePath();
     });
     document.getElementById("toolOverviewButton").addEventListener("click", showDashboard);
-    document.getElementById("toolServiceButton").addEventListener("click", showToolHome);
-    document.getElementById("toolFormatButton").addEventListener("click", showFormatSupport);
-    document.getElementById("toolLogsButton").addEventListener("click", showLogs);
-    document.getElementById("toolApiButton").addEventListener("click", showApiDocs);
+    document.getElementById("toolCoreToDomainButton").addEventListener("click", showCoreToDomainHome);
+    document.getElementById("toolDomainToCoreButton").addEventListener("click", showDomainToCoreHome);
     document.getElementById("chooseUrlButton").addEventListener("click", () => selectSourceMode("url"));
     document.getElementById("chooseUploadButton").addEventListener("click", () => selectSourceMode("upload"));
     document.getElementById("chooseIdentifierButton").addEventListener("click", () => selectSourceMode("identifier"));
@@ -3445,6 +3593,10 @@ function bindEvents() {
         setAnalysisVisibility();
         renderIdentifierSelector();
     });
+    document.getElementById("llmApiKeyInput").addEventListener("input", (event) => setLlmApiKey(event.target.value));
+    document.getElementById("llmApiKeyHomeInput").addEventListener("input", (event) => setLlmApiKey(event.target.value));
+    document.getElementById("llmProviderSelect").addEventListener("change", (event) => setLlmProvider(event.target.value));
+    document.getElementById("llmProviderHomeSelect").addEventListener("change", (event) => setLlmProvider(event.target.value));
     document.getElementById("fileInput").addEventListener("change", (event) => {
         const file = (event.target.files || [])[0];
         handleUploadSelection(file);
