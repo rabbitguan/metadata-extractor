@@ -37,13 +37,13 @@
                     <span class="admin-nav-icon">▣</span>
                     <span>系统运行总览</span>
                 </button>
-                <button id="dashboardCoreToDomainButton" class="admin-nav-item" type="button">
-                    <span class="admin-nav-icon">⌁</span>
-                    <span>核心到领域映射</span>
-                </button>
                 <button id="dashboardDomainToCoreButton" class="admin-nav-item" type="button">
                     <span class="admin-nav-icon">◇</span>
                     <span>领域到核心映射</span>
+                </button>
+                <button id="dashboardCoreToDomainButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">⌁</span>
+                    <span>核心到领域映射</span>
                 </button>
             </aside>
             <main class="admin-content">
@@ -112,13 +112,13 @@
                     <span class="admin-nav-icon">▣</span>
                     <span>系统运行总览</span>
                 </button>
-                <button id="toolCoreToDomainButton" class="admin-nav-item active" type="button">
-                    <span class="admin-nav-icon">⌁</span>
-                    <span>核心到领域映射</span>
-                </button>
-                <button id="toolDomainToCoreButton" class="admin-nav-item" type="button">
+                <button id="toolDomainToCoreButton" class="admin-nav-item active" type="button">
                     <span class="admin-nav-icon">◇</span>
                     <span>领域到核心映射</span>
+                </button>
+                <button id="toolCoreToDomainButton" class="admin-nav-item" type="button">
+                    <span class="admin-nav-icon">⌁</span>
+                    <span>核心到领域映射</span>
                 </button>
             </aside>
             <div class="tool-content">
@@ -132,53 +132,8 @@
 
     <main id="pageMain" class="container page-main" hidden>
         <section id="startScreen" class="start-screen">
-            <section class="user-dashboard" aria-label="用户主页">
-                <div class="user-profile">
-                    <div id="userAvatar" class="user-avatar">访</div>
-                    <div>
-                        <p id="userWelcome" class="user-kicker">欢迎回来</p>
-                        <h2 id="userDisplayName">平台用户</h2>
-                        <p id="userIdentity" class="user-identity">正在读取平台用户信息...</p>
-                    </div>
-                </div>
-                <div class="dashboard-metrics">
-                    <div class="metric-card">
-                        <span id="totalQueryLabel">累计查询</span>
-                        <strong id="totalQueryCount">0</strong>
-                    </div>
-                    <div class="metric-card">
-                        <span id="urlQueryLabel">URL 分析</span>
-                        <strong id="urlQueryCount">0</strong>
-                    </div>
-                    <div class="metric-card">
-                        <span id="identifierQueryLabel">标识符解析</span>
-                        <strong id="identifierQueryCount">0</strong>
-                    </div>
-                </div>
-                <div class="activity-panel">
-                    <div class="activity-head">
-                        <span id="activityTitle">近 7 天查询活跃度</span>
-                        <span id="lastQueryLabel">暂无查询</span>
-                    </div>
-                    <div id="activityLineChart" class="activity-line-chart" aria-label="近 7 天查询活跃度"></div>
-                </div>
-            </section>
-
-            <section class="api-key-panel" aria-label="大模型 API Key 设置">
-                <div>
-                    <label id="llmApiKeyHomeLabel" for="llmApiKeyHomeInput">大模型 API Key（可选）</label>
-                    <p id="llmApiKeyHomeHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
-                </div>
-                <div class="api-key-controls">
-                    <label class="sr-only" id="llmProviderHomeLabel" for="llmProviderHomeSelect">大模型平台</label>
-                    <select id="llmProviderHomeSelect" class="form-select" aria-labelledby="llmProviderHomeLabel"></select>
-                    <input id="llmApiKeyHomeInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
-                </div>
-            </section>
-
             <div class="mapping-home">
                 <section class="mapping-intro">
-                    <p id="mappingIntroKicker" class="mapping-intro-kicker">功能说明</p>
                     <h2 id="mappingIntroTitle">领域元数据到核心元数据</h2>
                     <p id="mappingIntroDescription">面向已经存在于网页、JSON 或 XML 文件中的领域元数据，系统会抽取资源描述信息，并按照核心元数据规范进行整理。</p>
                     <ul class="mapping-intro-list">
@@ -198,7 +153,7 @@
                             <small id="chooseUrlHint">输入网页地址后由后端直接抓取分析</small>
                         </button>
                         <button id="chooseUploadButton" class="start-button secondary" type="button">
-                            <span id="chooseUploadLabel">上传数据</span>
+                            <span id="chooseUploadLabel">上传 JSON/XML</span>
                             <small id="chooseUploadHint">上传符合格式要求的 JSON / XML 文件</small>
                         </button>
                     </div>
@@ -216,6 +171,18 @@
                     </div>
                 </section>
             </div>
+
+            <section class="api-key-panel home-api-key-panel" aria-label="大模型 API Key 设置">
+                <div>
+                    <label id="llmApiKeyHomeLabel" for="llmApiKeyHomeInput">大模型 API Key（可选）</label>
+                    <p id="llmApiKeyHomeHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
+                </div>
+                <div class="api-key-controls">
+                    <label class="sr-only" id="llmProviderHomeLabel" for="llmProviderHomeSelect">大模型平台</label>
+                    <select id="llmProviderHomeSelect" class="form-select" aria-labelledby="llmProviderHomeLabel"></select>
+                    <input id="llmApiKeyHomeInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
+                </div>
+            </section>
         </section>
 
         <section id="analysisWorkspace" hidden>
@@ -226,18 +193,6 @@
                     <button id="downloadButton" class="btn primary" type="button">下载</button>
                 </div>
             </div>
-
-            <section class="api-key-panel" aria-label="大模型 API Key 设置">
-                <div>
-                    <label id="llmApiKeyLabel" for="llmApiKeyInput">大模型 API Key（可选）</label>
-                    <p id="llmApiKeyHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
-                </div>
-                <div class="api-key-controls">
-                    <label class="sr-only" id="llmProviderLabel" for="llmProviderSelect">大模型平台</label>
-                    <select id="llmProviderSelect" class="form-select" aria-labelledby="llmProviderLabel"></select>
-                    <input id="llmApiKeyInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
-                </div>
-            </section>
 
             <section id="urlPanel" class="input-panel" hidden>
                 <h2 id="urlTitle">输入 URL</h2>
@@ -273,6 +228,18 @@
                 <div class="input-actions">
                     <button id="confirmIdentifierButton" class="btn primary" type="button">确认并分析</button>
                     <button id="clearIdentifierButton" class="btn secondary" type="button">清空</button>
+                </div>
+            </section>
+
+            <section class="api-key-panel analysis-api-key-panel" aria-label="大模型 API Key 设置">
+                <div>
+                    <label id="llmApiKeyLabel" for="llmApiKeyInput">大模型 API Key（可选）</label>
+                    <p id="llmApiKeyHint">系统会优先使用内置规则提取；规则无法覆盖时，再使用该 Key 调用大模型辅助分析。不填写则使用平台默认配置。</p>
+                </div>
+                <div class="api-key-controls">
+                    <label class="sr-only" id="llmProviderLabel" for="llmProviderSelect">大模型平台</label>
+                    <select id="llmProviderSelect" class="form-select" aria-labelledby="llmProviderLabel"></select>
+                    <input id="llmApiKeyInput" class="form-input" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
                 </div>
             </section>
 

@@ -724,7 +724,7 @@ const UI_TEXT = {
         closeLogsTitle: "返回主页",
         chooseUrlLabel: "输入 URL",
         chooseUrlHint: "输入网页地址后由后端直接抓取分析",
-        chooseUploadLabel: "上传数据",
+        chooseUploadLabel: "上传 JSON/XML",
         chooseUploadHint: "上传符合格式要求的 JSON / XML 文件",
         chooseIdentifierLabel: "输入 DOI/CSTR",
         chooseIdentifierHint: "通过编号解析资源并整理元数据",
@@ -839,7 +839,7 @@ const UI_TEXT = {
         closeLogsTitle: "Back To Home",
         chooseUrlLabel: "Enter URL",
         chooseUrlHint: "Submit a web address and let the backend fetch it",
-        chooseUploadLabel: "Upload data",
+        chooseUploadLabel: "Upload JSON/XML",
         chooseUploadHint: "Upload a formatted JSON / XML file",
         chooseIdentifierLabel: "Enter DOI/CSTR",
         chooseIdentifierHint: "Resolve identifiers and organize metadata",
@@ -1568,11 +1568,17 @@ function createActivityLineChart(buckets) {
 }
 
 function renderUserDashboard() {
+    const welcome = document.getElementById("userWelcome");
+    if (!welcome) {
+        renderOperationsDashboard();
+        return;
+    }
+
     const ui = getUIText();
     const stats = getDashboardStats();
     const displayName = getDisplayUserName();
 
-    document.getElementById("userWelcome").textContent = ui.userWelcome;
+    welcome.textContent = ui.userWelcome;
     document.getElementById("userDisplayName").textContent = displayName;
     document.getElementById("userAvatar").textContent = getUserInitial();
 
@@ -1616,7 +1622,7 @@ async function loadGatewayUser() {
 
 function setAppShellVisible(visible) {
     document.getElementById("toolShell").hidden = !visible;
-    document.getElementById("pageHero").hidden = !visible;
+    document.getElementById("pageHero").hidden = true;
     document.getElementById("pageMain").hidden = !visible;
     document.querySelector(".page-footer").hidden = !visible;
 }
@@ -1641,7 +1647,7 @@ function showMappingHome(direction = state.mappingDirection || "domainToCore") {
     state.sourceMode = direction === "coreToDomain" ? "identifier" : "url";
     document.getElementById("dashboardScreen").hidden = true;
     setAppShellVisible(true);
-    document.getElementById("pageHero").hidden = false;
+    document.getElementById("pageHero").hidden = true;
     document.getElementById("startScreen").hidden = false;
     document.getElementById("analysisWorkspace").hidden = true;
     document.getElementById("logWorkspace").hidden = true;
@@ -3233,7 +3239,8 @@ function updateStaticText() {
     document.getElementById("coreToDomainHint").textContent = ui.coreToDomainHint;
     const activeIntro = (ui.mappingIntro || {})[state.mappingDirection] || (ui.mappingIntro || {}).domainToCore;
     if (activeIntro) {
-        document.getElementById("mappingIntroKicker").textContent = ui.mappingIntroKicker;
+        const introKicker = document.getElementById("mappingIntroKicker");
+        if (introKicker) introKicker.textContent = ui.mappingIntroKicker;
         document.getElementById("mappingIntroTitle").textContent = activeIntro.title;
         document.getElementById("mappingIntroDescription").textContent = activeIntro.description;
         ["A", "B", "C"].forEach((suffix, index) => {
