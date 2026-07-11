@@ -1038,7 +1038,7 @@ const API_DOCS_TEXT = {
                     "application/json（URL/文本/网页）": {
                         source: "url | text | web",
                         mode: "common | domain",
-                        strategy: "auto | rule",
+                        strategy: "auto | rule | llm",
                         force_reanalyze: false,
                         dynamic_render: "auto | always | never",
                         llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
@@ -1057,7 +1057,7 @@ const API_DOCS_TEXT = {
                 requestFields: {
                     source: "输入来源。url 表示后端按 url 抓取网页；text 表示直接分析文本；web 表示前端传入网页 text/html；upload 表示上传 JSON/XML 文件。默认 text。",
                     mode: "提取模式。common 展示核心元数据；domain 展示领域专用元数据。默认 common。",
-                    strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；rule 只用网站规则。source=upload 时无需传 strategy，后端固定使用 upload_rule 且不调用大模型。",
+                    strategy: "提取策略。auto 优先网站规则，未匹配再调用模型；rule 只用网站规则；llm 直接调用模型。source=upload 时无需传 strategy，后端固定使用 upload_rule 且不调用大模型。",
                     force_reanalyze: "是否跳过当前用户的 URL 历史缓存并重新分析。false 时命中缓存会直接返回历史结果。默认 false。",
                     dynamic_render: "source=url 时的动态渲染策略。auto 自动判断；always 强制浏览器渲染；never 只静态抓取。默认 auto。",
                     llm_provider: "可选。大模型平台，支持 siliconflow / openai / deepseek / dashscope / zhipu。默认 siliconflow。",
@@ -1147,7 +1147,7 @@ const API_DOCS_TEXT = {
                     "application/json (URL/text/web)": {
                         source: "url | text | web",
                         mode: "common | domain",
-                        strategy: "auto | rule",
+                        strategy: "auto | rule | llm",
                         force_reanalyze: false,
                         dynamic_render: "auto | always | never",
                         llm_provider: "siliconflow | openai | deepseek | dashscope | zhipu",
@@ -1166,7 +1166,7 @@ const API_DOCS_TEXT = {
                 requestFields: {
                     source: "Input source. url lets the backend fetch the page; text analyzes plain text; web sends page text/html from the frontend; upload sends a JSON/XML file. Default: text.",
                     mode: "Extraction mode. common displays core metadata; domain displays domain-specific metadata. Default: common.",
-                    strategy: "Extraction strategy. auto tries site rules first and falls back to the model; rule only uses site rules. For source=upload, do not send strategy; the backend always uses upload_rule and does not call the model.",
+                    strategy: "Extraction strategy. auto tries site rules first and falls back to the model; rule only uses site rules; llm calls the model directly. For source=upload, do not send strategy; the backend always uses upload_rule and does not call the model.",
                     force_reanalyze: "Whether to skip the current user's URL history cache and reanalyze. Default: false.",
                     dynamic_render: "Dynamic rendering strategy for source=url. auto decides automatically; always forces browser rendering; never uses static fetching only. Default: auto.",
                     llm_provider: "Optional LLM provider. Supports siliconflow / openai / deepseek / dashscope / zhipu. Default: siliconflow.",

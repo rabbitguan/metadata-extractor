@@ -1411,37 +1411,28 @@ def _extra_answer_fields(answer, language='zh'):
     return result
 
 
-def _core_with_extra_fields(core_metadata, zh_source, en_source):
-    merged = dict(core_metadata)
-    known_keys = set(CORE_FIELD_ALIASES_ZH.keys())
-    known_aliases = set()
-    for aliases in CORE_FIELD_ALIASES_ZH.values():
-        known_aliases.update(aliases)
-    for aliases in CORE_FIELD_ALIASES_EN.values():
-        known_aliases.update(aliases)
-
-    zh_extra = {
-        key: value
-        for key, value in (zh_source or {}).items()
-        if key not in known_keys and key not in known_aliases and key not in EXTRA_METADATA_EXCLUDE_KEYS_ZH
-    }
-    en_extra = {
-        _map_key_to_zh(key): value
-        for key, value in (en_source or {}).items()
-        if key not in known_keys and key not in known_aliases and key not in EXTRA_METADATA_EXCLUDE_KEYS_EN
-    }
-    extra = _merge_language_nodes(zh_extra, en_extra)
-    if isinstance(extra, dict):
-        merged.update(extra)
-    return merged
-
-
 def _section_as_metadatas(section):
     if isinstance(section, dict) and isinstance(section.get('metadatas'), list):
         return section
     if isinstance(section, dict):
         return {'metadatas': [section]}
     return {'metadatas': [{}]}
+
+
+def _standard_core_section(section, lang='zh'):
+    section = _section_as_metadatas(section)
+    standardized_items = []
+    for item in section.get('metadatas') or []:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_core_metadata_shape(item, lang)
+        if not isinstance(normalized, dict):
+            continue
+        standardized_items.append({
+            key: normalized.get(key) for key in CORE_FIELD_ALIASES_ZH.keys()
+        })
+
+    return {'metadatas': standardized_items or [{}]}
 
 
 def _domain_type_from_answer(answer, core_data):
@@ -1480,7 +1471,7 @@ def normalize_domain_type(value):
 
 def _build_already_unified_metadata(answer):
     core_section = answer.get('核心元数据') or answer.get('Core Metadata')
-    core_section = _section_as_metadatas(core_section)
+    core_section = _standard_core_section(core_section)
     core_items = core_section.get('metadatas') or []
     core_data = core_items[0] if core_items and isinstance(core_items[0], dict) else {}
     domain_type = _domain_type_from_answer(answer, core_data)
@@ -1591,8 +1582,6 @@ def _build_unified_metadata(answer):
     core_zh = _normalize_core_metadata_shape(core_zh, 'zh')
     core_en = _normalize_core_metadata_shape(core_en, 'en')
     core_metadata = _merge_core_language_variants(core_zh, core_en)
-    if has_bilingual_wrappers:
-        core_metadata = _core_with_extra_fields(core_metadata, zh_core_source, en_core_source)
 
     domain_section_zh = _infer_domain_section(core_metadata.get('resource_type'), 'zh')
     metadata = {

@@ -2,7 +2,7 @@
 
 [![在线服务](https://img.shields.io/badge/在线服务-可访问-2ea44f)](http://8.130.186.178:21005)
 ![文件上传](https://img.shields.io/badge/文件上传-JSON%20%2F%20XML-1f6feb)
-![解析方式](https://img.shields.io/badge/解析方式-规则解析-f97316)
+![解析方式](https://img.shields.io/badge/解析方式-规则优先%2F模型兜底-f97316)
 
 ## 服务入口
 
@@ -20,6 +20,7 @@
 | URL 分析 | 输入科技资源详情页 URL，提取并映射元数据 |
 | 文件上传 | 上传 JSON/XML 文件，转换为核心元数据格式 |
 | 标识符查询 | 输入 DOI/CSTR，解析资源并整理元数据 |
+| 大模型兜底 | 内置规则无法覆盖时，可选择平台并填写 API Key 进行辅助分析 |
 | 结果展示 | 查看核心元数据、领域专用元数据及中英文结果 |
 | 结果下载 | 下载当前结果 JSON 文件 |
 | 历史记录 | 查看近期任务记录 |
@@ -39,11 +40,22 @@
 说明：
 
 - 如果网页已配置专门规则，会优先使用规则提取。
-- 如果该网站暂未覆盖规则，可能出现提取失败或部分字段为空。
+- 如果该网站暂未覆盖规则，系统可使用页面填写的大模型平台和 API Key 进行辅助分析。
+- API Key 为可选项；不填写时使用服务端默认配置。
 - 需要登录或无法公开访问的页面可能无法完整提取。
 
 > [!TIP]
 > URL 分析更适合公开可访问的资源详情页。需要登录的页面建议改用文件上传，或提供示例页面补充规则。
+
+### 大模型平台与 API Key
+
+功能页提供“大模型平台”和“API Key（可选）”输入项。系统不会优先调用大模型，而是按以下顺序处理：
+
+1. 先使用内置网站规则提取。
+2. 规则无法覆盖时，再按用户选择的平台调用大模型。
+3. 用户未填写 API Key 时，使用服务端对应平台的环境变量默认配置。
+
+当前可选平台包括 `SiliconFlow`、`OpenAI`、`DeepSeek`、`阿里百炼`、`智谱 GLM`。平台和 API Key 需要匹配，例如 DeepSeek Key 需要选择 DeepSeek。
 
 ### 文件上传
 
@@ -78,6 +90,7 @@
 
 - CSTR 可以带或不带 `CSTR:` 前缀。
 - 如果标识符解析服务无法返回资源页面，可能会查询失败。
+- 标识符解析到资源页面后，同样先走规则；规则无法覆盖时，可使用所选大模型平台兜底分析。
 
 ## 结果查看与下载
 
@@ -137,7 +150,13 @@ curl -X POST http://8.130.186.178:21005/query \
   -H "X-User-Id: test-user" \
   -H "X-User-Name: test" \
   -H "X-User-Email: test@example.com" \
-  -d '{"source":"identifier","identifiers":"10.48550/arXiv.2303.14524","mode":"common"}'
+  -d '{
+    "source":"identifier",
+    "identifiers":"10.48550/arXiv.2303.14524",
+    "mode":"common",
+    "llm_provider":"deepseek",
+    "llm_api_key":"sk-..."
+  }'
 ```
 
 ### URL 分析接口
@@ -155,7 +174,14 @@ curl -X POST http://8.130.186.178:21005/register \
   -H "X-User-Id: test-user" \
   -H "X-User-Name: test" \
   -H "X-User-Email: test@example.com" \
-  -d '{"source":"url","url":"https://example.com/resource","mode":"common"}'
+  -d '{
+    "source":"url",
+    "url":"https://example.com/resource",
+    "mode":"common",
+    "strategy":"auto",
+    "llm_provider":"deepseek",
+    "llm_api_key":"sk-..."
+  }'
 ```
 
 ## 常见问题
@@ -185,7 +211,11 @@ curl -X POST http://8.130.186.178:21005/register \
 
 ### 是否会调用大模型
 
-当前线上环境主要使用规则解析。大语言模型接口仅作为内部测试备用，面向公众的服务默认不依赖大模型。
+系统默认优先使用内置规则解析。只有在规则无法覆盖且当前请求允许模型兜底时，才会调用大模型。
+
+- URL / 文本 / 网页内容：`strategy=auto` 时规则优先、模型兜底；`strategy=llm` 时直接调用模型；`strategy=rule` 时只使用规则。
+- DOI/CSTR：先解析资源页面并尝试规则，规则无法覆盖时使用模型兜底。
+- JSON/XML 文件上传：固定使用结构化上传规则，不调用大模型。
 
 > [!NOTE]
 > 如果遇到暂未支持的网站或特殊 JSON/XML 格式，可提供样例页面或样例文件，由维护方补充规则。

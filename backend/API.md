@@ -49,6 +49,8 @@ curl -X POST http://127.0.0.1:4000/register \
   "strategy": "auto",
   "force_reanalyze": false,
   "dynamic_render": "auto",
+  "llm_provider": "deepseek",
+  "llm_api_key": "sk-...",
   "text": "页面文本内容",
   "html": "<html>...</html>",
   "url": "https://example.com/paper",
@@ -62,7 +64,9 @@ curl -X POST http://127.0.0.1:4000/register \
 - `mode`：前端模式标识，常见值：`common` / `domain`（后端会透传给模型流程）
 - `strategy`：提取策略，常见值：`auto` / `llm` / `rule`
 - `force_reanalyze`：是否跳过历史缓存并强制重新分析（支持 `true/false`、`"1"`、`"true"` 等）
-- `dynamic_render`：URL 直抓时是否使用浏览器动态渲染。支持 `auto` / `true` / `false`，默认 `auto`；显式传 `true` 会直接尝试动态渲染，`auto` 会按后端全局模式和域名配置判断
+- `dynamic_render`：URL 直抓时是否使用浏览器动态渲染。支持 `auto` / `always` / `never`，也兼容 `true/false`、`1/0`、`yes/no` 等写法。默认 `auto`；显式传 `true` / `always` 会直接尝试动态渲染，`auto` 会按后端全局模式、域名配置和页面内容判断
+- `llm_provider`：可选，大模型平台。支持 `siliconflow` / `openai` / `deepseek` / `dashscope` / `zhipu`，默认 `siliconflow`；也兼容部分别名，如 `deepseep`、`aliyun`、`qwen`、`glm`
+- `llm_api_key`：可选，大模型 API Key。后端会先尝试内置规则；只有规则无法覆盖且需要调用大模型时才使用该 Key。不传时使用所选平台对应的环境变量默认 Key。也兼容字段名 `api_key`
 - `text`：待分析文本；当 `source` 为 `text` 或 `web` 时不能为空
 - `html`：页面 HTML（用于规则提取与历史入库）
 - `url`：页面 URL
@@ -96,8 +100,20 @@ python backend.py -d
 
 - `auto`：先走站点规则提取器（`extractors/*`），未命中再走 LLM
 - `llm`：直接走 LLM
-- `rule`：只走规则提取器；若未命中规则，当前实现会返回 400（表现为模型输出格式错误）
+- `rule`：只走规则提取器；若未命中规则，返回统一元数据空结构，不会调用 LLM
 - `upload_rule`：上传 JSON/XML 专用规则解析；当 `source=upload` 时后端会强制使用该策略，不调用 LLM。
+
+#### 大模型兜底行为
+
+- `source=url` / `text` / `web` 且 `strategy=auto` 时，后端先尝试内置网站规则，规则未命中才调用大模型。
+- `strategy=llm` 时跳过规则，直接调用大模型。
+- `source=upload` 时固定走结构化上传规则，不调用大模型。
+- 支持平台默认配置：
+  - `siliconflow`：`SILICONFLOW_API_KEY` / `SILICONFLOW_BASE_URL` / `SILICONFLOW_MODEL`，默认模型 `Qwen/Qwen3-8B`
+  - `openai`：`OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`，默认模型 `gpt-4o-mini`
+  - `deepseek`：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`，默认模型 `deepseek-chat`
+  - `dashscope`：`DASHSCOPE_API_KEY` / `DASHSCOPE_BASE_URL` / `DASHSCOPE_MODEL`，默认模型 `qwen-plus`
+  - `zhipu`：`ZHIPU_API_KEY` / `ZHIPU_BASE_URL` / `ZHIPU_MODEL`，默认模型 `glm-4-flash`
 
 #### 上传文件模式（`source=upload`）
 
@@ -285,6 +301,8 @@ curl -X POST http://127.0.0.1:4000/register \
 {
   "source": "identifier",
   "mode": "common",
+  "llm_provider": "deepseek",
+  "llm_api_key": "sk-...",
   "identifiers": [
     "10.1000/xyz123",
     "12345.12.ABCD-2024"
@@ -298,6 +316,8 @@ curl -X POST http://127.0.0.1:4000/register \
 
 - 仅处理 `DOI` 和 `CSTR`，不会处理专利号。
 - `identifiers` 为数组时优先使用该数组；否则回退使用 `identifiers` 字符串或 `text/html` 内容。
+- 解析 DOI/CSTR 得到资源页面后，后端会先尝试规则提取；规则无法覆盖时，会使用 `llm_provider` / `llm_api_key` 指定的大模型平台进行兜底分析。
+- `llm_provider` / `llm_api_key` 的含义与 `/register` 一致；不传时使用平台默认配置。
 
 #### 成功响应（200）
 
