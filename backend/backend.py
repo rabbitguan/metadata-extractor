@@ -1287,9 +1287,16 @@ def _merge_lang_lists(primary, secondary):
         if _is_missing_value(value):
             continue
         if _is_lang_list(value):
-            items.extend(_language_item(item.get('lang'), item.get('value')) for item in value)
+            for item in value:
+                if 'value' in item:
+                    items.append(_language_item(item.get('lang'), item.get('value')))
+                else:
+                    items.append(item)
         elif _is_lang_object(value):
-            items.append(_language_item(value.get('lang'), value.get('value')))
+            if 'value' in value:
+                items.append(_language_item(value.get('lang'), value.get('value')))
+            else:
+                items.append(value)
     return _dedupe_jsonable(items)
 
 
