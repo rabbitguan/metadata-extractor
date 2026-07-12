@@ -77,6 +77,20 @@ function selectCase(item) {
   updateStatus("尚未运行");
 }
 
+function currentTimestamp() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+  ].join("-") + " " + [
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+  ].join(":");
+}
+
 function caseMatchesFilters(item) {
   const endpoint = document.getElementById("endpointFilter").value;
   const enabled = document.getElementById("enabledFilter").value;
@@ -110,7 +124,7 @@ function renderList() {
     button.innerHTML = `
       <div class="case-id">
         <span>${escapeHtml(item.id || "(new)")}</span>
-        <span>${escapeHtml(item.last_status || item.endpoint || "")}</span>
+        <span class="case-status ${item.last_status === "通过" ? "pass" : item.last_status === "失败" ? "fail" : ""}">${escapeHtml(item.last_status || item.endpoint || "")}</span>
       </div>
       <div class="case-meta">${escapeHtml(item.description || "")}</div>
       <div class="case-meta">${escapeHtml(item.endpoint || "")} / ${escapeHtml(item.category || "")}</div>
@@ -215,6 +229,15 @@ async function runCase() {
   updateStatus(`HTTP ${data.status_code} / ${data.conclusion} / ${data.summary || ""}`, data.conclusion);
 }
 
+async function markConclusion(conclusion) {
+  form.elements.last_status.value = conclusion ? conclusion : "";
+  form.elements.last_run_at.value = conclusion ? currentTimestamp() : "";
+  const saved = await saveCase({ silent: true });
+  updateStatus(conclusion ? `已标记最近状态为${conclusion}` : "已清除最近状态", conclusion);
+  showToast(conclusion ? `已标记状态${conclusion}` : "已清除状态");
+  return saved;
+}
+
 function updateStatus(text, conclusion = "") {
   const box = document.getElementById("statusBox");
   box.textContent = text;
@@ -282,6 +305,9 @@ document.getElementById("newQueryButton").addEventListener("click", () => newCas
 document.getElementById("duplicateButton").addEventListener("click", () => duplicateCase().catch((error) => showToast(error.message)));
 document.getElementById("deleteButton").addEventListener("click", () => deleteCase().catch((error) => showToast(error.message)));
 document.getElementById("loadSampleButton").addEventListener("click", () => loadSample().catch((error) => showToast(error.message)));
+document.getElementById("markPassButton").addEventListener("click", () => markConclusion("通过").catch((error) => showToast(error.message)));
+document.getElementById("markFailButton").addEventListener("click", () => markConclusion("失败").catch((error) => showToast(error.message)));
+document.getElementById("clearConclusionButton").addEventListener("click", () => markConclusion("").catch((error) => showToast(error.message)));
 document.getElementById("formatJsonButton").addEventListener("click", formatResponseJson);
 document.getElementById("makeContainsButton").addEventListener("click", makeContainsCheck);
 

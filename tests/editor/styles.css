@@ -67,7 +67,8 @@ h3 {
 
 .top-actions,
 .button-row,
-.inline-field {
+.inline-field,
+.conclusion-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -144,6 +145,14 @@ h3 {
   font-weight: 700;
 }
 
+.case-status.pass {
+  color: var(--ok);
+}
+
+.case-status.fail {
+  color: var(--fail);
+}
+
 .case-meta {
   margin-top: 6px;
   color: var(--muted);
@@ -215,6 +224,16 @@ button:hover {
 
 button.danger {
   color: var(--danger);
+}
+
+button.pass-action {
+  color: var(--ok);
+  border-color: #a7f3d0;
+}
+
+button.fail-action {
+  color: var(--fail);
+  border-color: #fecdd3;
 }
 
 .status-box {

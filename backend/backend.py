@@ -167,8 +167,9 @@ def _normalize_queried_cstr(value):
 
 
 def _normalize_cstr_identifier(value):
-    match = CSTR_PATTERN.fullmatch(_strip_cstr_prefixes(value))
-    return match.group(1) if match else None
+    text = _strip_cstr_prefixes(value)
+    match = CSTR_PATTERN.search(text)
+    return match.group(1).rstrip('.,;，；') if match else None
 
 
 def _normalize_doi_identifier(value):
