@@ -50,6 +50,7 @@ const BACKEND_QUERY_URL = buildServiceUrl("/query");
 const BACKEND_REGISTER_URL = buildServiceUrl("/register");
 const BACKEND_USER_URL = buildServiceUrl("/user");
 const BACKEND_HISTORY_URL = buildServiceUrl("/history");
+const TEST_EDITOR_CAPTURE_URL = "http://127.0.0.1:8765/api/cases/capture";
 const MAX_CONVERSION_LOGS = 50;
 const DISPLAY_TIME_ZONE = "Asia/Shanghai";
 const UPLOAD_EXAMPLE_JSON = `{
@@ -759,6 +760,12 @@ const UI_TEXT = {
         success: "分析完成",
         downloadBlocked: "当前语言尚未完成提取，无法下载。",
         refreshTitle: "刷新",
+        addToTestsTitle: "添加到测试记录",
+        addToTestsNoRequest: "暂无可添加的成功调用，请先完成一次分析。",
+        addToTestsConclusionPrompt: "请编辑这条测试记录的人工运行结果/结论：",
+        addToTestsPassPrompt: "这条测试记录是否通过？\n\n确定 = 通过\n取消 = 失败",
+        addToTestsSuccess: "已添加到测试记录：",
+        addToTestsUnavailable: "未连接本地测试编辑器，请先运行 py -3.12 tests/test_editor_server.py",
         downloadTitle: "下载",
         languageZh: "中",
         languageEn: "EN",
@@ -874,6 +881,12 @@ const UI_TEXT = {
         success: "Analysis completed",
         downloadBlocked: "Nothing is ready to download yet.",
         refreshTitle: "Refresh",
+        addToTestsTitle: "Add to tests",
+        addToTestsNoRequest: "No successful request to add yet. Run an analysis first.",
+        addToTestsConclusionPrompt: "Edit the manual run result/conclusion for this test record:",
+        addToTestsPassPrompt: "Did this test record pass?\n\nOK = passed\nCancel = failed",
+        addToTestsSuccess: "Added to test records: ",
+        addToTestsUnavailable: "Local test editor is not connected. Run py -3.12 tests/test_editor_server.py first.",
         downloadTitle: "Download",
         languageZh: "中",
         languageEn: "EN",
@@ -1318,6 +1331,7 @@ const state = {
     schemaCache: {},
     resultCacheBySource: { url: {}, upload: {}, identifier: {} },
     resultCache: {},
+    lastTestCapture: null,
     lastFetchedAt: null,
     uploadedFile: null,
     uploadedText: "",
@@ -2326,6 +2340,95 @@ function updateStatus(message, type = "info") {
     status.hidden = !message;
 }
 
+function getBackendEndpointName(url) {
+    if (url === BACKEND_QUERY_URL) return "query";
+    if (url === BACKEND_REGISTER_URL) return "register";
+    return "";
+}
+
+function inferInputTypeFromPayload(endpoint, payload) {
+    if (endpoint === "query") {
+        if (payload.identifiers) return "identifier";
+        if (payload.html) return "html";
+        return "text";
+    }
+    if (payload.source === "url") return "url";
+    if (payload.source === "web") return "web";
+    if (payload.source === "upload") return "upload";
+    return "text";
+}
+
+function sanitizePayloadForTestCapture(payload) {
+    const sanitized = { ...(payload || {}) };
+    delete sanitized.llm_api_key;
+    delete sanitized.api_key;
+    return sanitized;
+}
+
+function inferManualConclusion(responseBody) {
+    if (!responseBody) return "";
+    if (responseBody.message) return `返回错误信息：${responseBody.message}`;
+    if (Array.isArray(responseBody.items)) {
+        const statuses = responseBody.items
+            .map((item) => `${item.identifier || item.type || "item"}=${item.status || ""}`)
+            .join("; ");
+        return `标识符查询返回 ${responseBody.items.length} 项：${statuses}`;
+    }
+    const text = JSON.stringify(responseBody);
+    const titleMatch = text.match(/"name"\s*:\s*"([^"]+)"/) || text.match(/"标题"\s*:\s*"([^"]+)"/) || text.match(/"Title"\s*:\s*"([^"]+)"/);
+    return titleMatch ? `返回元数据结果，标题/名称包含：${titleMatch[1]}` : "返回元数据 JSON 结果，请人工确认内容是否符合预期。";
+}
+
+function rememberTestCapture({ endpoint, inputType, requestPayload, responseBody, statusCode, fileName = "", fileContent = "" }) {
+    const sanitizedPayload = sanitizePayloadForTestCapture(requestPayload);
+    state.lastTestCapture = {
+        endpoint,
+        input_type: inputType || inferInputTypeFromPayload(endpoint, sanitizedPayload),
+        source: sanitizedPayload.source || (endpoint === "query" ? "identifier" : "text"),
+        mode: sanitizedPayload.mode || state.mode || "common",
+        strategy: sanitizedPayload.strategy || "",
+        request_payload: sanitizedPayload,
+        response_body: responseBody,
+        status_code: statusCode,
+        file_name: fileName,
+        file_content: fileContent,
+        description: `${endpoint} ${sanitizedPayload.url || sanitizedPayload.identifiers || fileName || sanitizedPayload.title || ""}`.trim()
+    };
+}
+
+async function addCurrentRequestToTests() {
+    const ui = getUIText();
+    if (!state.lastTestCapture) {
+        updateStatus(ui.addToTestsNoRequest, "info");
+        return;
+    }
+    const defaultConclusion = state.lastTestCapture.manual_conclusion || inferManualConclusion(state.lastTestCapture.response_body);
+    const manualConclusion = window.prompt(ui.addToTestsConclusionPrompt, defaultConclusion);
+    if (manualConclusion === null) return;
+    const passed = window.confirm(ui.addToTestsPassPrompt);
+    const capturePayload = {
+        ...state.lastTestCapture,
+        manual_conclusion: manualConclusion,
+        last_status: passed ? "通过" : "失败"
+    };
+    try {
+        const response = await fetch(TEST_EDITOR_CAPTURE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(capturePayload)
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        const caseId = payload.case && payload.case.id ? payload.case.id : "";
+        updateStatus(`${ui.addToTestsSuccess}${caseId}`, "success");
+    } catch (error) {
+        console.warn("Failed to add current request to tests", error);
+        updateStatus(ui.addToTestsUnavailable, "error");
+    }
+}
+
 function formatErrorMessage(error, language = state.language) {
     const rawMessage = String(error && error.message ? error.message : error || "").trim();
     const ui = getUIText(language);
@@ -2390,6 +2493,15 @@ async function requestBackend(url, payload, loadingText) {
     const responseBody = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(responseBody.message || `HTTP ${response.status}`);
     if (responseBody && responseBody.status === "error") throw new Error(responseBody.message || "Unknown error");
+    const endpoint = getBackendEndpointName(url);
+    if (endpoint) {
+        rememberTestCapture({
+            endpoint,
+            requestPayload,
+            responseBody,
+            statusCode: response.status
+        });
+    }
     return responseBody;
 }
 
@@ -2408,6 +2520,19 @@ async function requestUploadBackend(file, mode) {
     const responseBody = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(responseBody.message || `HTTP ${response.status}`);
     if (responseBody && responseBody.status === "error") throw new Error(responseBody.message || "Unknown error");
+    rememberTestCapture({
+        endpoint: "register",
+        inputType: "upload",
+        requestPayload: {
+            source: "upload",
+            mode,
+            strategy: "upload_rule"
+        },
+        responseBody,
+        statusCode: response.status,
+        fileName: file.name,
+        fileContent: state.uploadedText || ""
+    });
     return responseBody;
 }
 
@@ -3299,6 +3424,7 @@ function updateStaticText() {
     document.getElementById("clearIdentifierButton").textContent = ui.clearIdentifierButton;
     document.getElementById("identifierSelectLabel").textContent = ui.identifierSelectLabel;
     document.getElementById("refreshButton").textContent = ui.refreshTitle;
+    document.getElementById("addToTestsButton").textContent = ui.addToTestsTitle;
     document.getElementById("downloadButton").textContent = ui.downloadTitle;
     document.getElementById("analysisHomeButton").textContent = ui.homeTitle;
     document.getElementById("openApiDocsButton").textContent = ui.openApiDocsTitle;
@@ -3547,6 +3673,7 @@ function bindEvents() {
 
     document.getElementById("refreshButton").addEventListener("click", refreshCurrentMode);
     document.getElementById("downloadButton").addEventListener("click", async () => downloadJsonFile(state.mode));
+    document.getElementById("addToTestsButton").addEventListener("click", addCurrentRequestToTests);
     document.getElementById("openApiDocsButton").addEventListener("click", showApiDocs);
     document.getElementById("closeApiDocsButton").addEventListener("click", goHome);
     document.getElementById("closeFormatSupportButton").addEventListener("click", goHome);

@@ -1,0 +1,6 @@
+id,enabled,endpoint,category,input_type,source,mode,strategy,payload_or_file,expected_status,expected_checks,description,expected_nl,manual_conclusion,last_status,last_run_at
+Q001,yes,query,DOI,identifier,identifier,common,,10.48550/arXiv.2303.14524,200,items;items[0].status=ok;any_item_ok;contains=arXiv,合法 DOI 查询,应解析 DOI 并返回至少一个 status=ok 的 items 结果，payload 中应包含 arXiv 相关元数据,,,
+Q002,yes,query,CSTR-VSSO,identifier,identifier,common,,CSTR:14804.11.05.70.00079-V01,200,items;any_item_ok;contains=vsso,VSSO CSTR 查询,应解析 CSTR 并返回 VSSO 空间科学资源元数据结果,,,
+Q003,yes,query,CSTR-NCDC,identifier,identifier,common,,CSTR:11738.11.NCDC.BNORSG.DB7212.2026,200,items;any_item_ok;contains=NCDC,NCDC CSTR 查询,应解析 NCDC CSTR 并返回冰川冻土沙漠科学数据中心相关元数据,,,
+Q004,yes,query,多标识符,identifier,identifier,domain,,"[""10.48550/arXiv.2303.14524"",""CSTR:14804.11.05.70.00079-V01""]",200,items;any_item_ok,DOI 和 CSTR 混合查询,应同时处理 DOI 和 CSTR，items 中至少一个结果成功，并保留每个标识符的处理状态,,,
+Q005,yes,query,异常,identifier,identifier,common,,abc123,400,message=No DOI or CSTR identifier found,非法 identifier,输入无法识别为 DOI/CSTR 的字符串时应返回 No DOI or CSTR identifier found,,,

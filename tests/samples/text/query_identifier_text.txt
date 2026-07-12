@@ -1,0 +1,2 @@
+This sample text mentions a DOI for identifier lookup: 10.48550/arXiv.2303.14524.
+

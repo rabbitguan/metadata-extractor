@@ -1,0 +1,9 @@
+﻿id,enabled,endpoint,category,input_type,source,mode,strategy,payload_or_file,expected_status,expected_checks,description,expected_nl,manual_conclusion,last_status,last_run_at
+R001,yes,register,URL-arXiv,url,url,common,auto,https://arxiv.org/abs/2303.14524,200,核心元数据;领域元数据;title_non_empty;contains=arXiv,arXiv URL 提取,应返回 arXiv 论文/数据论文元数据，至少包含核心元数据、领域元数据和标题,,,
+R002,yes,register,URL-NCDC,url,url,common,auto,https://www.ncdc.ac.cn/portal/metadata/55a9ae01-da93-438d-9594-3a6095fc7bc9,200,核心元数据;领域元数据;title_non_empty;contains=NCDC,NCDC 数据集 URL 提取,应返回国家冰川冻土沙漠科学数据中心数据集元数据，至少包含标题和核心元数据结构,,,
+R003,yes,register,URL-NHEPSDC,url,url,common,auto,https://www.nhepsdc.cn/resource/photon/heps/b7,200,核心元数据;领域元数据;title_non_empty;contains=高能,NHEPSDC 高能物理数据 URL 提取,应返回国家高能物理科学数据中心资源元数据，至少包含高能物理相关标题或描述,,通过,2026-07-12 20:26:26
+R004,yes,register,URL-VSSO,url,url,common,auto,https://vsso.nssdc.ac.cn/nssdc_zh/html/vssoinfo.html?16236,200,核心元数据;领域元数据;title_non_empty,VSSO 空间科学资源 URL 提取,应返回 VSSO 资源详情页元数据，至少包含核心元数据和标题,,,
+R005,yes,register,上传,upload,upload,common,,tests/samples/upload/dataset-complete.json,200,核心元数据;领域元数据;title_non_empty;contains=China Urban Heat Island,上传 JSON 文件提取,应使用上传规则解析 JSON 文件，返回城市热岛数据集相关核心元数据,,通过,2026-07-12 20:26:34
+R006,yes,register,异常,url,url,common,auto,,400,message=Missing URL,URL 为空,输入 URL 模式但 URL 为空时应返回 Missing URL 错误,,,
+R007,yes,register,前端捕获,url,url,domain,,https://www.nhepsdc.cn/resource/photon/heps/b7,200,核心元数据;领域元数据;title_non_empty;contains=高能同步辐射光源硬X射线成像线站数据（正在建设中）,register https://www.nhepsdc.cn/resource/photon/heps/b7,应返回元数据结果，并包含资源标题或核心内容：高能同步辐射光源硬X射线成像线站数据（正在建设中）,领域元数据没有标题摘要等,通过,2026-07-12 20:35:18
+R008,yes,register,前端捕获,url,url,domain,,https://www.nhepsdc.cn/resource/photon/Other/dataset-20260120111231,200,核心元数据;领域元数据;title_non_empty;contains=劳厄衍射数据_CaSTS-S,register https://www.nhepsdc.cn/resource/photon/Other/dataset-20260120111231,应返回元数据结果，并包含资源标题或核心内容：劳厄衍射数据_CaSTS-S,领域元数据没有标题摘要等,失败,2026-07-12 20:33:25
