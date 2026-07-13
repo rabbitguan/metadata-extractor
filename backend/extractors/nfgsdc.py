@@ -64,6 +64,20 @@ def _unique_list(values: Iterable[Any]) -> list[str]:
 
 def _split_terms(value: Optional[Any]) -> list[str]:
     if isinstance(value, list):
+        if any(_clean_text(item) is None for item in value):
+            phrases: list[str] = []
+            current: list[str] = []
+            for item in value:
+                cleaned = _clean_text(item)
+                if cleaned:
+                    current.append(cleaned)
+                    continue
+                if current:
+                    phrases.append(' '.join(current))
+                    current = []
+            if current:
+                phrases.append(' '.join(current))
+            return _unique_list(phrases)
         return _unique_list(value)
     text = _clean_text(value)
     if not text:
@@ -102,10 +116,10 @@ def _payload_data(payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
     return None
 
 
-def _fetch_detail_data(dataset_id: str, referer: str = '') -> Optional[Dict[str, Any]]:
+def _fetch_detail_data(dataset_id: str, referer: str = '', language: str = 'zh_CN') -> Optional[Dict[str, Any]]:
     response = requests.get(
         API_URL,
-        params={'id': dataset_id, 'language': 'zh_CN'},
+        params={'id': dataset_id, 'language': language},
         headers={**API_HEADERS, 'Referer': referer or f'{BASE_URL}/dataDetail.html?id={dataset_id}'},
         timeout=15,
     )
@@ -191,14 +205,20 @@ def _organization_agent(name: Optional[str], lang: str = 'zh') -> Dict[str, Any]
     }
 
 
-def _rights(share_type: Optional[str], access_method: Optional[str], share_level: Optional[str]) -> Optional[list[Dict[str, Any]]]:
-    description = '；'.join(_unique_list([share_type, access_method, share_level])) or None
+def _rights(
+    share_type: Optional[str],
+    access_method: Optional[str],
+    share_level: Optional[str],
+    lang: str = 'zh',
+) -> Optional[list[Dict[str, Any]]]:
+    separator = '; ' if lang == 'en' else '；'
+    description = separator.join(_unique_list([share_type, access_method, share_level])) or None
     if not description:
         return None
     return [{
         'license_type': None,
-        'license': share_type,
-        'type': access_method,
+        'license': None,
+        'type': None,
         'description': description,
         'cert_num': None,
     }]
@@ -212,33 +232,52 @@ def _resource_url(url: str, dataset_id: Optional[str]) -> Optional[str]:
     return url or None
 
 
-def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> MetadataDict:
+def _payload_from_data(payload: Dict[str, Any], url: str, title: str, payload_en: Optional[Dict[str, Any]] = None) -> MetadataDict:
     data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
     dataset = payload.get('dataset') if isinstance(payload.get('dataset'), dict) else {}
     contact = payload.get('contact') if isinstance(payload.get('contact'), dict) else {}
     meta = _kv_map(payload.get('meta'))
     index = _kv_map(payload.get('index'))
+    en_payload = payload_en if isinstance(payload_en, dict) else {}
+    en_data = en_payload.get('data') if isinstance(en_payload.get('data'), dict) else {}
+    en_meta = _kv_map(en_payload.get('meta'))
 
     dataset_id = _first_non_empty(data.get('id'), _query_id(url))
     title_zh = _first_non_empty(data.get('title'), dataset.get('name'), title, dataset_id)
+    title_en = _clean_text(en_data.get('title'))
     description = _clean_text(data.get('desc'))
+    description_en = _clean_text(en_data.get('desc'))
     quote = _clean_text(data.get('quote'))
+    quote_en = _clean_text(en_data.get('quote')) or quote
     cstr_identifier = _extract_cstr(index.get('CSTR标识'), dataset.get('code'), quote)
     doi = _extract_doi(quote)
     identifier = cstr_identifier or _first_non_empty(dataset.get('code'), dataset_id)
     publish_date = _first_non_empty(data.get('publishTime'), meta.get('数据汇交时间'))
     keywords = _split_terms(payload.get('keyword'))
-    subjects = _unique_list([meta.get('学科分类'), *_named_values(payload.get('catalog'))])
+    keywords_en = _split_terms(en_payload.get('keyword'))
+    subjects = _unique_list([meta.get('学科分类')])
+    subjects_en = _unique_list([en_meta.get('Subject Type')])
+    catalog_subjects = _named_values(payload.get('catalog'))
+    catalog_subjects_en = _named_values(en_payload.get('catalog'))
     spatial_extent = '；'.join(_named_values(payload.get('extent'))) or None
+    spatial_extent_en = '; '.join(_named_values(en_payload.get('extent'))) or spatial_extent
     time_extent = _clean_text(meta.get('数据时间'))
+    time_extent_en = _clean_text(en_meta.get('Data Time')) or time_extent
     data_format = _clean_text(meta.get('数据格式'))
+    data_format_en = _clean_text(en_meta.get('Data Type')) or data_format
     data_size = _clean_text(meta.get('数据量'))
+    data_size_en = _clean_text(en_meta.get('Data Amount')) or data_size
     data_source = _clean_text(meta.get('数据来源'))
     resource_kind = _clean_text(meta.get('数据资源'))
+    resource_kind_en = _clean_text(en_meta.get('Resource Type')) or resource_kind
     share_type = _first_non_empty(data.get('shareType'), meta.get('共享级别'))
+    share_type_en = _first_non_empty(en_data.get('shareType'), en_meta.get('Share Level')) or share_type
     access_method = _clean_text(meta.get('获取方式'))
+    access_method_en = _clean_text(en_meta.get('Get Type')) or access_method
     quality = _clean_text(meta.get('数据质量'))
+    quality_en = _clean_text(en_meta.get('Data Quality'))
     process = _clean_text(meta.get('数据加工方法'))
+    process_en = _clean_text(en_meta.get('Data Processing Method'))
     resource_url = _resource_url(url, dataset_id)
     contact_name = _clean_text(contact.get('name'))
     contact_address = _clean_text(contact.get('address'))
@@ -248,7 +287,8 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
         organization = _clean_text(prefix)
     creators = [_organization_agent(organization)] if organization else [_organization_agent(PUBLISHER_ZH)]
     contributors = [_person_agent(contact_name, None, organization)] if contact_name else None
-    rights = _rights(share_type, access_method, meta.get('共享级别'))
+    rights = _rights(share_type, access_method, meta.get('共享级别'), 'zh')
+    rights_en = _rights(share_type_en, access_method_en, en_meta.get('Share Level'), 'en')
     alternative_identifiers = [{'type': 'DOI', 'identifier': doi}] if doi else None
 
     core_zh: Dict[str, Any] = {
@@ -259,7 +299,7 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
         'publish_date': publish_date,
         'descriptions': [{'lang': 'zh', 'description': description}] if description else None,
         'keywords': [{'lang': 'zh', 'keyword': keywords}] if keywords else None,
-        'subjects': [{'standard_gbt': subjects, 'standard_oecd': None}] if subjects else None,
+        'subjects': [{'lang': 'zh', 'value': subjects}] if subjects else None,
         'language': 'zh',
         'contributors': contributors,
         'alternative_identifiers': alternative_identifiers,
@@ -283,7 +323,7 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
                 '空间范围': spatial_extent,
             },
             '语种': '中文',
-            '文件内容': '；'.join(_unique_list([resource_kind, data_source, quality])) or None,
+            '文件内容': resource_kind,
             '基金项目': None,
             '数据量': data_size,
             '数据格式': data_format,
@@ -303,7 +343,7 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
         '数据集服务信息': {
             '数据集引用格式': quote,
             '数据集共享许可协议': share_type,
-            '数据集使用声明': '；'.join(_unique_list([access_method, process])) or None,
+            '数据集使用声明': access_method,
             '数据集下载地址': resource_url,
             '数据论文访问地址': None,
         },
@@ -316,35 +356,39 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
             '收藏量': data.get('favoriteCount'),
             '数据质量': quality,
             '数据加工方法': process,
+            '目录分类': catalog_subjects or None,
             '封面图片': _clean_text(data.get('image')),
         },
     }
 
     core_en: Dict[str, Any] = {
         **core_zh,
-        'titles': None,
-        'descriptions': None,
-        'keywords': None,
+        'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
+        'descriptions': [{'lang': 'en', 'description': description_en}] if description_en else None,
+        'keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
+        'subjects': [{'lang': 'en', 'value': subjects_en}] if subjects_en else None,
         'publisher': _publisher('en'),
         'creators': [_organization_agent(PUBLISHER_EN, 'en')],
-        'language': 'Chinese',
+        'contributors': None,
+        'rights': rights_en,
+        'language': 'English',
     }
     en: Dict[str, Any] = {
         'Core Metadata': {'metadatas': [core_en]},
         'Dataset Basic Information': {
             'Identifier': identifier or dataset_id,
-            'Title': None,
-            'Abstract': None,
-            'Keywords': None,
+            'Title': title_en,
+            'Abstract': description_en,
+            'Keywords': keywords_en or None,
             'Coverage': {
-                'Time Range': time_extent,
-                'Spatial Range': spatial_extent,
+                'Time Range': time_extent_en,
+                'Spatial Range': spatial_extent_en,
             },
-            'Language': 'Chinese',
-            'File Content': '；'.join(_unique_list([resource_kind, data_source, quality])) or None,
+            'Language': 'English',
+            'File Content': resource_kind_en,
             'Project/Funder': None,
-            'Data Size': data_size,
-            'Data Format': data_format,
+            'Data Size': data_size_en,
+            'Data Format': data_format_en,
             'Dataset Authors': {
                 'Author Name': [organization] if organization else None,
                 'Affiliation': organization,
@@ -359,9 +403,9 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
             'Version Information': _clean_text(payload.get('version')),
         },
         'Dataset Service Information': {
-            'Dataset Citation Format': quote,
-            'Dataset License': share_type,
-            'Dataset Usage Statement': '；'.join(_unique_list([access_method, process])) or None,
+            'Dataset Citation Format': quote_en,
+            'Dataset License': share_type_en,
+            'Dataset Usage Statement': access_method_en,
             'Dataset Download URL': resource_url,
             'Dataset Paper URL': None,
         },
@@ -372,8 +416,9 @@ def _payload_from_data(payload: Dict[str, Any], url: str, title: str) -> Metadat
             'Views': data.get('visitCount'),
             'Downloads': data.get('downloadCount'),
             'Collections': data.get('favoriteCount'),
-            'Data Quality': quality,
-            'Data Processing Method': process,
+            'Data Quality': quality_en,
+            'Data Processing Method': process_en,
+            'Catalog Classification': catalog_subjects_en or None,
             'Cover Image': _clean_text(data.get('image')),
         },
     }
@@ -402,9 +447,14 @@ def matches(url: str, title: str, content: str) -> bool:
 
 def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDict]:
     payload = _payload_data(_load_json_payload(content or ''))
+    payload_en = None
     dataset_id = _query_id(url)
     if not payload and dataset_id:
-        payload = _fetch_detail_data(dataset_id, url)
+        payload = _fetch_detail_data(dataset_id, url, 'zh_CN')
+        try:
+            payload_en = _fetch_detail_data(dataset_id, url, 'en_US')
+        except Exception:
+            payload_en = None
     if not isinstance(payload, dict):
         return None
-    return _payload_from_data(payload, url, title)
+    return _payload_from_data(payload, url, title, payload_en)

@@ -238,6 +238,12 @@ async function markConclusion(conclusion) {
   return saved;
 }
 
+async function toggleConclusion() {
+  const current = form.elements.last_status.value.trim();
+  const next = current === "通过" ? "失败" : "通过";
+  return markConclusion(next);
+}
+
 function updateStatus(text, conclusion = "") {
   const box = document.getElementById("statusBox");
   box.textContent = text;
@@ -305,6 +311,7 @@ document.getElementById("newQueryButton").addEventListener("click", () => newCas
 document.getElementById("duplicateButton").addEventListener("click", () => duplicateCase().catch((error) => showToast(error.message)));
 document.getElementById("deleteButton").addEventListener("click", () => deleteCase().catch((error) => showToast(error.message)));
 document.getElementById("loadSampleButton").addEventListener("click", () => loadSample().catch((error) => showToast(error.message)));
+document.getElementById("toggleConclusionButton").addEventListener("click", () => toggleConclusion().catch((error) => showToast(error.message)));
 document.getElementById("markPassButton").addEventListener("click", () => markConclusion("通过").catch((error) => showToast(error.message)));
 document.getElementById("markFailButton").addEventListener("click", () => markConclusion("失败").catch((error) => showToast(error.message)));
 document.getElementById("clearConclusionButton").addEventListener("click", () => markConclusion("").catch((error) => showToast(error.message)));

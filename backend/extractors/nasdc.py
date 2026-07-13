@@ -297,6 +297,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 
     english_keywords = [_english_text(item) for item in keywords]
     english_keywords = [item for item in english_keywords if item]
+    if not english_keywords:
+        english_keywords = keywords
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',

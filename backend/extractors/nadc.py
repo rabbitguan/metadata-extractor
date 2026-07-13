@@ -129,6 +129,23 @@ def _fetch_chinese_html(url: str) -> Optional[str]:
         return None
 
 
+def _fetch_english_html(url: str) -> Optional[str]:
+    parsed = urlparse(url or '')
+    if parsed.netloc.lower() != 'nadc.china-vo.org':
+        return None
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.pop('language', None)
+    query['lang'] = 'en'
+    en_url = urlunparse(parsed._replace(query=urlencode(query)))
+    try:
+        response = requests.get(en_url, headers=FETCH_HEADERS, timeout=15)
+        response.raise_for_status()
+        response.encoding = response.encoding or 'utf-8'
+        return response.text
+    except Exception:
+        return None
+
+
 def _plain_lines(content: str) -> list[str]:
     return [line for line in (_clean_text(item) for item in re.split(r'[\r\n]+', content or '')) if line]
 
@@ -235,6 +252,8 @@ def _extract_tags(soup: BeautifulSoup) -> Dict[str, list[str]]:
         label = _text_or_none(label_node)
         holder = label_node.find_parent('div')
         value_holder = holder.find_next_sibling('div') if holder else None
+        if not value_holder:
+            value_holder = label_node.find_next_sibling('div')
         values = [_text_or_none(node) for node in value_holder.select('.dataset-tagBlock')] if value_holder else []
         values = _unique_list(values)
         if label and values:
@@ -280,6 +299,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 soup = chinese_soup
                 full_text = chinese_text
     paper_layout = bool(soup.select_one('#pd-title'))
+    english_html = _fetch_english_html(url)
+    english_soup = BeautifulSoup(english_html, 'html.parser') if english_html else None
+    english_text = english_soup.get_text('\n', strip=True) if english_soup else ''
     title_zh = _first_non_empty(
         _selector_text(soup, '#title'),
         _selector_text(soup, '#pd-title'),
@@ -291,6 +313,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
 
     title_en = _first_non_empty(
         _selector_text(soup, '#title_en'),
+        _selector_text(english_soup, '#title') if english_soup else None,
         _extract_plain_label_value(full_text, ['英文名称']),
         _selector_text(soup, '#pd-title') if paper_layout else None,
     )
@@ -300,6 +323,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         _extract_paper_info_value(soup, 'Publication Date') if paper_layout else None,
     )
     description = _first_non_empty(_selector_text(soup, '#description'), _selector_text(soup, '#pd-description'))
+    description_en = _first_non_empty(
+        _selector_text(english_soup, '#description') if english_soup else None,
+        _extract_plain_label_value(english_text, ['Description']) if english_text else None,
+    )
     if not description and publish_date:
         lines = _plain_lines(full_text)
         for index, line in enumerate(lines):
@@ -307,9 +334,26 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 description = lines[index + 1] if index + 1 < len(lines) else None
                 break
     keywords = _split_terms(_first_non_empty(_selector_text(soup, '#keywords'), _extract_plain_label_value(full_text, ['关键字', '关键词'])))
+    keywords_en = _split_terms(
+        _first_non_empty(
+            _selector_text(english_soup, '#keywords') if english_soup else None,
+            _extract_plain_label_value(english_text, ['Keywords']) if english_text else None,
+        )
+    )
+    if not keywords_en:
+        keywords_en = keywords
     data_amount = _first_non_empty(_selector_text(soup, '#data_amount'), _extract_plain_label_value(full_text, ['数据量']))
+    data_amount_en = _first_non_empty(_selector_text(english_soup, '#data_amount') if english_soup else None)
     sharing_method = _first_non_empty(_selector_text(soup, '#sharemode'), _extract_plain_label_value(full_text, ['共享途径']))
     sharing_scope = _first_non_empty(_selector_text(soup, '#sharescope'), _extract_plain_label_value(full_text, ['共享范围']))
+    sharing_method_en = _first_non_empty(
+        _selector_text(english_soup, '#sharemode') if english_soup else None,
+        _extract_plain_label_value(english_text, ['Sharing Method']) if english_text else None,
+    )
+    sharing_scope_en = _first_non_empty(
+        _selector_text(english_soup, '#sharescope') if english_soup else None,
+        _extract_plain_label_value(english_text, ['Sharing Scope']) if english_text else None,
+    )
     procedure = _first_non_empty(_selector_text(soup, '#procedure'), _extract_plain_label_value(full_text, ['申请流程']))
     doi = _extract_doi(_selector_text(soup, '#doi'), _extract_plain_label_value(full_text, ['DOI']), _extract_paper_info_value(soup, 'DOI'), full_text)
     cstr_identifier = _extract_cstr(_selector_text(soup, '#cstr'), _extract_plain_label_value(full_text, ['CSTR']), _extract_paper_info_value(soup, 'CSTR'), full_text)
@@ -323,6 +367,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         _extract_plain_label_value(full_text, ['作者']),
         _selector_text(soup, '#pd-authors'),
     )
+    author_name_en = _first_non_empty(
+        _selector_text(english_soup, '#author_name') if english_soup else None,
+        _extract_plain_label_value(english_text, ['Author']) if english_text else None,
+    )
     author_email = _first_non_empty(_selector_text(soup, '#author_email'), _extract_plain_label_value(full_text, ['邮件']))
     resource_id = _extract_resource_id(url)
     page_url = _valid_http_url(url) or (urljoin(BASE_URL, f'/res/{resource_id}/') if resource_id else None)
@@ -330,31 +378,31 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     paper_files, paper_download_urls, paper_data_format = _extract_paper_files(soup)
     license_links = _extract_license_links(soup)
     tags = _extract_tags(soup)
+    tags_en = _extract_tags(english_soup) if english_soup else {}
 
     access_urls = _unique_list([*(link['url'] for link in access_links), *paper_download_urls])
     all_urls = _unique_list([page_url])
     license_names = _unique_list(link['label'] for link in license_links)
     license_urls = _unique_list(link['url'] for link in license_links)
-    subjects = _unique_list([
-        *(tags.get('子学科') or []),
-        *(tags.get('观测波段') or []),
-        *(tags.get('观测装置和计划') or []),
-    ])
-    file_content = '；'.join(_unique_list([
-        title_en,
-        *paper_files,
-        *(tags.get('观测波段') or []),
-        *(tags.get('观测装置和计划') or []),
-        *(tags.get('数据类型') or []),
-        *(tags.get('生产年代') or []),
-        *(tags.get('用户对象') or []),
-    ])) or None
+    subjects = _unique_list(tags.get('子学科') or [])
+    subjects_en = _unique_list(tags_en.get('subject') or [])
+    file_content = None
+    data_format = paper_data_format or '；'.join(tags.get('数据类型') or []) or None
+    data_format_en = paper_data_format or '; '.join(tags_en.get('data type') or []) or data_format
     usage_parts = {
         '共享途径': sharing_method,
         '共享范围': sharing_scope,
         '申请流程': procedure,
     }
     usage_description = '；'.join(f'{key}: {value}' for key, value in usage_parts.items() if value) or None
+    usage_description_en = '；'.join(
+        f'{key}: {value}'
+        for key, value in {
+            'Sharing Method': sharing_method_en,
+            'Sharing Scope': sharing_scope_en,
+        }.items()
+        if value
+    ) or None
     license_text = '；'.join(license_names) or None
     if not data_amount and paper_files:
         sizes = []
@@ -366,7 +414,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     download_url = '；'.join(access_urls) or None
 
     creator_name = author_name or PUBLISHER_ZH
+    creator_name_en = author_name_en or PUBLISHER_EN
     author_names = _split_authors(author_name)
+    author_names_en = _split_authors(author_name_en)
     if paper_layout and author_names:
         creators = [
             {
@@ -388,6 +438,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 'identifiers': None,
             },
         }]
+    creators_en = [{
+        'type': 'Organize',
+        'affiliation': {
+            'names': [{'lang': 'en', 'name': creator_name_en}],
+            'identifiers': None,
+        },
+    }]
     titles = [{'lang': 'zh', 'name': title_zh}]
     if title_en and title_en != title_zh:
         titles.append({'lang': 'en', 'name': title_en})
@@ -407,7 +464,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'publish_date': publish_date,
         'descriptions': [{'lang': 'zh', 'description': description}] if description else None,
         'keywords': [{'lang': 'zh', 'keyword': keywords}] if keywords else None,
-        'subjects': [{'standard_gbt': subjects or None, 'standard_oecd': None}] if subjects else None,
+        'subjects': [{'lang': 'zh', 'value': subjects}] if subjects else None,
         'language': 'zh; en' if title_en else 'zh',
         'contributors': [{
             'type': 'Organize',
@@ -460,7 +517,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             '文件内容': file_content,
             '基金项目': None,
             '数据量': data_amount,
-            '数据格式': paper_data_format or '；'.join(tags.get('数据类型') or []) or None,
+            '数据格式': data_format,
             '数据集作者': dataset_author,
         },
         '数据集出版信息': {
@@ -482,15 +539,15 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     core_en: Dict[str, Any] = {
         'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
         'identifier': cstr_display,
-        'creators': creators,
+        'creators': creators_en,
         'publisher': {
             'names': [{'lang': 'en', 'name': PUBLISHER_EN}],
             'identifiers': None,
         },
         'publish_date': publish_date,
-        'descriptions': None,
-        'keywords': None,
-        'subjects': None,
+        'descriptions': [{'lang': 'en', 'description': description_en}] if description_en else None,
+        'keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
+        'subjects': [{'lang': 'en', 'value': subjects_en}] if subjects_en else None,
         'language': 'zh; en' if title_en else 'zh',
         'contributors': [{
             'type': 'Organize',
@@ -504,11 +561,11 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'related_identifiers': _related_identifiers(ivo_identifier),
         'rights': [{
             'license_type': None,
-            'license': license_text,
-            'type': sharing_scope,
-            'description': usage_description,
+            'license': None,
+            'type': None,
+            'description': usage_description_en,
             'cert_num': None,
-        }] if (license_text or usage_description or sharing_scope) else None,
+        }] if usage_description_en else None,
         'funders': None,
         'version': None,
         'urls': all_urls or None,
@@ -520,8 +577,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Dataset Basic Information': {
             'Identifier': domain_identifier,
             'Title': [{'lang': 'en', 'name': title_en}] if title_en else None,
-            'Abstract': None,
-            'Keywords': None,
+            'Abstract': description_en,
+            'Keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
             'Coverage': {
                 'Time Range': None,
                 'Spatial Range': None,
@@ -529,11 +586,11 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Language': 'Chinese; English' if title_en else 'Chinese',
             'File Content': file_content,
             'Project/Funder': None,
-            'Data Size': data_amount,
-            'Data Format': paper_data_format or '；'.join(tags.get('数据类型') or []) or None,
+            'Data Size': data_amount_en or data_amount,
+            'Data Format': data_format_en,
             'Dataset Authors': {
-                'Author Name': author_names or [creator_name],
-                'Affiliation': None if paper_layout else creator_name,
+                'Author Name': author_names_en or [creator_name_en],
+                'Affiliation': None if paper_layout else creator_name_en,
                 'Email': author_email,
                 'Contribution': 'Dataset construction, publication, and service',
                 'Biography': None,
@@ -547,7 +604,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Dataset Service Information': {
             'Dataset Citation Format': citation_format,
             'Dataset License': license_text,
-            'Dataset Usage Statement': usage_description,
+            'Dataset Usage Statement': usage_description_en,
             'Dataset Download URL': download_url,
             'Dataset Paper URL': page_url,
         },

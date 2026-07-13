@@ -12,6 +12,9 @@ from bs4 import BeautifulSoup
 
 RULE_NAME = 'TPDC Dataset Detail'
 BASE_URL = 'https://data.tpdc.ac.cn'
+CONTACT_ORG_ZH = '国家青藏高原科学数据中心'
+CONTACT_ORG_EN = 'National Tibetan Plateau / Third Pole Environment Data Center'
+CONTACT_EMAIL = 'data@itpcas.ac.cn'
 DETAIL_API = f'{BASE_URL}/view/metadataView/detail/'
 UUID_PATTERN = re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', re.I)
 API_HEADERS = {
@@ -274,60 +277,82 @@ def _temporal_keyword_values(items: Any) -> tuple[list[str], list[str]]:
     return _unique(zh_values), _unique(en_values)
 
 
-def _api_creator_agents(authors: Any) -> list[Dict[str, Any]]:
-    agents = []
-    items = authors if isinstance(authors, list) else []
+def _api_creator_agents() -> list[Dict[str, Any]]:
+    return [{
+        'type': 'Organize',
+        'affiliation': {
+            'names': [
+                {'lang': 'zh', 'name': CONTACT_ORG_ZH},
+                {'lang': 'en', 'name': CONTACT_ORG_EN},
+            ],
+            'identifiers': None,
+            'emails': [CONTACT_EMAIL],
+        },
+    }]
+
+
+def _funder_display(items: Optional[list[Dict[str, Any]]]) -> Optional[str]:
+    if not items:
+        return None
+    parts = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        names = []
-        name_zh = _clean_text(item.get('name'))
-        name_en = _clean_text(item.get('nameEn'))
-        if name_zh:
-            names.append({'lang': 'zh', 'name': name_zh})
-        if name_en:
-            names.append({'lang': 'en', 'name': name_en})
-        if not names:
-            continue
-        affiliations = []
-        unit_zh = _clean_text(item.get('unit'))
-        unit_en = _clean_text(item.get('unitEn'))
-        affiliation_names = []
-        if unit_zh:
-            affiliation_names.append({'lang': 'zh', 'name': unit_zh})
-        if unit_en:
-            affiliation_names.append({'lang': 'en', 'name': unit_en})
-        if affiliation_names:
-            affiliations.append({'names': affiliation_names, 'identifiers': None})
-        agents.append({
-            'type': 'Person',
-            'person': {
-                'names': names,
-                'emails': [item.get('email')] if _clean_text(item.get('email')) else None,
-                'identifiers': [{'type': 'DAID', 'identifier': item.get('daid')}] if _clean_text(item.get('daid')) else None,
-                'affiliations': affiliations or None,
-            },
-        })
-    return agents
+        name = _clean_text(item.get('name'))
+        proj_type = _clean_text(item.get('proj_type'))
+        proj_num = _clean_text(item.get('proj_num'))
+        proj_name = _clean_text(item.get('proj_name'))
+        if proj_type and proj_name and proj_num and proj_name != proj_type:
+            parts.append(f'{proj_type}：{proj_name}（{proj_num}）')
+        elif proj_type and proj_num:
+            parts.append(f'{proj_type}（{proj_num}）')
+        elif proj_type and proj_name and proj_name != proj_type:
+            parts.append(f'{proj_type}：{proj_name}')
+        elif name and proj_num:
+            parts.append(f'{name}（{proj_num}）')
+        elif name:
+            parts.append(name)
+        elif proj_type:
+            parts.append(proj_type)
+        elif proj_num:
+            parts.append(proj_num)
+    return '；'.join(_unique(parts)) or None
 
 
-def _dataset_author(authors: Any, lang: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(authors, list) or not authors:
-        return None
+def _fund_display_zh(item: Dict[str, Any]) -> Optional[str]:
+    proj_type = _clean_text(item.get('typeCn'))
+    title = _clean_text(item.get('titleCn'))
+    code = _clean_text(item.get('code'))
+    if proj_type and title and title != proj_type and code:
+        return f'{proj_type}：{title}（{code}）'
+    if proj_type and code:
+        return f'{proj_type}（{code}）'
+    if title and code:
+        return f'{title}（{code}）'
+    return proj_type or title or code
+
+
+def _fund_display_en(item: Dict[str, Any]) -> Optional[str]:
+    proj_type = _clean_text(item.get('typeEn'))
+    title = _clean_text(item.get('titleEn'))
+    code = _clean_text(item.get('code'))
+    label = proj_type or title
+    return f'{label}（{code}）' if label and code else label or code
+
+
+def _dataset_author(authors: Any, lang: str) -> Dict[str, Any]:
+    items = authors if isinstance(authors, list) else []
     name_key = 'nameEn' if lang == 'en' else 'name'
-    unit_key = 'unitEn' if lang == 'en' else 'unit'
-    names = _unique([item.get(name_key) for item in authors if isinstance(item, dict)])
-    units = _unique([item.get(unit_key) for item in authors if isinstance(item, dict)])
+    names = _unique([item.get(name_key) for item in items if isinstance(item, dict)])
     if not names and lang == 'en':
-        names = _unique([item.get('name') for item in authors if isinstance(item, dict)])
-    if not units and lang == 'en':
-        units = _unique([item.get('unit') for item in authors if isinstance(item, dict)])
-    if not names and not units:
-        return None
+        names = _unique([item.get('name') for item in items if isinstance(item, dict)])
+    if not names:
+        names = [CONTACT_ORG_EN if lang == 'en' else CONTACT_ORG_ZH]
+    affiliation = CONTACT_ORG_EN if lang == 'en' else CONTACT_ORG_ZH
     return {
-        '作者姓名' if lang == 'zh' else 'Author Name': names or None,
-        '工作单位' if lang == 'zh' else 'Affiliation': '；'.join(units) or None,
-        '电子邮箱' if lang == 'zh' else 'Email': '；'.join(_unique([item.get('email') for item in authors if isinstance(item, dict)])) or None,
+        '作者姓名' if lang == 'zh' else 'Author Name': names,
+        '工作单位' if lang == 'zh' else 'Affiliation': affiliation,
+        '电子邮箱' if lang == 'zh' else 'Email': CONTACT_EMAIL,
         '工作贡献' if lang == 'zh' else 'Contribution': None,
         '作者简介' if lang == 'zh' else 'Biography': None,
     }
@@ -418,28 +443,40 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
     temporal_resolution = _clean_text(metadata.get('temporalResolution'))
     spatial_resolution = _clean_text(metadata.get('spatialResolution'))
     data_format = _clean_text(metadata.get('dataFormat'))
-    creators = _api_creator_agents(context.get('authorVOList'))
+    creators = _api_creator_agents()
     authors = context.get('authorVOList')
     funders_zh = [
         {
-            'name': _clean_text(item.get('titleCn')),
+            'name': _fund_display_zh(item),
             'proj_type': None,
-            'proj_num': _clean_text(item.get('code')),
-            'proj_name': _clean_text(item.get('titleCn')),
+            'proj_num': None,
+            'proj_name': None,
         }
         for item in (context.get('fundVOList') if isinstance(context.get('fundVOList'), list) else [])
         if isinstance(item, dict) and (_clean_text(item.get('titleCn')) or _clean_text(item.get('code')))
     ] or None
     funders_en = [
         {
-            'name': _clean_text(item.get('titleEn')),
+            'name': _fund_display_en(item),
             'proj_type': None,
-            'proj_num': _clean_text(item.get('code')),
-            'proj_name': _clean_text(item.get('titleEn')),
+            'proj_num': None,
+            'proj_name': None,
         }
         for item in (context.get('fundVOList') if isinstance(context.get('fundVOList'), list) else [])
         if isinstance(item, dict) and (_clean_text(item.get('titleEn')) or _clean_text(item.get('code')))
     ] or None
+    funders_core = []
+    zh_funder_items = funders_zh or []
+    en_funder_items = funders_en or []
+    for index in range(max(len(zh_funder_items), len(en_funder_items))):
+        names = []
+        if index < len(zh_funder_items) and _clean_text(zh_funder_items[index].get('name')):
+            names.append({'lang': 'zh', 'value': _clean_text(zh_funder_items[index].get('name'))})
+        if index < len(en_funder_items) and _clean_text(en_funder_items[index].get('name')):
+            names.append({'lang': 'en', 'value': _clean_text(en_funder_items[index].get('name'))})
+        if names:
+            funders_core.append({'name': names, 'proj_type': None, 'proj_num': None, 'proj_name': None})
+    funders_core = funders_core or None
 
     subject_zh, subject_en = _keyword_values(context.get('keywordStandVOList'), 'name', 'enName')
     theme_zh, theme_en = _keyword_values(context.get('themeList'), 'name', 'enName')
@@ -447,6 +484,8 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
     temporal_zh, temporal_en = _temporal_keyword_values(context.get('temporalKeywordVOList'))
     keywords_zh = _unique([*theme_zh, *place_zh, *temporal_zh])
     keywords_en = _unique([*theme_en, *place_en, *temporal_en])
+    if not keywords_en:
+        keywords_en = keywords_zh
     keyword_values = []
     if keywords_zh:
         keyword_values.append({'lang': 'zh', 'keyword': keywords_zh})
@@ -487,7 +526,10 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
         'publish_date': publish_date,
         'descriptions': description_values or None,
         'keywords': keyword_values or None,
-        'subjects': [{'standard_gbt': None, 'standard_oecd': subject_en}] if subject_en else None,
+        'subjects': [
+            {'lang': 'zh', 'value': subject_zh} if subject_zh else None,
+            {'lang': 'en', 'value': subject_en} if subject_en else None,
+        ] if subject_zh or subject_en else None,
         'language': metadata.get('language') or word.get('language') or 'zh/en',
         'contributors': None,
         'alternative_identifiers': alternative_identifiers,
@@ -499,7 +541,7 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
             'description': license_text,
             'cert_num': None,
         }] if license_text else None,
-        'funders': funders_zh,
+        'funders': funders_core,
         'version': None,
         'urls': [page_url] if page_url else None,
         'resource_type': 'Dataset',
@@ -509,7 +551,7 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
         'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
         'descriptions': [{'lang': 'en', 'description': desc_en}] if desc_en else None,
         'keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
-        'subjects': [{'standard_gbt': None, 'standard_oecd': subject_en}] if subject_en else None,
+        'subjects': None,
         'language': word.get('language') or 'en',
         'rights': [{
             'license_type': None,
@@ -524,7 +566,7 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
         },
         'creators': None,
         'contributors': None,
-        'funders': funders_en,
+        'funders': None,
     }
 
     zh_payload: Dict[str, Any] = {
@@ -540,7 +582,7 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
             },
             '语种': metadata.get('language') or 'zh',
             '文件内容': None,
-            '基金项目': funders_zh,
+            '基金项目': _funder_display(funders_zh),
             '数据量': data_amount,
             '数据格式': data_format,
             '数据集作者': _dataset_author(authors, 'zh'),
@@ -578,7 +620,7 @@ def _payload_from_api_context(context: Dict[str, Any], url: str) -> Optional[Dic
             },
             'Language': word.get('language') or 'en',
             'File Content': None,
-            'Funding Project': funders_en,
+            'Funding Project': _funder_display(funders_en),
             'Data Volume': data_amount,
             'Data Format': data_format,
             'Dataset Authors': _dataset_author(authors, 'en'),

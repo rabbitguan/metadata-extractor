@@ -226,6 +226,11 @@ button.danger {
   color: var(--danger);
 }
 
+button.toggle-action {
+  color: var(--accent);
+  border-color: #99f6e4;
+}
+
 button.pass-action {
   color: var(--ok);
   border-color: #a7f3d0;

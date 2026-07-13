@@ -53,6 +53,22 @@ def _english_text(value: Optional[Any]) -> Optional[str]:
     return cleaned
 
 
+def _english_org_name(*values: Optional[Any]) -> Optional[str]:
+    for value in values:
+        cleaned = _english_text(value)
+        if not cleaned:
+            continue
+        known = {
+            'ChineseAcademyofMedicalSciences': 'Chinese Academy of Medical Sciences',
+        }.get(cleaned)
+        if known:
+            return known
+        cleaned = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', cleaned)
+        cleaned = re.sub(r'\bof(?=[A-Z])', 'of ', cleaned)
+        return _clean_text(cleaned)
+    return None
+
+
 def _first_non_empty(*values: Optional[Any]) -> Optional[str]:
     for value in values:
         cleaned = _clean_text(value)
@@ -183,6 +199,18 @@ def _citation_text(soup: BeautifulSoup) -> Optional[str]:
     return _clean_text(node.get_text(' ', strip=True)) if node else None
 
 
+def _clean_citation(citation: Optional[str], doi: Optional[str]) -> Optional[str]:
+    text = _clean_text(citation)
+    if not text:
+        return None
+    if doi:
+        text = re.sub(r'https?://(?:dx\.)?doi\.org/\s*\.?', f'https://doi.org/{doi}', text, flags=re.IGNORECASE)
+    if not doi:
+        text = re.sub(r'\s*https?://(?:dx\.)?doi\.org/\s*\.?', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s*doi\s*[:：]\s*\.?', '', text, flags=re.IGNORECASE)
+    return _clean_text(text)
+
+
 def _format_date(value: Optional[Any]) -> Optional[str]:
     text = _clean_text(value)
     if not text:
@@ -204,6 +232,15 @@ def _identifier_item(value: Optional[Any]) -> Optional[Dict[str, str]]:
     return None
 
 
+def _infer_spatial_range(*values: Optional[Any], language: str = 'zh') -> Optional[str]:
+    text = ' '.join(str(value or '') for value in values)
+    if '北京市' in text or re.search(r'(?<![A-Za-z])北京(?![A-Za-z])', text):
+        return 'Beijing' if language == 'en' else '北京'
+    if re.search(r'\bBeijing\b', text, flags=re.IGNORECASE):
+        return 'Beijing' if language == 'en' else '北京'
+    return None
+
+
 def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataDict]:
     soup = BeautifulSoup(content or '', 'html.parser')
     labels = _label_map(soup)
@@ -212,13 +249,14 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         return None
 
     cstr_identifier = _first_non_empty(_extract_cstr(fallback_identifier), _extract_cstr(labels.get('科技资源标识符')))
-    doi = _first_non_empty(labels.get('DOI'))
+    doi_item = _identifier_item(labels.get('DOI'))
+    doi = doi_item.get('identifier') if doi_item and doi_item.get('type') == 'DOI' else None
     title_zh = _first_non_empty(_element_text(soup, '#dataSetNameZh'), labels.get('数据集中文名称'), title)
     title_en = _first_non_empty(_element_text(soup, '#dataSetNameEn'), labels.get('数据集英文名称'), _english_text(title_zh), title_zh)
     identifier = cstr_identifier or doi or _extract_identifier_from_url(url)
     keywords = _unique_list(_split_terms(labels.get('关键词')))
     description = _first_non_empty(_element_text(soup, '#describe'), labels.get('数据描述'))
-    citation = _citation_text(soup)
+    citation = _clean_citation(_citation_text(soup), doi)
     publish_date = _format_date(labels.get('最新修订日期') or labels.get('创建时间'))
     created_date = _format_date(labels.get('创建时间'))
     version = _first_non_empty(labels.get('版本'))
@@ -230,9 +268,27 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
     license_text = _first_non_empty(labels.get('数据使用许可'))
     creators = _unique_list(_split_terms(labels.get('资源创建者')))
     creator_org = _first_non_empty(labels.get('数据资源创建机构'), labels.get('资源创建者单位'))
+    creator_org_en = _english_org_name(labels.get('创建机构英文名称'), creator_org)
     contact_person = _first_non_empty(labels.get('数据资源联系人'))
     contact_org = _first_non_empty(labels.get('联系单位'))
-    contributors = _unique_list(_split_terms(contact_person)) or None
+    spatial_range = _first_non_empty(
+        labels.get('地理范围'),
+        labels.get('空间范围'),
+        _infer_spatial_range(title_zh, labels.get('关键词'), description),
+    )
+    spatial_range_en = _english_text(labels.get('地理范围')) or _english_text(labels.get('空间范围')) or _infer_spatial_range(
+        title_en,
+        language='en',
+    )
+    spatial_range_value = (
+        [
+            {'lang': 'zh', 'value': spatial_range},
+            {'lang': 'en', 'value': spatial_range_en},
+        ]
+        if spatial_range and spatial_range_en
+        else spatial_range
+    )
+    contributors = None
     author_info = {
         '作者姓名': creators or None,
         '工作单位': creator_org,
@@ -241,12 +297,12 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         '作者简介': None,
     } if creators or creator_org else None
     author_info_en = {
-        'Author Name': creators or None,
-        'Affiliation': _english_text(creator_org),
+        'Author Name': [creator_org_en] if creator_org_en else None,
+        'Affiliation': creator_org_en,
         'Email': None,
         'Contribution': None,
         'Biography': None,
-    } if creators or _english_text(creator_org) else None
+    } if creator_org_en else None
     access_url = _first_non_empty(labels.get('数据链接'), resource_url)
     alternative_identifiers = []
     if doi:
@@ -255,6 +311,10 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         identifier_item = _identifier_item(item)
         if identifier_item:
             alternative_identifiers.append(identifier_item)
+    english_keywords = [_english_text(item) for item in keywords]
+    english_keywords = [item for item in english_keywords if item]
+    if not english_keywords:
+        english_keywords = keywords
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',
@@ -285,7 +345,7 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             '关键词': keywords or None,
             '范围': {
                 '时间范围': _first_non_empty(labels.get('时间范围')),
-                '空间范围': _first_non_empty(labels.get('地理范围')),
+                '空间范围': spatial_range_value,
             },
             '语种': language,
             '文件内容': None,
@@ -333,14 +393,14 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
         'CSTR Identifier': cstr_identifier,
         'Resource Name': title_en,
         'Title': title_en,
-        'Creators': creators or None,
+        'Creators': [creator_org_en] if creator_org_en else None,
         'Publisher': PUBLISHER_EN,
         'Publication Date': publish_date,
         'Description': _english_text(description),
-        'Keywords': [_english_text(item) for item in keywords if _english_text(item)] or None,
+        'Keywords': english_keywords or None,
         'Discipline Classification': _english_text(labels.get('学科分类')),
         'Language': 'English' if language == '英文' else language,
-        'Contributors': [_english_text(item) for item in contributors if _english_text(item)] if contributors else None,
+        'Contributors': None,
         'Alternative Identifiers': alternative_identifiers or None,
         'Related Identifiers': None,
         'Rights': rights,
@@ -352,10 +412,10 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
             'Identifier': identifier,
             'Title': title_en,
             'Abstract': _english_text(description),
-            'Keywords': [_english_text(item) for item in keywords if _english_text(item)] or None,
+            'Keywords': english_keywords or None,
             'Coverage': {
                 'Time Range': _first_non_empty(labels.get('时间范围')),
-                'Spatial Range': _english_text(labels.get('地理范围')),
+                'Spatial Range': spatial_range_value,
             },
             'Language': 'English' if language == '英文' else language,
             'File Content': None,
