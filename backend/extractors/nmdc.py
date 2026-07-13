@@ -108,6 +108,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     identifier = cstr_identifier or _clean_text(data.get('identifier')) or metadata_id
     keywords_zh = _split_terms(data.get('keyword'))
     keywords_en = _split_terms(data.get('enKeyword'))
+    if not keywords_en:
+        keywords_en = keywords_zh
     description_zh = _clean_text(data.get('description'))
     description_en = _clean_text(data.get('descriptionEn'))
     resource_url = _clean_text(data.get('link')) or url

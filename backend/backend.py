@@ -167,8 +167,9 @@ def _normalize_queried_cstr(value):
 
 
 def _normalize_cstr_identifier(value):
-    match = CSTR_PATTERN.fullmatch(_strip_cstr_prefixes(value))
-    return match.group(1) if match else None
+    text = _strip_cstr_prefixes(value)
+    match = CSTR_PATTERN.search(text)
+    return match.group(1).rstrip('.,;，；') if match else None
 
 
 def _normalize_doi_identifier(value):
@@ -257,7 +258,12 @@ def _format_cstr_display_value(value, language='zh'):
     formatted = []
     seen = set()
     for item in values:
-        text = _clean_scalar(item.get('identifier') if isinstance(item, dict) else item)
+        text = _clean_scalar(
+            (
+                item.get('identifier') or item.get('value') or item.get('id')
+                or item.get('标识符') or item.get('Identifier')
+            ) if isinstance(item, dict) else item
+        )
         if not text:
             continue
         for match in CSTR_PATTERN.finditer(text):
@@ -319,8 +325,8 @@ def _format_cstr_identifiers_in_output(node, cstr_context=False):
     normalized = {}
     for key, value in node.items():
         key_is_cstr = key in {'CSTR标识符', 'CSTR Identifier', 'cstr_identifier', 'cstrIdentifier'}
-        key_is_generic_identifier = key in {'标识符', 'Identifier', 'identifier', 'value'}
-        child_cstr_context = key_is_cstr or key_is_generic_identifier or ((cstr_context or item_type == 'CSTR') and key_is_generic_identifier)
+        key_is_generic_identifier = key in {'标识符', 'Identifier', 'identifier'}
+        child_cstr_context = key_is_cstr or key_is_generic_identifier or ((cstr_context or item_type == 'CSTR') and key == 'value')
         normalized[key] = _format_cstr_identifiers_in_output(value, cstr_context=child_cstr_context)
     return normalized
 
@@ -440,6 +446,11 @@ def _map_keys_recursive(obj, translations):
     保留原有非字典/非列表值结构。用于将 LLM 返回的中文键映射为英文键。
     """
     if isinstance(obj, dict):
+        if isinstance(obj.get('lang'), str) and 'value' in obj:
+            return {
+                **obj,
+                'value': _map_keys_recursive(obj.get('value'), translations),
+            }
         result = {}
         for k, v in obj.items():
             mapped_k = translations.get(k, k)
@@ -653,13 +664,19 @@ def _language_name_list(value, lang, field='name'):
             item_lang = item.get('lang') or lang
             item_value = item.get(field) or item.get('name') or item.get('title') or item.get('value')
             if item_value:
-                normalized.append({'lang': item_lang, field: item_value})
+                normalized_item = _sanitize_language_object({'lang': item_lang, field: item_value})
+                if normalized_item:
+                    normalized.append(normalized_item)
             elif 'lang' in item and field in item:
-                normalized.append(item)
+                normalized_item = _sanitize_language_object(item)
+                if normalized_item:
+                    normalized.append(normalized_item)
             continue
         text = _clean_scalar(item)
         if text:
-            normalized.append({'lang': lang, field: text})
+            normalized_item = _sanitize_language_object({'lang': lang, field: text})
+            if normalized_item:
+                normalized.append(normalized_item)
 
     return normalized or None
 
@@ -795,7 +812,10 @@ def _normalize_keywords(value, lang):
         if isinstance(item, dict):
             keyword_value = item.get('keyword') or item.get('keywords') or item.get('value')
             if keyword_value:
-                keywords.extend([i for i in _as_list(keyword_value) if _clean_scalar(i)])
+                keywords.extend([
+                    text for text in (_clean_scalar(i) for i in _as_list(keyword_value))
+                    if text
+                ])
             continue
         text = _clean_scalar(item)
         if text:
@@ -803,20 +823,84 @@ def _normalize_keywords(value, lang):
     return [{'lang': lang, 'keyword': keywords}] if keywords else None
 
 
+SUBJECT_VALUE_KEYS = {
+    '学科',
+    '学科分类',
+    '主题分类',
+    'Subjects',
+    'Discipline Classification',
+    'Subject Classification',
+    'Theme Classification',
+    'standard_gbt',
+    'standard_oecd',
+}
+
+SUBJECT_NOISE_TERMS = {
+    '团队',
+    '课题组',
+    '项目组',
+    'team',
+    'research team',
+}
+
+
+def _is_noisy_subject_term(value):
+    text = _clean_scalar(value)
+    if not text:
+        return True
+    normalized = text.strip().lower()
+    if normalized in SUBJECT_NOISE_TERMS:
+        return True
+    if re.fullmatch(r'\d+(?:[._-]\d+)*', normalized):
+        return True
+    if _contains_cjk(text) and re.fullmatch(r'[\u4e00-\u9fff]{2,8}站', text):
+        return True
+    return False
+
+
+def _sanitize_subject_value(value):
+    if _is_missing_value(value):
+        return None
+    if isinstance(value, list):
+        items = [
+            item for item in (_sanitize_subject_value(item) for item in value)
+            if not _is_missing_value(item)
+        ]
+        return items or None
+    if isinstance(value, dict):
+        if _is_lang_object(value):
+            sanitized_value = _sanitize_subject_value(value.get('value'))
+            if _is_missing_value(sanitized_value):
+                return None
+            return {**value, 'value': sanitized_value}
+        sanitized = {}
+        for key, item in value.items():
+            sanitized_value = _sanitize_subject_value(item) if key in SUBJECT_VALUE_KEYS else item
+            if key in SUBJECT_VALUE_KEYS and _is_missing_value(sanitized_value):
+                continue
+            sanitized[key] = sanitized_value
+        return sanitized or None
+    text = _clean_scalar(value)
+    if _is_noisy_subject_term(text):
+        return None
+    return text
+
+
 def _normalize_subjects(value):
     if _is_missing_value(value):
         return None
-    if isinstance(value, dict) and 'value' in value:
+    if isinstance(value, dict) and 'value' in value and not _is_lang_object(value):
         value = value.get('value')
     subjects = []
     for item in _as_list(value):
         if isinstance(item, dict):
-            if not any(not _is_missing_value(field_value) for field_value in item.values()):
+            item = _sanitize_subject_value(item)
+            if not isinstance(item, dict) or not any(not _is_missing_value(field_value) for field_value in item.values()):
                 continue
             subjects.append(item)
             continue
         text = _clean_scalar(item)
-        if text:
+        if text and not _is_noisy_subject_term(text):
             subjects.append({'standard_gbt': [text], 'standard_oecd': None})
     return subjects or None
 
@@ -872,6 +956,68 @@ def _normalize_rights(value):
     return rights or None
 
 
+def _merge_right_text(primary, secondary):
+    primary_text = _clean_scalar(primary)
+    secondary_text = _clean_scalar(secondary)
+    if primary_text and secondary_text and primary_text != secondary_text:
+        return _dedupe_jsonable([
+            {'lang': 'zh', 'value': primary_text},
+            {'lang': 'en', 'value': secondary_text},
+        ]) or None
+    return _first_non_missing(primary, secondary)
+
+
+RIGHTS_META_KEYS = {'license_type', 'license', 'type', 'cert_num'}
+
+
+def _rights_item_text(item):
+    if _is_missing_value(item):
+        return None
+    if not isinstance(item, dict):
+        return _clean_scalar(item)
+
+    parts = []
+    description = _clean_scalar(item.get('description'))
+    if description:
+        parts.append(description)
+
+    for key, value in item.items():
+        if key in RIGHTS_META_KEYS or key == 'description' or _is_missing_value(value):
+            continue
+        text = _clean_scalar(value)
+        if text:
+            parts.append(f'{key}: {text}')
+
+    return '；'.join(parts) or None
+
+
+def _merge_rights(primary, secondary):
+    primary_items = _as_list(primary)
+    secondary_items = _as_list(secondary)
+    if not primary_items:
+        return secondary_items or None
+    if not secondary_items:
+        return primary_items or None
+
+    merged = []
+    max_len = max(len(primary_items), len(secondary_items))
+    for index in range(max_len):
+        primary_item = primary_items[index] if index < len(primary_items) else None
+        secondary_item = secondary_items[index] if index < len(secondary_items) else None
+        if isinstance(primary_item, dict) and isinstance(secondary_item, dict):
+            item = {
+                'license_type': _first_non_missing(primary_item.get('license_type'), secondary_item.get('license_type')),
+                'license': _first_non_missing(primary_item.get('license'), secondary_item.get('license')),
+                'type': _first_non_missing(primary_item.get('type'), secondary_item.get('type')),
+                'description': _merge_right_text(_rights_item_text(primary_item), _rights_item_text(secondary_item)),
+                'cert_num': _first_non_missing(primary_item.get('cert_num'), secondary_item.get('cert_num')),
+            }
+            merged.append({key: value for key, value in item.items() if not _is_missing_value(value)})
+        else:
+            merged.extend(item for item in (primary_item, secondary_item) if not _is_missing_value(item))
+    return _dedupe_jsonable(merged) or None
+
+
 def _normalize_funders(value):
     if _is_missing_value(value):
         return None
@@ -879,13 +1025,66 @@ def _normalize_funders(value):
         value = value.get('value')
     funders = []
     for item in _as_list(value):
-        if isinstance(item, dict):
-            funders.append(item)
-            continue
-        text = _clean_scalar(item)
-        if text:
-            funders.append({'name': text, 'proj_type': None, 'proj_num': None, 'proj_name': None})
+        normalized = _normalize_funder(item)
+        if normalized:
+            funders.append(normalized)
     return funders or None
+
+
+def _normalize_funder(value):
+    if _is_missing_value(value):
+        return None
+    if isinstance(value, dict):
+        if 'value' in value and len(value) == 1:
+            return _normalize_funder(value.get('value'))
+        name = _first_non_missing(
+            value.get('name'),
+            value.get('funder'),
+            value.get('资助者'),
+            value.get('项目名称'),
+            value.get('projectCnName'),
+            value.get('projectName'),
+            value.get('value') if not isinstance(value.get('value'), (dict, list)) else None,
+        )
+        proj_num = _first_non_missing(
+            value.get('proj_num'),
+            value.get('项目编号'),
+            value.get('projectNumber'),
+            value.get('number'),
+        )
+        proj_type = _first_non_missing(
+            value.get('proj_type'),
+            value.get('项目类型'),
+            value.get('projectTypeName'),
+        )
+        proj_name = _first_non_missing(
+            value.get('proj_name'),
+            value.get('课题名称'),
+            value.get('projectSubject'),
+        )
+        normalized = {
+            'name': name,
+            'proj_type': proj_type,
+            'proj_num': proj_num,
+            'proj_name': proj_name,
+        }
+        return normalized if any(not _is_missing_value(item) for item in normalized.values()) else None
+
+    text = _clean_scalar(value)
+    if not text:
+        return None
+    if _looks_like_project_number(text):
+        return {'name': None, 'proj_type': None, 'proj_num': text, 'proj_name': None}
+    return {'name': text, 'proj_type': None, 'proj_num': None, 'proj_name': None}
+
+
+def _looks_like_project_number(value):
+    text = str(value or '').strip()
+    return bool(
+        len(text) >= 5
+        and re.fullmatch(r'[A-Za-z0-9_.-]+', text)
+        and re.search(r'\d', text)
+    )
 
 
 def _normalize_core_metadata_shape(core, lang):
@@ -931,9 +1130,15 @@ def _normalize_core_metadata_shape(core, lang):
 
 def _normalize_domain_metadata_shape(obj, lang):
     if isinstance(obj, list):
-        return [_normalize_domain_metadata_shape(item, lang) for item in obj]
+        items = [
+            item for item in (_normalize_domain_metadata_shape(item, lang) for item in obj)
+            if not _is_missing_value(item)
+        ]
+        return items or None
     if not isinstance(obj, dict):
         return obj
+    if _is_lang_object(obj):
+        return _sanitize_language_object(obj)
 
     normalized = {}
     for key, value in obj.items():
@@ -951,6 +1156,10 @@ def _normalize_domain_metadata_shape(obj, lang):
             normalized[key] = _normalize_descriptions(value, lang) or value
         elif key in {'关键词', 'Keywords'}:
             normalized[key] = _normalize_keywords(value, lang) or value
+        elif key in SUBJECT_VALUE_KEYS:
+            sanitized_subject = _sanitize_subject_value(value)
+            if not _is_missing_value(sanitized_subject):
+                normalized[key] = sanitized_subject
         else:
             normalized[key] = _normalize_domain_metadata_shape(value, lang)
     return normalized
@@ -1093,6 +1302,41 @@ def _contains_cjk(value):
     return bool(re.search(r'[\u4e00-\u9fff]', str(value or '')))
 
 
+def _language_text_value(value):
+    if isinstance(value, dict):
+        chunks = []
+        for key in ('name', 'title', 'description', 'value'):
+            item = value.get(key)
+            if not _is_missing_value(item):
+                chunks.append(str(item))
+        keyword = value.get('keyword')
+        if isinstance(keyword, list):
+            chunks.extend(str(item) for item in keyword if not _is_missing_value(item))
+        elif not _is_missing_value(keyword):
+            chunks.append(str(keyword))
+        return ' '.join(chunks)
+    return str(value or '')
+
+
+def _is_english_cjk_text(lang, value):
+    return str(lang or '').strip().lower().startswith('en') and _contains_cjk(value)
+
+
+def _sanitize_language_object(value):
+    if not _is_lang_object(value):
+        return value
+    if 'keyword' not in value and _is_english_cjk_text(value.get('lang'), _language_text_value(value)):
+        return None
+    meaningful_values = [
+        item
+        for key, item in value.items()
+        if key not in {'lang', 'type'}
+    ]
+    if not meaningful_values or all(_is_missing_value(item) for item in meaningful_values):
+        return None
+    return value
+
+
 def _drop_cjk_text_values(value):
     if isinstance(value, str):
         return None if _contains_cjk(value) else value
@@ -1102,11 +1346,13 @@ def _drop_cjk_text_values(value):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
-            if key in {'identifier', 'type', 'relation', 'license_type', 'license', 'cert_num', 'proj_num'}:
+            if key in {'identifier', 'type', 'relation', 'license_type', 'license', 'cert_num', 'proj_num', 'keyword', 'Application Procedure'}:
                 result[key] = item
             else:
                 filtered = _drop_cjk_text_values(item)
                 result[key] = filtered
+        if _is_lang_object(result):
+            return _sanitize_language_object(result)
         return result
     return value
 
@@ -1128,7 +1374,7 @@ def _merge_core_language_variants(core_zh, core_en):
     merged['contributors'] = _merge_agent_lists(zh.get('contributors'), en.get('contributors')) or None
     merged['alternative_identifiers'] = _merge_lists(zh.get('alternative_identifiers'), en.get('alternative_identifiers')) or None
     merged['related_identifiers'] = _merge_lists(zh.get('related_identifiers'), en.get('related_identifiers')) or None
-    merged['rights'] = _first_non_missing(zh.get('rights'), en.get('rights'))
+    merged['rights'] = _merge_rights(zh.get('rights'), en.get('rights'))
     merged['funders'] = _merge_funder_lists(zh.get('funders'), en.get('funders')) or None
     merged['version'] = _first_non_missing(zh.get('version'), en.get('version'))
     merged['urls'] = _merge_lists(zh.get('urls'), en.get('urls')) or None
@@ -1141,6 +1387,30 @@ LABEL_TRANSLATIONS_ZH = {value: key for key, value in LABEL_TRANSLATIONS_EN.item
 LABEL_TRANSLATIONS_ZH.update({
     'identifier': '标识符',
     'value': '值',
+    'titles': '标题',
+    'descriptions': '描述',
+    'publish_date': '发布日期',
+    'resource_type': '资源类型',
+    'CSTR Identifier': 'CSTR标识符',
+    'Alternative Identifiers': '替代标识符',
+    'Publisher': '发布机构',
+    'Resource URL': '资源链接',
+    'Rights': '权限',
+    'Funders': '资助者',
+    'Version': '版本',
+    'Extension Info': '扩展信息',
+    'Data Size': '数据量',
+    'Data Volume': '数据量',
+    'Data Format': '数据格式',
+    'File Content': '文件内容',
+    'Project/Funder': '基金项目',
+    'Funding Project': '基金项目',
+    'Coverage': '范围',
+    'Time Range': '时间范围',
+    'Spatial Range': '空间范围',
+    'Dataset Citation': '数据集引用格式',
+    'Dataset Citation Format': '数据集引用格式',
+    'Dataset Paper URL': '数据论文访问地址',
 })
 
 DOMAIN_WRAPPER_KEYS_ZH = {
@@ -1287,13 +1557,36 @@ def _merge_lang_lists(primary, secondary):
         if _is_missing_value(value):
             continue
         if _is_lang_list(value):
-            items.extend(_language_item(item.get('lang'), item.get('value')) for item in value)
+            for item in value:
+                if 'value' in item:
+                    normalized_item = _sanitize_language_object(_language_item(item.get('lang'), item.get('value')))
+                else:
+                    normalized_item = _sanitize_language_object(item)
+                if normalized_item:
+                    items.append(normalized_item)
         elif _is_lang_object(value):
-            items.append(_language_item(value.get('lang'), value.get('value')))
+            if 'value' in value:
+                normalized_item = _sanitize_language_object(_language_item(value.get('lang'), value.get('value')))
+            else:
+                normalized_item = _sanitize_language_object(value)
+            if normalized_item:
+                items.append(normalized_item)
     return _dedupe_jsonable(items)
 
 
 TIME_RANGE_KEYS = {'起始时间', '结束时间', 'Start Time', 'End Time'}
+SPATIAL_RANGE_KEYS = {
+    '地理范围描述',
+    '西部边界经度',
+    '东部边界经度',
+    '南部边界纬度',
+    '北部边界纬度',
+    'Geographic Description',
+    'West Bounding Longitude',
+    'East Bounding Longitude',
+    'South Bounding Latitude',
+    'North Bounding Latitude',
+}
 
 
 def _is_time_range_node(value):
@@ -1334,9 +1627,49 @@ def _merge_time_range_nodes(zh_value, en_value):
     return merged or None
 
 
+def _is_spatial_range_node(value):
+    if not isinstance(value, dict) or not value:
+        return False
+    keys = {str(key) for key in value.keys()}
+    return bool(keys & SPATIAL_RANGE_KEYS) and keys <= SPATIAL_RANGE_KEYS
+
+
+def _spatial_range_scalar(value):
+    if _is_lang_object(value):
+        return value.get('value')
+    if _is_lang_list(value):
+        for item in value:
+            if not _is_domain_missing_value(item.get('value')):
+                return item.get('value')
+        return None
+    return value
+
+
+def _merge_spatial_range_nodes(zh_value, en_value):
+    merged = {}
+    en_by_zh_key = {
+        _map_key_to_zh(key): value
+        for key, value in (en_value or {}).items()
+    } if isinstance(en_value, dict) else {}
+
+    for key in ('地理范围描述', '西部边界经度', '东部边界经度', '南部边界纬度', '北部边界纬度'):
+        value = None
+        if isinstance(zh_value, dict):
+            value = zh_value.get(key)
+        if _is_domain_missing_value(value):
+            value = en_by_zh_key.get(key)
+        value = _spatial_range_scalar(value)
+        if not _is_domain_missing_value(value):
+            merged[key] = value
+
+    return merged or None
+
+
 def _merge_language_nodes(zh_value, en_value):
     if _is_time_range_node(zh_value) or _is_time_range_node(en_value):
         return _merge_time_range_nodes(zh_value, en_value)
+    if _is_spatial_range_node(zh_value) or _is_spatial_range_node(en_value):
+        return _merge_spatial_range_nodes(zh_value, en_value)
 
     zh_missing = _is_domain_missing_value(zh_value)
     en_missing = _is_domain_missing_value(en_value)
@@ -1345,30 +1678,36 @@ def _merge_language_nodes(zh_value, en_value):
     if zh_missing:
         formatted = _format_identifier_objects_for_domain(en_value, language='en')
         if formatted is not None:
-            return formatted if _is_lang_list(formatted) else [_language_item('en', formatted)]
+            return _merge_lang_lists(None, formatted) if _is_lang_list(formatted) else _merge_lang_lists(None, [_language_item('en', formatted)])
         if isinstance(en_value, dict) and not _is_lang_object(en_value):
-            return {
-                _map_key_to_zh(key): _merge_language_nodes(None, value)
-                for key, value in en_value.items()
-                if not _is_domain_missing_value(value)
-            }
-        return en_value if _is_lang_list(en_value) else [_language_item('en', en_value)]
+            merged = {}
+            for key, value in en_value.items():
+                if _is_domain_missing_value(value):
+                    continue
+                merged_value = _merge_language_nodes(None, value)
+                if not _is_domain_missing_value(merged_value):
+                    merged[_map_key_to_zh(key)] = merged_value
+            return merged or None
+        return _merge_lang_lists(None, en_value) if _is_lang_list(en_value) else _merge_lang_lists(None, [_language_item('en', en_value)])
     if en_missing:
         formatted = _format_identifier_objects_for_domain(zh_value, language='zh')
         if formatted is not None:
-            return formatted if _is_lang_list(formatted) else [_language_item('zh', formatted)]
+            return _merge_lang_lists(formatted, None) if _is_lang_list(formatted) else _merge_lang_lists([_language_item('zh', formatted)], None)
         if isinstance(zh_value, dict) and not _is_lang_object(zh_value):
-            return {
-                _map_key_to_zh(key): _merge_language_nodes(value, None)
-                for key, value in zh_value.items()
-                if not _is_domain_missing_value(value)
-            }
-        return zh_value if _is_lang_list(zh_value) else [_language_item('zh', zh_value)]
+            merged = {}
+            for key, value in zh_value.items():
+                if _is_domain_missing_value(value):
+                    continue
+                merged_value = _merge_language_nodes(value, None)
+                if not _is_domain_missing_value(merged_value):
+                    merged[_map_key_to_zh(key)] = merged_value
+            return merged or None
+        return _merge_lang_lists(zh_value, None) if _is_lang_list(zh_value) else _merge_lang_lists([_language_item('zh', zh_value)], None)
 
     formatted_zh = _format_identifier_objects_for_domain(zh_value, language='zh')
     formatted_en = _format_identifier_objects_for_domain(en_value, language='en')
     if formatted_zh is not None or formatted_en is not None:
-        return _dedupe_jsonable(_as_list(formatted_zh) + _as_list(formatted_en)) or None
+        return _merge_lang_lists(formatted_zh, formatted_en) or None
 
     if isinstance(zh_value, dict) and isinstance(en_value, dict) and not _is_lang_object(zh_value) and not _is_lang_object(en_value):
         en_by_zh_key = {_map_key_to_zh(key): value for key, value in en_value.items()}
@@ -1497,6 +1836,9 @@ def _build_already_unified_metadata(answer):
             extracted = _extract_domain_answer(answer, 'zh')
             if isinstance(extracted, dict):
                 domain_data = extracted
+
+    if isinstance(domain_data, dict):
+        domain_data = _normalize_domain_metadata_shape(_map_keys_to_zh_recursive(domain_data), 'zh')
 
     return _format_unified_cstr_identifiers({
         '核心元数据': core_section,
@@ -1892,7 +2234,18 @@ def _resource_type_from_domain(domain_value, language='zh'):
     }.get(domain, '其他')
 
 
-def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto', persist_history=True, llm_api_key='', llm_provider='siliconflow'):
+def build_metadata_payload(
+    text,
+    mode,
+    url='',
+    title='',
+    html='',
+    strategy='auto',
+    persist_history=True,
+    llm_api_key='',
+    llm_provider='siliconflow',
+    supplement_identifiers=False,
+):
     if strategy == 'upload_rule':
         llm_answer = normalize_llm_answer(extract_upload_metadata(text, title=title))
     else:
@@ -1900,6 +2253,14 @@ def build_metadata_payload(text, mode, url='', title='', html='', strategy='auto
             qwen_chat(text, mode, url=url, title=title, raw_html=html, strategy=strategy, api_key=llm_api_key, provider=llm_provider)
         )
     merged_answer = _build_unified_metadata(llm_answer)
+    if supplement_identifiers:
+        merged_answer, _ = supplement_payload_from_identifier_metadata(
+            merged_answer,
+            mode,
+            content='\n'.join(chunk for chunk in (text, html) if chunk),
+            llm_api_key=llm_api_key,
+            llm_provider=llm_provider,
+        )
 
     if persist_history and url and html:
         try:
@@ -2030,12 +2391,12 @@ def _extract_identifiers_from_source(content='', payload=None):
     return identifiers
 
 
-def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
+def _build_base_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
     resolved = source_item.get('resolved') or {}
     content = resolved.get('content') or ''
     url = resolved.get('url') or ''
     title = resolved.get('title') or source_item.get('identifier') or ''
-    payload = _build_rule_or_llm_payload(
+    return _build_rule_or_llm_payload(
         content,
         mode,
         url=url,
@@ -2044,6 +2405,19 @@ def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm
         llm_api_key=llm_api_key,
         llm_provider=llm_provider,
     )
+
+
+def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
+    resolved = source_item.get('resolved') or {}
+    url = resolved.get('url') or ''
+    payload = source_item.get('payload')
+    if payload is None:
+        payload = _build_base_payload_from_identifier_source(
+            source_item,
+            mode,
+            llm_api_key=llm_api_key,
+            llm_provider=llm_provider,
+        )
 
     supplemental_results = []
     if source_item.get('priority') in {'cstr', 'doi'}:
@@ -2147,9 +2521,15 @@ def _collect_identifier_sources(identifier_type, identifier, mode):
         })
 
     if own_source:
-        for related in _extract_identifiers_from_source(
-            content=(own_source.get('resolved') or {}).get('content', ''),
-        ):
+        own_content = (own_source.get('resolved') or {}).get('content', '')
+        try:
+            own_payload = _build_base_payload_from_identifier_source(own_source, mode)
+            own_source['payload'] = own_payload
+        except Exception as error:
+            own_payload = None
+            print(f"[WARNING] Failed to extract metadata payload while discovering related identifiers for {identifier_type.upper()} {identifier}: {error}")
+
+        for related in _extract_identifiers_from_source(content=own_content, payload=own_payload):
             related_type = related.get('type')
             if related_type == identifier_type:
                 continue
@@ -2221,7 +2601,73 @@ def _merge_identifier_source_payloads(sources, mode, llm_api_key='', llm_provide
             else:
                 merged_payload = _merge_metadata_payload_missing(merged_payload, payload)
 
+    if isinstance(merged_payload, dict):
+        merged_payload = _build_unified_metadata(merged_payload)
+
     return merged_payload, source_results, supplemental_results
+
+
+def supplement_payload_from_identifier_metadata(payload, mode, content='', llm_api_key='', llm_provider='siliconflow'):
+    """
+    Keep the already-extracted webpage payload as primary, then fill missing
+    fields from CSTR/DOI metadata discovered in that page.
+    """
+    if not isinstance(payload, dict):
+        return payload, []
+
+    queue = _extract_identifiers_from_source(content=content, payload=payload)
+    queue.sort(key=lambda item: 0 if item.get('type') == 'cstr' else 1)
+    seen = set()
+    results = []
+    index = 0
+    while index < len(queue):
+        item = queue[index]
+        index += 1
+        identifier_type = item.get('type')
+        identifier = item.get('identifier')
+        key = (identifier_type, str(identifier or '').lower())
+        if key in seen or identifier_type not in {'cstr', 'doi'} or not identifier:
+            continue
+        seen.add(key)
+        try:
+            priority, resolved = _metadata_source_for_identifier(identifier_type, identifier)
+            source_item = {
+                'priority': priority,
+                'type': identifier_type,
+                'identifier': identifier,
+                'resolved': resolved,
+            }
+            fallback_payload, supplemental = _build_payload_from_identifier_source(
+                source_item,
+                mode,
+                llm_api_key=llm_api_key,
+                llm_provider=llm_provider,
+            )
+            payload = _merge_metadata_payload_missing(payload, fallback_payload)
+            results.append({
+                'priority': priority,
+                'type': identifier_type,
+                'identifier': identifier,
+                'source': resolved.get('source', identifier_type),
+                'url': resolved.get('url'),
+                'status': 'ok',
+            })
+            results.extend(supplemental)
+            for related in _extract_identifiers_from_source(payload=fallback_payload):
+                related_key = (related.get('type'), str(related.get('identifier') or '').lower())
+                if related_key not in seen:
+                    queue.append(related)
+        except Exception as error:
+            print(f"[WARNING] Failed to supplement from {str(identifier_type).upper()} {identifier}: {error}")
+            results.append({
+                'priority': identifier_type,
+                'type': identifier_type,
+                'identifier': identifier,
+                'status': 'error',
+                'message': str(error),
+            })
+
+    return payload, results
 
 
 def handle_identifier_request(data):
@@ -2397,7 +2843,17 @@ def handle_register_request(data):
     )
 
     try:
-        merged_answer = build_metadata_payload(text, mode, url=url, title=title, html=html, strategy=strategy, llm_api_key=llm_api_key, llm_provider=llm_provider)
+        merged_answer = build_metadata_payload(
+            text,
+            mode,
+            url=url,
+            title=title,
+            html=html,
+            strategy=strategy,
+            llm_api_key=llm_api_key,
+            llm_provider=llm_provider,
+            supplement_identifiers=source == 'url',
+        )
     except (json.JSONDecodeError, ValueError, TypeError) as error:
         print(f"LLM Error: {error}")
         if strategy == 'upload_rule':

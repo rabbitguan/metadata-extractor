@@ -1,6 +1,9 @@
 import re
 import requests
+import warnings
+from requests.exceptions import RequestException, SSLError
 from urllib.parse import quote, urljoin
+from urllib3.exceptions import InsecureRequestWarning
 
 
 FETCH_HEADERS = {
@@ -57,6 +60,48 @@ def _redirect_url_with_fragment(response):
     return None
 
 
+def _get_with_ssl_fallback(url, *, timeout=20, allow_redirects=True):
+    try:
+        return requests.get(url, headers=FETCH_HEADERS, timeout=timeout, allow_redirects=allow_redirects)
+    except SSLError as ssl_error:
+        print(f"[WARNING] SSL verification failed for {url}, retrying without verification: {ssl_error}")
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', InsecureRequestWarning)
+            return requests.get(
+                url,
+                headers=FETCH_HEADERS,
+                timeout=timeout,
+                allow_redirects=allow_redirects,
+                verify=False,
+            )
+
+
+def _handle_api_url(doi):
+    return f"https://doi.org/api/handles/{_quote_doi(doi)}"
+
+
+def _resolve_handle_url(doi):
+    errors = []
+    for api_url in (_handle_api_url(doi), f"https://hdl.handle.net/api/handles/{_quote_doi(doi)}"):
+        try:
+            response = requests.get(api_url, headers=FETCH_HEADERS, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as error:
+            errors.append(f"{api_url}: {error}")
+            continue
+
+        for item in payload.get('values') or []:
+            if not isinstance(item, dict) or str(item.get('type') or '').upper() != 'URL':
+                continue
+            data = item.get('data') or {}
+            value = data.get('value') if isinstance(data, dict) else None
+            if value:
+                return str(value)
+
+    raise ValueError('; '.join(errors) or 'Handle API returned no URL')
+
+
 def _flatten_crossref_value(value):
     if value is None:
         return ''
@@ -104,7 +149,15 @@ def _fetch_crossref_metadata(doi):
 
 def _fetch_landing_page(doi, clean_html):
     url = f"https://doi.org/{_quote_doi(doi)}"
-    response = requests.get(url, headers=FETCH_HEADERS, timeout=10)
+    try:
+        response = _get_with_ssl_fallback(url, timeout=20, allow_redirects=False)
+    except RequestException as doi_error:
+        print(f"[WARNING] DOI redirect failed for {doi}, resolving with Handle API: {doi_error}")
+        response = _get_with_ssl_fallback(_resolve_handle_url(doi), timeout=20)
+    if 300 <= response.status_code < 400:
+        location = response.headers.get('Location') or response.headers.get('location')
+        if location:
+            response = _get_with_ssl_fallback(urljoin(response.url or url, location), timeout=20)
     response.raise_for_status()
     response.encoding = _select_response_encoding(response)
     content = response.text

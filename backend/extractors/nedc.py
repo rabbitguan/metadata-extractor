@@ -402,6 +402,8 @@ def _payload_from_html(content: str, url: str, title: str) -> Optional[MetadataD
 
     english_keywords = [_english_text(item) for item in keywords]
     english_keywords = [item for item in english_keywords if item]
+    if not english_keywords:
+        english_keywords = keywords
     en: Dict[str, Any] = {
         'Resource Type Classification': 'Dataset',
         'Domain Classification': 'Dataset Metadata',

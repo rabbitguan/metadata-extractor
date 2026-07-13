@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import Any, Dict, Iterable, Optional
 from urllib.parse import parse_qs, unquote, urlparse
@@ -19,6 +20,7 @@ PUBLISHER_EN = 'National Earth System Science Data Center'
 CITATION_ZH = '国家地球系统科学数据中心(https://www.geodata.cn)'
 CITATION_EN = 'National Earth System Science Data Center(https://www.geodata.cn)'
 API_URL = 'https://www.geodata.cn/ManagerDev/comprehensive/api/scidata/entry/info'
+CSTR_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
 
 API_HEADERS = {
     'User-Agent': (
@@ -94,9 +96,17 @@ def _parse_query(url: str) -> Dict[str, str]:
     return result
 
 
+def _geodata_guid_from_url(url: str) -> Optional[str]:
+    query = _parse_query(url)
+    return query.get('guid') or query.get('dataguid')
+
+
 def _is_geodata_detail_url(url: str) -> bool:
     normalized_url = (url or '').strip().lower()
-    return 'geodata.cn/main/face_science_detail' in normalized_url
+    return bool(
+        'geodata.cn/main/face_science_detail' in normalized_url
+        or ('geodata.cn/data/datadetails.html' in normalized_url and _geodata_guid_from_url(url))
+    )
 
 
 def _is_geodata_api_url(url: str) -> bool:
@@ -108,10 +118,40 @@ def _format_date(value: Optional[Any]) -> Optional[str]:
     text = _clean_text(value)
     if not text:
         return None
+    iso_text = re.sub(r'([+-]\d{2})(\d{2})$', r'\1:\2', text.replace('Z', '+00:00'))
+    try:
+        parsed = datetime.fromisoformat(iso_text)
+    except ValueError:
+        parsed = None
+    if parsed is not None and parsed.tzinfo is not None:
+        return parsed.astimezone(timezone(timedelta(hours=8))).date().isoformat()
     match = re.match(r'^(\d{4})-(\d{2})-(\d{2})', text)
     if match:
         return f'{match.group(1)}-{match.group(2)}-{match.group(3)}'
     return text
+
+
+def _iter_values(value: Any) -> Iterable[Any]:
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_values(item)
+    else:
+        yield value
+
+
+def _extract_cstr(*values: Optional[Any]) -> Optional[str]:
+    for value in values:
+        for item in _iter_values(value):
+            text = _clean_text(item)
+            if not text:
+                continue
+            match = CSTR_PATTERN.search(text)
+            if match:
+                return f"CSTR:{match.group(1).rstrip('.,;，；')}"
+    return None
 
 
 def _format_size(value: Optional[Any]) -> Optional[str]:
@@ -166,7 +206,7 @@ def _load_data(payload: Any) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_detail_data(url: str) -> Optional[Dict[str, Any]]:
-    guid = _parse_query(url).get('guid')
+    guid = _geodata_guid_from_url(url)
     if not guid:
         return None
 
@@ -195,9 +235,16 @@ def _resource_url(url: str, guid: Optional[str]) -> Optional[str]:
 
 
 def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDict:
-    guid = _first_non_empty(data.get('guid'), _parse_query(url).get('guid'))
+    guid = _first_non_empty(data.get('guid'), _geodata_guid_from_url(url))
     doi = _first_non_empty(data.get('doi'))
-    identifier = doi or guid
+    cstr_identifier = _extract_cstr(
+        data.get('cstr'),
+        data.get('cstrId'),
+        data.get('cstrIdentifier'),
+        data.get('sciIdentification'),
+        data,
+    )
+    identifier = cstr_identifier or doi or guid
     title_zh = _first_non_empty(data.get('title'), title, f'{PUBLISHER_ZH}数据集 {guid}' if guid else None)
     keywords = _unique_list(_split_terms(data.get('keywords')))
     description = _first_non_empty(data.get('description'))
@@ -222,7 +269,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         '资源类型判定': '数据集',
         '领域判定': '数据集元数据',
         '标识符': identifier,
-        'CSTR标识符': None,
+        'CSTR标识符': cstr_identifier,
         '资源名称': title_zh,
         '标题': title_zh,
         '创建者': authors or ([owner_org] if owner_org else None),
@@ -300,7 +347,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         'Resource Type Classification': 'Dataset',
         'Domain Classification': 'Dataset Metadata',
         'Identifier': identifier,
-        'CSTR Identifier': None,
+        'CSTR Identifier': cstr_identifier,
         'Resource Name': title_zh,
         'Title': title_zh,
         'Creators': authors or None,

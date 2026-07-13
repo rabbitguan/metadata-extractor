@@ -4,12 +4,16 @@ import re
 from html import unescape
 from typing import Any, Dict, Optional
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import MetadataDict
 
 
 RULE_NAME = 'NCDC Metadata Detail'
+FETCH_HEADERS = {'User-Agent': 'Mozilla/5.0'}
+PUBLISHER_ZH = '国家冰川冻土沙漠科学数据中心'
+PUBLISHER_EN = 'National Cryosphere Desert Data Center'
 
 TITLE_LABELS = {
     '首页',
@@ -38,6 +42,15 @@ TITLE_LABELS = {
     '相关数据',
     '数据文件列表',
     '服务记录',
+    'Home',
+    'Data resource',
+    'Details',
+    'Datasets description',
+    'Base information',
+    'Citations and annotations',
+    'license agreement',
+    'Relevant data',
+    'File list',
 }
 
 
@@ -94,8 +107,15 @@ def _split_terms(value: Optional[str]) -> list[str]:
     text = _clean_text(value)
     if not text:
         return []
-    parts = re.split(r'[;；,，、\|\s]+', text)
+    parts = re.split(r'[;；,，、\|]+', text)
     return [item for item in (_clean_text(part) for part in parts) if item]
+
+
+def _split_people(value: Optional[str]) -> list[str]:
+    text = _clean_text(value)
+    if not text:
+        return []
+    return _unique_list(re.split(r'\s*[,，;；、]\s*', text))
 
 
 def _unique_list(values: list[str]) -> list[str]:
@@ -108,6 +128,59 @@ def _unique_list(values: list[str]) -> list[str]:
         seen.add(cleaned)
         unique.append(cleaned)
     return unique
+
+
+def _has_cjk(value: Optional[str]) -> bool:
+    return bool(value and re.search(r'[\u4e00-\u9fff]', value))
+
+
+def _page_lang(soup: BeautifulSoup) -> Optional[str]:
+    html_lang = _clean_text(soup.html.get('lang') if soup.html else None)
+    if html_lang:
+        lowered = html_lang.lower()
+        if lowered.startswith('zh'):
+            return 'zh'
+        if lowered.startswith('en'):
+            return 'en'
+    title = _extract_title(soup)
+    if _has_cjk(title):
+        return 'zh'
+    if title:
+        return 'en'
+    return None
+
+
+def _fetch_localized_content(url: str, lang: str) -> Optional[str]:
+    if not url or 'ncdc.ac.cn/portal/metadata/' not in url.lower():
+        return None
+    accept_language = 'zh-CN,zh;q=0.9' if lang == 'zh' else 'en-US,en;q=0.9'
+    try:
+        response = requests.get(
+            url,
+            headers={**FETCH_HEADERS, 'Accept-Language': accept_language},
+            timeout=15,
+        )
+        response.raise_for_status()
+        response.encoding = response.encoding or 'utf-8'
+        return response.text
+    except Exception:
+        return None
+
+
+def _localized_soups(content: str, url: str) -> tuple[BeautifulSoup, BeautifulSoup]:
+    soup = BeautifulSoup(content, 'html.parser')
+    lang = _page_lang(soup)
+    zh_soup = soup if lang == 'zh' else None
+    en_soup = soup if lang == 'en' else None
+
+    if zh_soup is None:
+        zh_content = _fetch_localized_content(url, 'zh')
+        zh_soup = BeautifulSoup(zh_content, 'html.parser') if zh_content else soup
+    if en_soup is None:
+        en_content = _fetch_localized_content(url, 'en')
+        en_soup = BeautifulSoup(en_content, 'html.parser') if en_content else soup
+
+    return zh_soup, en_soup
 
 
 def _extract_by_label(soup: BeautifulSoup, labels: list[str]) -> Optional[str]:
@@ -176,6 +249,24 @@ def _extract_list_values(soup: BeautifulSoup, labels: list[str]) -> list[str]:
     return values
 
 
+def _extract_sidebar_values(soup: BeautifulSoup, labels: list[str]) -> list[str]:
+    values: list[str] = []
+    normalized_labels = {label.rstrip('：:').strip().lower() for label in labels}
+    for item in soup.select('.list-group-item'):
+        heading = _text_or_none(item.select_one('.list-group-item-heading'))
+        if not heading or heading.rstrip('：:').strip().lower() not in normalized_labels:
+            continue
+        anchors = [_text_or_none(anchor) for anchor in item.select('a')]
+        anchors = [anchor for anchor in anchors if anchor]
+        if anchors:
+            values.extend(anchors)
+            continue
+        text = _text_or_none(item.select_one('.list-group-item-text'))
+        if text:
+            values.extend(_split_terms(text))
+    return _unique_list(values)
+
+
 def _extract_definition_list_values(soup: BeautifulSoup, labels: list[str]) -> list[str]:
     values: list[str] = []
 
@@ -205,20 +296,29 @@ def _extract_definition_list_values(soup: BeautifulSoup, labels: list[str]) -> l
     return values
 
 
-def _extract_section_text(soup: BeautifulSoup, title_text: str) -> Optional[str]:
+def _label_matches(value: Optional[str], labels: list[str]) -> bool:
+    text = _clean_text(value)
+    if not text:
+        return False
+    return text.rstrip('：:').strip().lower() in {label.rstrip('：:').strip().lower() for label in labels}
+
+
+def _extract_section_text(soup: BeautifulSoup, title_text: str | list[str]) -> Optional[str]:
+    labels = [title_text] if isinstance(title_text, str) else title_text
     for box in soup.select('.info-box'):
         heading = _text_or_none(box.select_one('.title-bar, .title-bar2'))
-        if heading and heading.strip() == title_text:
+        if _label_matches(heading, labels):
             block = box.select_one('.info-block')
             if block:
                 return _text_or_none(block)
     return None
 
 
-def _extract_first_paragraph(soup: BeautifulSoup, title_text: str) -> Optional[str]:
+def _extract_first_paragraph(soup: BeautifulSoup, title_text: str | list[str]) -> Optional[str]:
+    labels = [title_text] if isinstance(title_text, str) else title_text
     for box in soup.select('.info-box'):
         heading = _text_or_none(box.select_one('.title-bar, .title-bar2'))
-        if heading and heading.strip() == title_text:
+        if _label_matches(heading, labels):
             block = box.select_one('.info-block')
             if not block:
                 continue
@@ -262,7 +362,7 @@ def _extract_title(soup: BeautifulSoup) -> Optional[str]:
     if title:
         return title
 
-    title = _valid_title(_extract_by_label(soup, ['中文名称', '资源名称', '数据集名称']))
+    title = _valid_title(_extract_by_label(soup, ['中文名称', '英文名称', 'English name', '资源名称', '数据集名称']))
     if title:
         return title
 
@@ -352,10 +452,10 @@ def _extract_contact_info(soup: BeautifulSoup) -> Dict[str, Optional[str]]:
             continue
 
         pair_map = {label: value for label, value in pairs}
-        if '联系人' in pair_map or '服务电话' in pair_map or '服务邮箱' in pair_map:
-            contact['联系人'] = pair_map.get('联系人')
-            contact['服务电话'] = pair_map.get('服务电话')
-            contact['服务邮箱'] = pair_map.get('服务邮箱')
+        if any(key in pair_map for key in ('联系人', '服务电话', '服务邮箱', 'contacts', 'phone', 'mailbox')):
+            contact['联系人'] = pair_map.get('联系人') or pair_map.get('contacts')
+            contact['服务电话'] = pair_map.get('服务电话') or pair_map.get('phone')
+            contact['服务邮箱'] = pair_map.get('服务邮箱') or pair_map.get('mailbox')
             break
 
     return contact
@@ -400,7 +500,7 @@ def _extract_file_list(soup: BeautifulSoup) -> list[str]:
 
 
 def _extract_license_text(soup: BeautifulSoup) -> Optional[str]:
-    license_block = _extract_section_text(soup, '许可协议')
+    license_block = _extract_section_text(soup, ['许可协议', 'license agreement'])
     if license_block:
         return license_block
 
@@ -413,12 +513,12 @@ def _extract_license_text(soup: BeautifulSoup) -> Optional[str]:
 
 
 def _extract_range(soup: BeautifulSoup) -> Dict[str, Optional[object]]:
-    start_date = _extract_by_label(soup, ['采集时间'])
-    location = _extract_by_label(soup, ['采集地点'])
-    data_size = _extract_by_label(soup, ['数据量'])
-    data_format = _extract_by_label(soup, ['数据格式'])
-    resolution = _extract_by_label(soup, ['数据空间分辨率(/米)'])
-    projection = _extract_by_label(soup, ['投影'])
+    start_date = _extract_by_label(soup, ['采集时间', 'collect time'])
+    location = _extract_by_label(soup, ['采集地点', 'collect place'])
+    data_size = _extract_by_label(soup, ['数据量', 'data size'])
+    data_format = _extract_by_label(soup, ['数据格式', 'data format'])
+    resolution = _extract_by_label(soup, ['数据空间分辨率(/米)', 'Data time resolution'])
+    projection = _extract_by_label(soup, ['投影', 'Coordinate system'])
 
     time_range = None
     if start_date:
@@ -448,7 +548,36 @@ def _extract_citation_authors(citation: Optional[str]) -> list[str]:
     author_text = re.split(r'[.。]', text, maxsplit=1)[0]
     if not author_text or _looks_like_url(author_text):
         return []
-    return _split_terms(author_text)
+    return _split_people(author_text)
+
+
+def _spatial_range(soup: BeautifulSoup, location: Optional[str], lang: str = 'zh') -> Optional[object]:
+    text = soup.get_text(' ', strip=True)
+    coordinate_patterns = {
+        'east': r'(?:东|east)\s*[:：]?\s*([0-9.\-]+)',
+        'west': r'(?:西|west)\s*[:：]?\s*([0-9.\-]+)',
+        'south': r'(?:南|south)\s*[:：]?\s*([0-9.\-]+)',
+        'north': r'(?:北|north)\s*[:：]?\s*([0-9.\-]+)',
+    }
+    values = {}
+    for key, pattern in coordinate_patterns.items():
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        values[key] = _clean_text(match.group(1)) if match else None
+    if any(values.values()):
+        if lang == 'en':
+            return {
+                'West Bounding Longitude': values['west'],
+                'East Bounding Longitude': values['east'],
+                'South Bounding Latitude': values['south'],
+                'North Bounding Latitude': values['north'],
+            }
+        return {
+            '西部边界经度': values['west'],
+            '东部边界经度': values['east'],
+            '南部边界纬度': values['south'],
+            '北部边界纬度': values['north'],
+        }
+    return location
 
 
 def matches(url: str, title: str, content: str) -> bool:
@@ -470,72 +599,86 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     if not content:
         return None
 
-    soup = BeautifulSoup(content, 'html.parser')
-    full_text = soup.get_text('\n', strip=True)
+    zh_soup, en_soup = _localized_soups(content, url)
+    zh_text = zh_soup.get_text('\n', strip=True)
+    en_text = en_soup.get_text('\n', strip=True)
 
-    title_zh = _first_non_empty(_extract_title(soup), _extract_title_from_text(full_text), _valid_title(title), '未提取到标题')
-    title_en = _first_non_empty(_extract_by_label(soup, ['英文名称']), title_zh)
-    abstract = _extract_first_paragraph(soup, '数据集摘要')
-    source_description = _extract_first_paragraph(soup, '数据源描述')
-    processing_method = _extract_first_paragraph(soup, '数据加工方法')
-    quality_description = _extract_first_paragraph(soup, '数据质量描述')
+    title_zh = _first_non_empty(_extract_title(zh_soup), _extract_title_from_text(zh_text), _valid_title(title), '未提取到标题')
+    title_en = _first_non_empty(_extract_title(en_soup), _extract_by_label(en_soup, ['英文名称', 'English name']))
+    abstract = _extract_first_paragraph(zh_soup, '数据集摘要')
+    abstract_en = _extract_first_paragraph(en_soup, ['Datasets description', 'Dataset description'])
+    source_description = _extract_first_paragraph(zh_soup, '数据源描述')
+    source_description_en = _extract_first_paragraph(en_soup, 'Data source description')
+    processing_method = _extract_first_paragraph(zh_soup, '数据加工方法')
+    processing_method_en = _extract_first_paragraph(en_soup, 'Data processing method')
+    quality_description = _extract_first_paragraph(zh_soup, '数据质量描述')
+    quality_description_en = _extract_first_paragraph(en_soup, 'Data quality description')
 
-    publication_date = _extract_publication_date(soup)
-    cstr_text = _extract_by_label(soup, ['CSTR'])
-    doi_text = _extract_by_label(soup, ['DOI'])
-    reference_citation = _extract_reference_citation(soup)
-    license_text = _extract_license_text(soup)
+    publication_date = _extract_publication_date(zh_soup) or _extract_publication_date(en_soup)
+    cstr_text = _extract_by_label(zh_soup, ['CSTR']) or _extract_by_label(en_soup, ['CSTR'])
+    doi_text = _extract_by_label(zh_soup, ['DOI']) or _extract_by_label(en_soup, ['DOI'])
+    reference_citation = _extract_reference_citation(zh_soup)
+    reference_citation_en = _extract_reference_citation(en_soup)
+    license_text = _extract_license_text(zh_soup) or _extract_license_text(en_soup)
+    license_text_en = _extract_license_text(en_soup) or license_text
 
-    data_contributors = _unique_list(_extract_definition_list_values(soup, ['数据贡献者']))
+    data_contributors = _unique_list(_extract_definition_list_values(zh_soup, ['数据贡献者', 'contributors']))
+    data_contributors_en = _unique_list(_extract_definition_list_values(en_soup, ['contributors', 'contributors']))
     creators = _unique_list([*_extract_citation_authors(reference_citation), *data_contributors]) or None
+    creators_en = _unique_list([*_extract_citation_authors(reference_citation_en), *data_contributors_en]) or creators
     contributors = None
-    publisher = '国家冰川冻土沙漠科学数据中心'
+    publisher = PUBLISHER_ZH
 
-    tags = _extract_list_values(soup, ['主题', '时间', '地点'])
+    tags = _unique_list([*_extract_list_values(zh_soup, ['主题', '时间', '地点']), *_extract_sidebar_values(zh_soup, ['主题', '时间', '地点'])])
     keywords = _split_terms('；'.join(tags)) if tags else []
     if not keywords:
-        keywords = _split_terms(_extract_by_label(soup, ['数据分类']))
+        keywords = _split_terms(_extract_by_label(zh_soup, ['数据分类', 'Category']))
+    tags_en = _unique_list([*_extract_list_values(en_soup, ['Theme', 'Time', 'Place']), *_extract_sidebar_values(en_soup, ['Theme', 'Time', 'Place'])])
+    keywords_en = _split_terms('; '.join(tags_en)) if tags_en else []
+    if not keywords_en:
+        keywords_en = _split_terms(_extract_by_label(en_soup, ['Category']))
+    category_zh = _extract_by_label(zh_soup, ['数据分类', 'Category'])
+    category_en = _extract_by_label(en_soup, ['Category'])
+    discipline_zh = [{'lang': 'zh', 'value': [category_zh]}] if category_zh else None
+    discipline_en = [{'lang': 'en', 'value': [category_en]}] if category_en else None
 
-    range_info = _extract_range(soup)
+    range_info = _extract_range(zh_soup)
     time_range = range_info['time_range']
     location = range_info['location']
     data_size = range_info['data_size']
     data_format = range_info['data_format']
     resolution = range_info['resolution']
     projection = range_info['projection']
+    en_range_info = _extract_range(en_soup)
+    time_range_en = en_range_info['time_range'] or time_range
+    location_en = en_range_info['location']
+    data_size_en = en_range_info['data_size'] or data_size
+    data_format_en = en_range_info['data_format'] or data_format
+    resolution_en = en_range_info['resolution']
+    projection_en = en_range_info['projection']
 
-    spatial_range = location
-    if location or any([soup.find(string=re.compile(r'东:')), soup.find(string=re.compile(r'西:')), soup.find(string=re.compile(r'南:')), soup.find(string=re.compile(r'北:'))]):
-        east = _clean_text(re.search(r'东:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'东:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
-        west = _clean_text(re.search(r'西:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'西:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
-        south = _clean_text(re.search(r'南:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'南:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
-        north = _clean_text(re.search(r'北:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)).group(1)) if re.search(r'北:\s*([0-9.\-]+)', soup.get_text(' ', strip=True)) else None
-        if not location and any([east, west, south, north]):
-            spatial_range = '；'.join(
-                item
-                for item in [
-                    f'西部边界经度: {west}' if west else None,
-                    f'东部边界经度: {east}' if east else None,
-                    f'南部边界纬度: {south}' if south else None,
-                    f'北部边界纬度: {north}' if north else None,
-                ]
-                if item
-            ) or None
+    spatial_range = _spatial_range(zh_soup, location, 'zh')
+    spatial_range_en = _spatial_range(en_soup, location_en, 'en') or spatial_range
 
-    cstr_identifier = _extract_cstr(cstr_text or '') or _extract_cstr(reference_citation or '') or _extract_cstr(full_text)
-    doi_identifier = _extract_doi(doi_text or '') or _extract_doi(reference_citation or '') or _extract_doi(full_text)
+    cstr_identifier = _extract_cstr(cstr_text or '') or _extract_cstr(reference_citation or '') or _extract_cstr(reference_citation_en or '') or _extract_cstr(zh_text) or _extract_cstr(en_text)
+    doi_identifier = _extract_doi(doi_text or '') or _extract_doi(reference_citation or '') or _extract_doi(reference_citation_en or '') or _extract_doi(zh_text) or _extract_doi(en_text)
     identifier = cstr_identifier or doi_identifier
     alternative_identifiers = [{'type': 'DOI', 'identifier': doi_identifier}] if doi_identifier else None
 
-    funders = _extract_project_support(soup)
-    contact_info = _extract_contact_info(soup)
+    funders = _extract_project_support(zh_soup)
+    funders_en = _extract_project_support(en_soup) or funders
+    contact_info = _extract_contact_info(zh_soup)
+    contact_info_en = _extract_contact_info(en_soup)
 
-    data_files = _extract_file_list(soup)
+    data_files = _extract_file_list(zh_soup) or _extract_file_list(en_soup)
     file_content = data_files if data_files else None
 
     access_url = url or None
     citation_format = reference_citation
+    citation_format_en = reference_citation_en or reference_citation
     rights_text = license_text or 'CC BY 4.0'
+    rights_text_en = license_text_en or rights_text
+    language_nodes = [{'lang': 'zh', 'value': '中文'}, {'lang': 'en', 'value': 'English'}]
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',
@@ -549,8 +692,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '发布日期': publication_date,
         '描述': abstract,
         '关键词': keywords,
-        '学科分类': _first_non_empty(*keywords) or '荒漠化',
-        '语言': '中文',
+        '学科分类': discipline_zh,
+        '语言': language_nodes,
         '贡献者': contributors,
         '替代标识符': alternative_identifiers,
         '关联标识符': None,
@@ -589,7 +732,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '数据集服务信息': {
             '数据集引用格式': citation_format,
             '数据集共享许可协议': rights_text,
-            '数据集使用声明': _extract_by_label(soup, ['数据共享方式']),
+            '数据集使用声明': _extract_by_label(zh_soup, ['数据共享方式', '共享方式']),
             '数据集下载地址': None,
             '数据集访问地址': access_url,
         },
@@ -599,9 +742,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             '数据质量描述': quality_description,
             '空间分辨率': resolution,
             '投影': projection,
-            '数据分类': _extract_by_label(soup, ['数据分类']),
-            '主题': _extract_list_values(soup, ['主题']),
-            '地点': _extract_list_values(soup, ['地点']),
+            '数据分类': category_zh,
+            '主题': _extract_list_values(zh_soup, ['主题']) or _extract_sidebar_values(zh_soup, ['主题']),
+            '地点': _extract_list_values(zh_soup, ['地点']) or _extract_sidebar_values(zh_soup, ['地点']),
             '数据生产者': creators,
             '联系人': contact_info.get('联系人'),
             '服务电话': contact_info.get('服务电话'),
@@ -616,38 +759,39 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'CSTR Identifier': cstr_identifier,
         'Resource Name': title_en,
         'Title': title_en,
-        'Creators': creators,
-        'Publisher': 'National Cryosphere Desert Data Center',
+        'Creators': creators_en,
+        'Publisher': PUBLISHER_EN,
         'Publication Date': publication_date,
-        'Description': abstract,
-        'Keywords': keywords,
-        'Discipline Classification': _first_non_empty(*keywords) or 'Desertification',
-        'Language': 'Chinese',
+        'Description': abstract_en,
+        'Keywords': keywords_en,
+        'Discipline Classification': discipline_en,
+        'Language': 'English',
+        '语言': language_nodes,
         'Contributors': contributors,
         'Alternative Identifiers': alternative_identifiers,
         'Related Identifiers': None,
-        'Rights': rights_text,
-        'Funders': funders,
+        'Rights': rights_text_en,
+        'Funders': funders_en,
         'Version': None,
         'Resource URL': access_url,
         'ResourceType': 'Dataset',
         'Dataset Basic Information': {
             'Identifier': identifier,
             'Title': title_en,
-            'Abstract': abstract,
-            'Keywords': keywords,
+            'Abstract': abstract_en,
+            'Keywords': keywords_en,
             'Coverage': {
-                'Time Range': time_range,
-                'Spatial Range': spatial_range,
+                'Time Range': time_range_en,
+                'Spatial Range': spatial_range_en,
             },
-            'Language': 'Chinese',
+            'Language': 'English',
             'File Content': file_content,
-            'Project/Funder': funders,
-            'Data Size': data_size,
-            'Data Format': data_format,
+            'Project/Funder': funders_en,
+            'Data Size': data_size_en,
+            'Data Format': data_format_en,
             'Dataset Authors': {
-                'Author Name': creators,
-                'Affiliation': publisher,
+                'Author Name': creators_en,
+                'Affiliation': PUBLISHER_EN,
                 'Email': None,
                 'Contribution': None,
                 'Biography': None,
@@ -659,25 +803,25 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Version Information': None,
         },
         'Dataset Service Information': {
-            'Dataset Citation Format': citation_format,
-            'Dataset License': rights_text,
-            'Dataset Usage Statement': _extract_by_label(soup, ['数据共享方式']),
+            'Dataset Citation Format': citation_format_en,
+            'Dataset License': rights_text_en,
+            'Dataset Usage Statement': _extract_by_label(en_soup, ['Share type', 'Data sharing mode']),
             'Dataset Download URL': None,
             'Dataset Access URL': access_url,
         },
         'Extension Info': {
-            'Source Description': source_description,
-            'Processing Method': processing_method,
-            'Quality Description': quality_description,
-            'Spatial Resolution': resolution,
-            'Projection': projection,
-            'Data Category': _extract_by_label(soup, ['数据分类']),
-            'Themes': _extract_list_values(soup, ['主题']),
-            'Locations': _extract_list_values(soup, ['地点']),
-            'Data Producer': creators,
-            'Contact': contact_info.get('联系人'),
-            'Service Phone': contact_info.get('服务电话'),
-            'Service Email': contact_info.get('服务邮箱'),
+            'Source Description': source_description_en,
+            'Processing Method': processing_method_en,
+            'Quality Description': quality_description_en,
+            'Spatial Resolution': resolution_en,
+            'Projection': projection_en,
+            'Data Category': category_en,
+            'Themes': _extract_list_values(en_soup, ['Theme']) or _extract_sidebar_values(en_soup, ['Theme']),
+            'Locations': _extract_list_values(en_soup, ['Place']) or _extract_sidebar_values(en_soup, ['Place']),
+            'Data Producer': creators_en,
+            'Contact': contact_info_en.get('联系人'),
+            'Service Phone': contact_info_en.get('服务电话'),
+            'Service Email': contact_info_en.get('服务邮箱'),
         },
     }
 

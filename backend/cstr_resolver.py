@@ -244,15 +244,57 @@ def _append_escience_supplemental(result, cstr):
     result_url = str(result.get('url') or '').lower()
     escience_org_id = _select_escience_org_id(cstr, result_url)
     escience_url = build_escience_metadata_url(cstr, escience_org_id) if escience_org_id else None
+    supplemental_urls = list(result.get('supplemental_urls') or [])
+    for url in _extract_resource_urls_from_content(result.get('content')):
+        if url == result.get('url') or any(item.get('url') == url for item in supplemental_urls if isinstance(item, dict)):
+            continue
+        supplemental_urls.append({
+            'source': 'cstr-resource-url',
+            'url': url,
+            'priority': 'resource',
+        })
     if escience_url:
-        result['supplemental_urls'] = [
-            {
-                'source': 'escience.org.cn',
-                'url': escience_url,
-                'priority': 'fallback',
-            }
-        ]
+        supplemental_urls.append({
+            'source': 'escience.org.cn',
+            'url': escience_url,
+            'priority': 'fallback',
+        })
+    if supplemental_urls:
+        result['supplemental_urls'] = supplemental_urls
     return result
+
+
+def _extract_resource_urls_from_content(content):
+    try:
+        payload = json.loads(content or '')
+    except Exception:
+        return []
+
+    urls = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if str(key).lower() in {'url', 'urls', 'resourceurl', 'resourceurls'}:
+                    collect(item)
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    def collect(value):
+        if isinstance(value, str):
+            if value.startswith(('http://', 'https://')):
+                urls.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            walk(value)
+
+    walk(payload)
+    return list(dict.fromkeys(urls))
 
 
 def resolve_cstr_landing_page(cstr, clean_html=None):
