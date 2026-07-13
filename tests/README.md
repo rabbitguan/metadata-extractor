@@ -9,28 +9,25 @@
 - `samples/text/`: 文本输入样例。
 - `samples/upload/`: 上传文件样例。
 - `reports/`: 自动生成的测试报告。
-- `run_interface_tests.py`: 批量执行测试并生成报告。
+- `run_interface_tests.py`: 根据 `register_cases.csv` 和 `query_cases.csv` 中保留的人工编辑结果生成同一张报告，不会重新请求接口。
 
 ## 使用方法
 
-先启动后端服务，再执行：
+根据两个 CSV 中的人工编辑结果生成报告：
 
 ```powershell
-py -3.12 tests/run_interface_tests.py --base-url http://127.0.0.1:4000
+py -3.12 tests/run_interface_tests.py
 ```
 
-只跑某个接口：
+只生成某个接口或某类样例的报告：
 
 ```powershell
 py -3.12 tests/run_interface_tests.py --endpoint register
 py -3.12 tests/run_interface_tests.py --endpoint query
-```
-
-只跑某类样例：
-
-```powershell
 py -3.12 tests/run_interface_tests.py --category 已写extractor
 ```
+
+脚本只读取 `tests/cases/register_cases.csv` 和 `tests/cases/query_cases.csv` 中 `enabled=yes` 的行，不会重新运行用例，也不会请求后端服务。报告中的人工结论来自 `last_status`，原因来自 `manual_conclusion`，预期说明优先来自 `expected_nl`。
 
 报告会生成到：
 

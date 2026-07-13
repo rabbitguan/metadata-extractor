@@ -2038,12 +2038,12 @@ def _extract_identifiers_from_source(content='', payload=None):
     return identifiers
 
 
-def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
+def _build_base_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
     resolved = source_item.get('resolved') or {}
     content = resolved.get('content') or ''
     url = resolved.get('url') or ''
     title = resolved.get('title') or source_item.get('identifier') or ''
-    payload = _build_rule_or_llm_payload(
+    return _build_rule_or_llm_payload(
         content,
         mode,
         url=url,
@@ -2052,6 +2052,19 @@ def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm
         llm_api_key=llm_api_key,
         llm_provider=llm_provider,
     )
+
+
+def _build_payload_from_identifier_source(source_item, mode, llm_api_key='', llm_provider='siliconflow'):
+    resolved = source_item.get('resolved') or {}
+    url = resolved.get('url') or ''
+    payload = source_item.get('payload')
+    if payload is None:
+        payload = _build_base_payload_from_identifier_source(
+            source_item,
+            mode,
+            llm_api_key=llm_api_key,
+            llm_provider=llm_provider,
+        )
 
     supplemental_results = []
     if source_item.get('priority') in {'cstr', 'doi'}:
@@ -2155,9 +2168,15 @@ def _collect_identifier_sources(identifier_type, identifier, mode):
         })
 
     if own_source:
-        for related in _extract_identifiers_from_source(
-            content=(own_source.get('resolved') or {}).get('content', ''),
-        ):
+        own_content = (own_source.get('resolved') or {}).get('content', '')
+        try:
+            own_payload = _build_base_payload_from_identifier_source(own_source, mode)
+            own_source['payload'] = own_payload
+        except Exception as error:
+            own_payload = None
+            print(f"[WARNING] Failed to extract metadata payload while discovering related identifiers for {identifier_type.upper()} {identifier}: {error}")
+
+        for related in _extract_identifiers_from_source(content=own_content, payload=own_payload):
             related_type = related.get('type')
             if related_type == identifier_type:
                 continue
