@@ -661,11 +661,18 @@ def qwen_chat(content, mode='核心元数据', url='', title='', raw_html='', st
             }
     
     # 第二步：如果未检测到已知网站，则调用大模型
+    provider_config = _get_provider_config(provider)
+    cleaned_key = _clean_api_key(api_key) or os.environ.get(provider_config['api_key_env'], '').strip()
+    if not cleaned_key:
+        raise RuntimeError(
+            f"LLM API key is not configured for provider {provider or 'siliconflow'}; "
+            f"enter an API Key on the page or configure {provider_config['api_key_env']}."
+        )
+
     print("[LLM Processing] 使用大模型处理...")
     pre_type_zh = classify_resource_type(content, url=url, title=title)
     prompt = _build_prompt(content, standard, url=url, title=title, preclassified_type=pre_type_zh)
 
-    provider_config = _get_provider_config(provider)
     llm_client = _get_llm_client(api_key, provider=provider)
     completion = llm_client.chat.completions.create(
         model=provider_config['default_model'],

@@ -493,10 +493,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip().lower()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
+    if normalized_url:
+        if _is_nbsdc_detail_url(url) or _is_nbsdc_api_url(url):
+            return True
+        if 'nbsdc.cn' not in normalized_url:
+            return False
     return bool(
-        _is_nbsdc_detail_url(url)
-        or _is_nbsdc_api_url(url)
-        or '国家基础学科公共科学数据中心' in combined
+        '国家基础学科公共科学数据中心' in combined
         and ('datasetcnname' in combined or 'datainfomap' in combined or 'dataid' in combined)
     )
 

@@ -2862,6 +2862,11 @@ def handle_register_request(data):
     except Exception as error:
         print(f"Processing Error: {error}")
         error_message = str(error)
+        if 'LLM API key is not configured' in error_message:
+            return jsonify({
+                "status": "error",
+                "message": "LLM API key is not configured. Built-in rules have already been tried; enter an API Key on the page or configure the provider default key."
+            }), 400
         if '401' in error_message or 'Invalid token' in error_message or 'Unauthorized' in error_message:
             return jsonify({
                 "status": "error",
