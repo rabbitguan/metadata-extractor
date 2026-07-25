@@ -12,4 +12,4 @@ COPY backend /app
 
 EXPOSE 4000
 
-CMD ["waitress-serve", "--host=0.0.0.0", "--port=4000", "backend:app"]
+CMD ["waitress-serve", "--host=0.0.0.0", "--port=4000", "--threads=32", "backend:app"]
