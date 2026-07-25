@@ -26,6 +26,18 @@ LIST_HEADERS = {
 }
 DOI_PATTERN = re.compile(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
 CSTR_PATTERN = re.compile(r'(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)', re.IGNORECASE)
+SHARE_METHOD_EN = {
+    '线上共享': 'Online Shared',
+    '线下共享': 'Offline Shared',
+}
+SHARE_SCOPE_EN = {
+    '完全共享': 'Fully Shared',
+    '有条件共享': 'Conditionally Shared',
+}
+SHARE_PLAN_EN = {
+    '即时公开': 'Immediate Public',
+    '设保护期': 'With Protection Period',
+}
 
 
 def _clean_text(value: Optional[str]) -> Optional[str]:
@@ -56,9 +68,9 @@ def _strip_label_value(value: Optional[str]) -> Optional[str]:
     text = _clean_text(value)
     if not text:
         return None
-    if re.fullmatch(r'[\u4e00-\u9fffA-Za-z\s/（）()]+[:：]', text):
+    if re.fullmatch(r'[\u4e00-\u9fffA-Za-z\s/（）()]+(?:[:：]|ï¼)', text):
         return None
-    return re.sub(r'^[\u4e00-\u9fffA-Za-z\s/（）()]+[:：]\s*', '', text).strip() or None
+    return re.sub(r'^[\u4e00-\u9fffA-Za-z\s/（）()]+(?:[:：]|ï¼)\s*', '', text).strip() or None
 
 
 def _split_terms(value: Optional[str]) -> list[str]:
@@ -67,6 +79,74 @@ def _split_terms(value: Optional[str]) -> list[str]:
         return []
     parts = re.split(r'[;；,，、\|\s]+', text)
     return [item for item in (_clean_text(part) for part in parts) if item]
+
+
+def _translate_terms(value: Optional[str], mapping: Dict[str, str], default: Optional[str] = 'Other') -> Optional[str]:
+    terms = _split_terms(value)
+    if not terms:
+        return None
+    translated = [mapping.get(term, default if default is not None else term) for term in terms]
+    return ','.join(item for item in translated if item) or None
+
+
+def _split_producer_terms(value: Optional[str]) -> list[str]:
+    text = _clean_text(value)
+    if not text:
+        return []
+    parts = re.split(r'[;；、\|]+', text)
+    return [item for item in (_clean_text(part) for part in parts) if item]
+
+
+def _split_people_and_units(value: Optional[str]) -> tuple[list[str], list[str]]:
+    names: list[str] = []
+    units: list[str] = []
+    for item in _split_producer_terms(value):
+        if '/' in item:
+            unit, name = item.rsplit('/', 1)
+            unit = _clean_text(unit)
+            name = _clean_text(name)
+            if unit:
+                units.append(unit)
+            if name:
+                names.append(name)
+        else:
+            names.append(item)
+    return _unique_list(names), _unique_list(units)
+
+
+def _unique_list(values: list[Optional[str]]) -> list[str]:
+    result: list[str] = []
+    seen = set()
+    for value in values:
+        text = _clean_text(value)
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result
+
+
+def _format_byte_size(value: Optional[Any]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    try:
+        size = float(text)
+    except (TypeError, ValueError):
+        return text
+    if size <= 0:
+        return None
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f'{int(size)}B'
+    return f'{size:.2f}'.rstrip('0').rstrip('.') + units[unit_index]
 
 
 def _extract_id_text(soup: BeautifulSoup, element_id: str) -> Optional[str]:
@@ -186,7 +266,12 @@ def _fetch_detail_data(url: str, html: str = '', title: str = '') -> Dict[str, A
     if not isinstance(payload, dict) or payload.get('code') not in (0, None):
         return {}
     data = payload.get('coreMetadataDatasetInfo')
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    plus_data = payload.get('coreMetadataPlus')
+    if isinstance(plus_data, dict):
+        data['__plus'] = plus_data
+    return data
 
 
 def _data_value(data: Dict[str, Any], key: str, fallback: Optional[str] = None) -> Optional[str]:
@@ -281,8 +366,54 @@ def _time_range_from_data(data: Dict[str, Any], fallback_text: Optional[str]) ->
 def _extract_citation_format(soup: BeautifulSoup) -> Optional[str]:
     citation = _text_or_none(soup.select_one('#chineseQuotation'))
     if citation:
-        return citation
+        return re.sub(r'\s*复制\s*$', '', citation).strip() or None
     return None
+
+
+def _date_part(value: Optional[str]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    return text[:10] if re.match(r'\d{4}-\d{2}-\d{2}', text) else text
+
+
+def _build_citation_format(
+    *,
+    language: str,
+    data: Dict[str, Any],
+    producer: Optional[str],
+    title: Optional[str],
+    version: Optional[str],
+    doi: Optional[str],
+    fallback: Optional[str] = None,
+) -> Optional[str]:
+    plus_data = data.get('__plus') if isinstance(data, dict) else None
+    if isinstance(plus_data, dict):
+        custom_key = 'citationEnDesc' if language == 'en' else 'citationChDesc'
+        custom_citation = _clean_text(plus_data.get(custom_key))
+        if custom_citation:
+            return custom_citation
+
+    producer = _clean_text(producer)
+    title = _clean_text(title)
+    version = _clean_text(version)
+    if not (producer and title and version):
+        return fallback
+
+    if language == 'en':
+        parts = [producer, title, version, 'National Space Science Data Center']
+        date_value = _date_part(data.get('generationDate'))
+    else:
+        server_name = _data_value(data, 'serverName') or '国家空间科学数据中心'
+        parts = [producer, title, version, server_name]
+        date_value = _date_part(data.get('releaseDate'))
+
+    citation = '. '.join(parts) + '. '
+    if doi:
+        citation += f'DOI:{doi}. '
+    if date_value:
+        citation += f'{date_value}. '
+    return citation.strip()
 
 
 def matches(url: str, title: str, content: str) -> bool:
@@ -326,6 +457,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     sharing_plan = _data_value(data, 'sharePlan', _extract_id_text(soup, 'sharingPlan'))
     application_procedure = _data_value(data, 'applicationProcedure', _extract_id_text(soup, 'applicationProcedure'))
     protection_period = _data_value(data, 'period', _extract_id_text(soup, 'protectionPeriod')) or _data_value(data, 'periodEnd')
+    sharing_method_en = _translate_terms(sharing_method, SHARE_METHOD_EN)
+    sharing_scope_en = _translate_terms(sharing_scope, SHARE_SCOPE_EN)
+    sharing_plan_en = _translate_terms(sharing_plan, SHARE_PLAN_EN)
 
     source_project = _data_value(data, 'sourceProjectCh', _extract_id_text(soup, 'sourceProjectChT'))
     source_project_en = _data_value(data, 'sourceProjectEn', source_project)
@@ -338,6 +472,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     producer_en = _data_value(data, 'dataProducerEn', producer)
     producer_tel = _data_value(data, 'dataProducerTel', _extract_id_text(soup, 'dataProducerTelT'))
     producer_email = _data_value(data, 'dataProducerEmail', _extract_id_text(soup, 'dataProducerEmailT'))
+    producer_names, producer_units = _split_people_and_units(producer)
+    producer_names_en, producer_units_en = _split_people_and_units(producer_en)
 
     license_text = _data_value(data, 'license', _extract_id_text(soup, 'sharingProtocol')) or 'CC BY 4.0'
     license_url = None
@@ -345,7 +481,6 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     if license_anchor and license_anchor.get('href'):
         license_url = _clean_text(license_anchor.get('href'))
 
-    citation_format = _extract_citation_format(soup)
     download_url = _data_value(data, 'url', _extract_dataset_link(html))
 
     identifier, cstr_identifier, doi_identifier = _extract_identifier(soup, html)
@@ -354,22 +489,32 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     identifier = cstr_identifier or doi_identifier or identifier
     resource_url = url or download_url
 
-    creators = [producer] if producer else None
+    citation_format = _build_citation_format(
+        language='zh',
+        data=data,
+        producer=producer,
+        title=title_zh,
+        version=version,
+        doi=doi_identifier,
+        fallback=_extract_citation_format(soup),
+    )
+    citation_format_en = _build_citation_format(
+        language='en',
+        data=data,
+        producer=producer_en,
+        title=title_en,
+        version=version,
+        doi=doi_identifier,
+    )
+
+    creators = producer_names or ([producer] if producer else None)
+    creators_en = producer_names_en or ([producer_en] if producer_en else None)
     alternative_identifiers = [item for item in [doi_identifier] if item]
 
-    subject_classification = _data_value(data, 'subjectCategory') or '空间科学'
+    subject_classification = None
     topic_classification = _data_value(data, 'themCategory') or '行星磁层与波粒相互作用'
 
-    file_formats = ['sts', 'mat', 'cdf', 'txt']
-    file_content = [
-        'MAVEN MAG 磁场数据',
-        'MAVEN STATIC 离子通量数据',
-        'Juno WAVES 波动数据',
-        'Juno MAG 背景磁场数据',
-        'Cassini RPWS 波数据',
-        'Cassini MAG 背景磁场数据',
-        'Cassini CAPS 电子通量数据',
-    ]
+    data_amount = _format_byte_size(dataset_size) or dataset_size
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',
@@ -410,13 +555,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 '空间范围': None,
             },
             '语种': '中文',
-            '文件内容': file_content,
+            '文件内容': None,
             '基金项目': source_project,
-            '数据量': dataset_size,
-            '数据格式': file_formats,
+            '数据量': data_amount,
+            '数据格式': None,
             '数据集作者': {
                 '作者姓名': creators,
-                '工作单位': '武汉大学电子信息学院磁层空间天气实验室' if producer else None,
+                '工作单位': '；'.join(producer_units) or None,
                 '电子邮箱': producer_email,
                 '工作贡献': '数据集生产、整理与发布' if producer else None,
                 '作者简介': None,
@@ -456,7 +601,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'CSTR Identifier': cstr_identifier,
         'Resource Name': title_en,
         'Title': title_en,
-        'Creators': creators,
+        'Creators': creators_en,
         'Publisher': 'National Space Science Data Center',
         'Publication Date': release_date,
         'Description': description_en,
@@ -467,9 +612,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Alternative Identifiers': alternative_identifiers if alternative_identifiers else None,
         'Related Identifiers': None,
         'Rights': {
-            'Sharing Method': sharing_method,
-            'Sharing Scope': sharing_scope,
-            'Sharing Status': sharing_plan,
+            'Sharing Method': sharing_method_en,
+            'Sharing Scope': sharing_scope_en,
+            'Sharing Status': sharing_plan_en,
             'Application Procedure': application_procedure,
             'Protection Period': protection_period,
             'License': license_text,
@@ -488,13 +633,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 'Spatial Range': None,
             },
             'Language': 'Chinese',
-            'File Content': file_content,
+            'File Content': None,
             'Project/Funder': source_project_en,
-            'Data Size': dataset_size,
-            'Data Format': file_formats,
+            'Data Size': data_amount,
+            'Data Format': None,
             'Dataset Authors': {
-                'Author Name': [producer_en] if producer_en else None,
-                'Affiliation': 'Magnetospheric Space Weather Laboratory, School of Electronic Information, Wuhan University' if producer else None,
+                'Author Name': producer_names_en or ([producer_en] if producer_en else None),
+                'Affiliation': '；'.join(producer_units_en) or None,
                 'Email': producer_email,
                 'Contribution': 'Dataset production, curation, and release' if producer else None,
                 'Biography': None,
@@ -506,21 +651,21 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Version Information': version,
         },
         'Dataset Service Information': {
-            'Dataset Citation Format': citation_format,
+            'Dataset Citation Format': citation_format_en,
             'Dataset License': license_text,
             'Dataset Usage Statement': application_procedure,
             'Dataset Download URL': download_url,
             'Dataset Access URL': resource_url,
         },
         'Extension Info': {
-            'Sharing Method': sharing_method,
-            'Sharing Scope': sharing_scope,
-            'Sharing Status': sharing_plan,
+            'Sharing Method': sharing_method_en,
+            'Sharing Scope': sharing_scope_en,
+            'Sharing Status': sharing_plan_en,
             'Protection Period': protection_period,
-            'Data Producer': producer,
+            'Data Producer': producer_en,
             'Telephone': producer_tel,
             'Email': producer_email,
-            'Observatory': observatory,
+            'Observatory': observatory_en,
             'Instrument': instrument_en,
             'License URL': license_url,
             'Topic Classification': topic_classification,

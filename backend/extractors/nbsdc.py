@@ -276,6 +276,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     abstract_en = _english_text(info.get('contentEn'))
     keywords = _unique_list(_split_terms(info.get('keywordCn')))
     keywords_en = _unique_list(_split_terms(info.get('keywordEn')))
+    if not keywords_en:
+        keywords_en = keywords
     subjects = _subject_names(info.get('subject'))
     authors = _people(authors_map.get('authorsCn'))
     authors_en = _people(authors_map.get('authorsEn'))
@@ -291,11 +293,19 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
     resource_url = _resource_url(url, data, dataset_id)
     access_url = _first_non_empty(file_map.get('externalLink'), info.get('url'), resource_url)
     update_date = _format_date(data.get('updateTime'))
+    publish_date = _format_date(
+        data.get('publishTime')
+        or data.get('publishDate')
+        or data.get('releaseTime')
+        or data.get('releaseDate')
+    )
     data_size = _storage_size(storage)
     file_count = _first_non_empty(storage.get('filesNum'))
     record_count = _first_non_empty(storage.get('recordsNum'))
     rights = _license_text(strategy)
-    citation = _citation(authors, title_zh, orgs, update_date, cstr_identifier)
+    org_email = _first_non_empty(*(item.get('orgUnitEmail') for item in orgs_raw if isinstance(item, dict)))
+    author_email = org_email if authors else None
+    citation = _citation(authors or orgs, title_zh, orgs if authors else [], publish_date, cstr_identifier)
     related_identifiers = []
     for item in relations:
         if isinstance(item, dict):
@@ -316,7 +326,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         '标题': title_zh,
         '创建者': authors or orgs or None,
         '发布机构': PUBLISHER_ZH,
-        '发布日期': update_date,
+        '发布日期': publish_date,
         '描述': abstract,
         '关键词': keywords or None,
         '学科分类': subjects or None,
@@ -344,15 +354,15 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             '数据量': data_size,
             '数据格式': _first_non_empty(info.get('dataFormat')),
             '数据集作者': {
-                '作者姓名': authors or None,
+                '作者姓名': authors or orgs or None,
                 '工作单位': orgs or None,
-                '电子邮箱': _first_non_empty(*(item.get('orgUnitEmail') for item in orgs_raw if isinstance(item, dict))),
+                '电子邮箱': author_email,
                 '工作贡献': None,
                 '作者简介': None,
             },
         },
         '数据集出版信息': {
-            '发布日期': update_date,
+            '发布日期': publish_date,
             '出版期刊': None,
             '版本信息': 'V1',
         },
@@ -387,6 +397,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             '项目类型': project.get('projectTypeName'),
             '项目编号': project.get('projectNumber'),
             '项目主管部门': project.get('competentDepart'),
+            '最近更新时间': update_date,
+            '机构邮箱': org_email,
             '机构地址': _first_non_empty(*(item.get('orgUnitAddress') for item in orgs_raw if isinstance(item, dict))),
             '机构电话': _first_non_empty(*(item.get('orgUnitPhone') for item in orgs_raw if isinstance(item, dict))),
         },
@@ -401,7 +413,7 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
         'Title': title_en,
         'Creators': authors_en or authors or None,
         'Publisher': PUBLISHER_EN,
-        'Publication Date': update_date,
+        'Publication Date': publish_date,
         'Description': abstract_en,
         'Keywords': keywords_en or None,
         'Discipline Classification': None,
@@ -429,15 +441,15 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             'Data Size': data_size,
             'Data Format': _first_non_empty(info.get('dataFormat')),
             'Dataset Authors': {
-                'Author Name': authors_en or authors or None,
+                'Author Name': authors_en or authors or orgs_en or orgs or None,
                 'Affiliation': orgs_en or orgs or None,
-                'Email': _first_non_empty(*(item.get('orgUnitEmail') for item in orgs_raw if isinstance(item, dict))),
+                'Email': author_email,
                 'Contribution': None,
                 'Biography': None,
             },
         },
         'Dataset Publication Information': {
-            'Publication Date': update_date,
+            'Publication Date': publish_date,
             'Journal': None,
             'Version Information': 'V1',
         },
@@ -468,6 +480,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
             'Project Type': _english_text(project.get('projectTypeName')),
             'Project Number': project.get('projectNumber'),
             'Project Department': _english_text(project.get('competentDepart')),
+            'Last Updated': update_date,
+            'Organization Email': org_email,
             'Organization Address': _english_text(_first_non_empty(*(item.get('orgUnitAddress') for item in orgs_raw if isinstance(item, dict)))),
             'Organization Phone': _first_non_empty(*(item.get('orgUnitPhone') for item in orgs_raw if isinstance(item, dict))),
         },
@@ -479,10 +493,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip().lower()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
+    if normalized_url:
+        if _is_nbsdc_detail_url(url) or _is_nbsdc_api_url(url):
+            return True
+        if 'nbsdc.cn' not in normalized_url:
+            return False
     return bool(
-        _is_nbsdc_detail_url(url)
-        or _is_nbsdc_api_url(url)
-        or '国家基础学科公共科学数据中心' in combined
+        '国家基础学科公共科学数据中心' in combined
         and ('datasetcnname' in combined or 'datainfomap' in combined or 'dataid' in combined)
     )
 

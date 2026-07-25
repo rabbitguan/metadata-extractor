@@ -280,17 +280,16 @@ def _contributors(data: Dict[str, Any]) -> Optional[list[Dict[str, Any]]]:
     return contributors or None
 
 
-def _spatial_range(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _spatial_range(data: Dict[str, Any]) -> Optional[Dict[str, Any] | str]:
     values = {
-        '地理范围描述': _first_non_empty(data.get('survey_area'), data.get('sites_name'), data.get('survey_station'), data.get('keyword_place')),
         '西部边界经度': _clean_text(data.get('longitude_west')),
         '东部边界经度': _clean_text(data.get('longitude_east')),
         '南部边界纬度': _clean_text(data.get('latitude_south')),
         '北部边界纬度': _clean_text(data.get('latitude_north')),
-        '最小高度': _clean_text(data.get('sample_min_height')),
-        '最大高度': _clean_text(data.get('sample_max_height')),
     }
-    return {key: value for key, value in values.items() if value} or None
+    if all(values.values()):
+        return values
+    return _first_non_empty(data.get('survey_area'), data.get('sites_name'), data.get('survey_station'), data.get('keyword_place'))
 
 
 def _time_range(data: Dict[str, Any]) -> Optional[Dict[str, str]]:
@@ -299,22 +298,6 @@ def _time_range(data: Dict[str, Any]) -> Optional[Dict[str, str]]:
         '结束时间': _clean_text(data.get('survey_end_date')),
     }
     return {key: value for key, value in values.items() if value} or None
-
-
-def _file_content(data: Dict[str, Any]) -> Optional[str]:
-    return '；'.join(_unique_list([
-        data.get('team_name'),
-        data.get('sites_name'),
-        data.get('survey_platform'),
-        data.get('survey_project'),
-        data.get('survey_station'),
-        data.get('survey_method'),
-        data.get('survey_instrument'),
-        data.get('survey_factor'),
-        data.get('quality'),
-        data.get('quality_information'),
-        data.get('normative_reference'),
-    ])) or None
 
 
 def _funders(data: Dict[str, Any]) -> Optional[list[Dict[str, Optional[str]]]]:
@@ -479,7 +462,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 '空间范围': _spatial_range(data),
             },
             '语种': language,
-            '文件内容': _file_content(data),
+            '文件内容': None,
             '基金项目': funders,
             '数据量': data_amount,
             '数据格式': data_format,
@@ -520,7 +503,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 'Spatial Range': _spatial_range(data),
             },
             'Language': language,
-            'File Content': _file_content(data),
+            'File Content': None,
             'Project/Funder': funders,
             'Data Volume': data_amount,
             'Data Format': data_format,

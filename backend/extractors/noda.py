@@ -111,7 +111,11 @@ def _fetch_api_data(dataset_id: str) -> Optional[Dict[str, Any]]:
         return None
     response = requests.post(
         f'{BASE_URL}/datasharing/getDataInfo/{dataset_id}',
-        headers={**API_HEADERS, 'Referer': f'{BASE_URL}/datasharing/datasetDetails/{dataset_id}'},
+        headers={
+            **API_HEADERS,
+            'Accept-Language': 'zh-CN,zh;q=0.9',
+            'Referer': f'{BASE_URL}/datasharing/datasetDetails/{dataset_id}',
+        },
         timeout=15,
     )
     response.raise_for_status()
@@ -239,13 +243,10 @@ def _format_spatial_range(spatial: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(spatial, dict):
         return None
     values = {
-        '地理范围描述': _clean_text(spatial.get('spatialLocation')),
         '西部边界经度': _clean_text(spatial.get('westLng')),
         '东部边界经度': _clean_text(spatial.get('eastLng')),
         '南部边界纬度': _clean_text(spatial.get('southLat')),
         '北部边界纬度': _clean_text(spatial.get('northLat')),
-        '空间参考': _clean_text(spatial.get('projectInfo')),
-        '空间分辨率': _clean_text(spatial.get('scale')),
     }
     return {key: value for key, value in values.items() if value} or None
 
@@ -263,7 +264,9 @@ def _funder(source_project: Any) -> Optional[list[Dict[str, Optional[str]]]]:
 
 
 def _source_note(data: Dict[str, Any]) -> Optional[str]:
+    file_count = _first_non_empty(_nested(data, 'dataDistribute', 'fileItemNum'), data.get('attachedFileNumber'))
     return '；'.join(_unique_list([
+        f'{file_count}个文件' if file_count else None,
         _nested(data, 'dataSource', 'dataSource'),
         _nested(data, 'dataSource', 'dataProcess'),
         _nested(data, 'dataQuality', 'dataQuality'),
@@ -311,21 +314,19 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     cstr_identifier = _extract_cstr(data.get('cstr'))
     publish_date = (_clean_text(data.get('commitDate')) or '')[:10] or None
     language = _first_non_empty(data.get('language'), _nested(data, 'dataFile', 'metaLanguage'), 'English')
-    lang_code = 'zh' if language and 'chinese' in language.lower() else 'en'
+    language_text = str(language or '').strip().lower()
+    lang_code = 'zh' if 'chinese' in language_text or '中文' in str(language or '') else 'en'
     keywords = _list_values(data.get('keyword'))
-    subjects = _unique_list([
-        *_list_values(_nested(data, 'category', 'categorySubject')),
-        *_list_values(_nested(data, 'category', 'categoryTheme')),
-    ])
+    subjects = _list_values(_nested(data, 'category', 'categorySubject'))
     version = _clean_text(_nested(data, 'dataQuality', 'dataVersion'))
     copyright_info = data.get('copyRight') if isinstance(data.get('copyRight'), dict) else {}
     citation = _clean_text(copyright_info.get('dataReference'))
     sharing_mode = _clean_text(copyright_info.get('dataSharingMod'))
     data_level = _clean_text(copyright_info.get('dataLevel'))
     redistribute_area = _clean_text(copyright_info.get('redistributeArea'))
-    rights_description = '；'.join(_unique_list([sharing_mode, data_level, redistribute_area, citation])) or None
-    source_urls = _extract_urls(citation, _nested(data, 'dataSource', 'dataSource'), data.get('url'), data.get('download'), data.get('ftp'), data.get('offlineFtp'))
-    urls = _unique_list([page_url, data.get('url'), data.get('download'), *source_urls])
+    rights_description = '；'.join(_unique_list([redistribute_area, sharing_mode, data_level])) or None
+    usage_statement = '；'.join(_unique_list([redistribute_area, data_level])) or None
+    urls = [page_url] if page_url else None
 
     org_list = data.get('dataOrganizationList') if isinstance(data.get('dataOrganizationList'), list) else []
     primary_org = next((item for item in org_list if isinstance(item, dict) and _clean_text(item.get('name'))), None)
@@ -348,11 +349,18 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     data_formats = _list_values(_nested(data, 'productFormat', 'productFormat'))
     file_count = _first_non_empty(_nested(data, 'dataDistribute', 'fileItemNum'), data.get('attachedFileNumber'))
     file_size = _first_non_empty(_nested(data, 'dataDistribute', 'fileSize'), data.get('attachedFileCapacity'))
-    data_amount = '；'.join(_unique_list([file_size, f'{file_count} files' if file_count else None, _nested(data, 'spatialLocation', 'scale')])) or None
+    data_amount = f'{file_size} MB' if file_size else None
+    data_amount_en = data_amount.replace('；', '; ') if data_amount else None
+    data_format = '；'.join(data_formats) or None
+    data_format_en = data_format.replace('；', '; ') if data_format else None
+    download_url = page_url
     domain_identifier = cstr_identifier or doi or dataset_id
-    title_values = [{'lang': lang_code, 'name': title_text}] if title_text else None
-    description_values = [{'lang': lang_code, 'description': description}] if description else None
-    keyword_values = [{'lang': lang_code, 'keyword': keywords}] if keywords else None
+    title_lang = lang_code
+    description_lang = lang_code
+    keyword_lang = lang_code
+    title_values = [{'lang': title_lang, 'name': title_text}] if title_text else None
+    description_values = [{'lang': description_lang, 'description': description}] if description else None
+    keyword_values = [{'lang': keyword_lang, 'keyword': keywords}] if keywords else None
     contact_agent = _contact_agent(data)
 
     core_zh: Dict[str, Any] = {
@@ -375,11 +383,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'alternative_identifiers': _alternative_identifiers(doi),
         'related_identifiers': _related_identifiers(data.get('associatedInformationList')),
         'rights': [{
-            'license_type': None,
-            'license': redistribute_area,
-            'type': data_level,
             'description': rights_description,
-            'cert_num': None,
         }] if rights_description else None,
         'funders': funders,
         'version': version,
@@ -388,7 +392,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     }
 
     dataset_author = {
-        '作者姓名': [_first_non_empty(author.get('author'), contact.get('fullName'), creator_name)],
+        '作者姓名': [_first_non_empty(contact.get('contributorUnitName'), contact.get('fullName'), creator_name)],
         '工作单位': _first_non_empty(contact.get('contributorUnitName'), creator_name),
         '电子邮箱': _first_non_empty(author.get('authorEmail'), contact.get('email'), creator_email),
         '工作贡献': '数据集建设、发布与服务',
@@ -409,7 +413,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             '文件内容': _source_note(data),
             '基金项目': funders,
             '数据量': data_amount,
-            '数据格式': '；'.join(data_formats) or None,
+            '数据格式': data_format,
             '数据集作者': dataset_author,
         },
         '数据集出版信息': {
@@ -419,10 +423,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         },
         '数据集服务信息': {
             '数据集引用格式': citation,
-            '数据集共享许可协议': redistribute_area,
-            '数据集使用声明': rights_description,
-            '数据集下载地址': '；'.join(_unique_list([data.get('download'), data.get('ftp'), data.get('offlineFtp'), *source_urls])) or None,
-            '数据论文访问地址': page_url,
+            '数据集共享许可协议': sharing_mode,
+            '数据集使用声明': usage_statement,
+            '数据集下载地址': download_url,
+            '数据论文访问地址': None,
         },
     }
 
@@ -443,11 +447,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'alternative_identifiers': _alternative_identifiers(doi),
         'related_identifiers': _related_identifiers(data.get('associatedInformationList')),
         'rights': [{
-            'license_type': None,
-            'license': redistribute_area,
-            'type': data_level,
             'description': rights_description,
-            'cert_num': None,
         }] if rights_description else None,
         'funders': funders,
         'version': version,
@@ -468,10 +468,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'Language': language,
             'File Content': _source_note(data),
             'Project/Funder': funders,
-            'Data Size': data_amount,
-            'Data Format': '；'.join(data_formats) or None,
+            'Data Size': data_amount_en,
+            'Data Format': data_format_en,
             'Dataset Authors': {
-                'Author Name': [_first_non_empty(author.get('author'), contact.get('fullName'), creator_name)],
+                'Author Name': [_first_non_empty(contact.get('contributorUnitName'), contact.get('fullName'), creator_name)],
                 'Affiliation': _first_non_empty(contact.get('contributorUnitName'), creator_name),
                 'Email': _first_non_empty(author.get('authorEmail'), contact.get('email'), creator_email),
                 'Contribution': 'Dataset construction, publication, and service',
@@ -485,10 +485,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         },
         'Dataset Service Information': {
             'Dataset Citation Format': citation,
-            'Dataset License': redistribute_area,
-            'Dataset Usage Statement': rights_description,
-            'Dataset Download URL': '；'.join(_unique_list([data.get('download'), data.get('ftp'), data.get('offlineFtp'), *source_urls])) or None,
-            'Dataset Paper URL': page_url,
+            'Dataset License': sharing_mode,
+            'Dataset Usage Statement': usage_statement,
+            'Dataset Download URL': download_url,
+            'Dataset Paper URL': None,
         },
     }
 

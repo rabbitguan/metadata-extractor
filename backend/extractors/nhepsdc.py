@@ -5,6 +5,7 @@ from html import unescape
 from typing import Any, Dict, Iterable, Optional
 from urllib.parse import urljoin
 
+import requests
 from bs4 import BeautifulSoup
 
 from .base import MetadataDict
@@ -16,6 +17,20 @@ PUBLISHER_ZH = '国家高能物理科学数据中心'
 PUBLISHER_EN = 'National High Energy Physics Scientific Data Center'
 CSTR_PATTERN = re.compile(r'\b(?:CSTR\s*[:：]\s*)?([A-Z0-9]{5}\.\d{2}\.[-._;()/:A-Z0-9]+)\b', re.IGNORECASE)
 DOI_PATTERN = re.compile(r'\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b')
+HTTP_HEADERS = {'User-Agent': 'Mozilla/5.0'}
+RIGHT_LABELS_EN = {
+    '共享途径': 'Sharing channel',
+    '共享范围': 'Sharing scope',
+    '访问权限': 'Access rights',
+    '访问说明': 'Access note',
+    '其他': 'Other',
+}
+VALUE_TRANSLATIONS_EN = {
+    '线上共享': 'Online sharing',
+    '完全共享': 'Full sharing',
+    '开放共享': 'Open sharing',
+    '中文': 'Chinese',
+}
 
 
 def _clean_text(value: Optional[Any]) -> Optional[str]:
@@ -71,15 +86,27 @@ def _split_terms(value: Optional[Any]) -> list[str]:
     return _unique_list(re.split(r'[;；,，、|]+|\s{2,}', text))
 
 
-def _rights_description(values: Dict[str, Any]) -> Optional[str]:
+def _translate_en(value: Optional[Any]) -> Optional[str]:
+    text = _clean_text(value)
+    if not text:
+        return None
+    return VALUE_TRANSLATIONS_EN.get(text, text)
+
+
+def _rights_description(values: Dict[str, Any], language: str = 'zh') -> Optional[str]:
     description_parts = []
     for key, value in values.items():
         if key == '许可协议':
             continue
         cleaned = _clean_text(value)
         if cleaned:
-            description_parts.append(f'{key}: {cleaned}')
-    return '；'.join(description_parts) or None
+            if language == 'en':
+                label = RIGHT_LABELS_EN.get(key, key)
+                cleaned = _translate_en(cleaned) or cleaned
+                description_parts.append(f'{label}: {cleaned}')
+            else:
+                description_parts.append(f'{key}: {cleaned}')
+    return ('; ' if language == 'en' else '；').join(description_parts) or None
 
 
 def _extract_info_rows(soup: BeautifulSoup) -> Dict[str, Any]:
@@ -173,11 +200,11 @@ def _alternative_identifiers(doi: Optional[str]) -> Optional[list[Dict[str, str]
     return [{'type': 'DOI', 'identifier': doi}] if doi else None
 
 
-def _person_agent(name: str) -> Dict[str, Any]:
+def _person_agent(name: str, lang: str = 'zh') -> Dict[str, Any]:
     return {
         'type': 'Person',
         'person': {
-            'names': [{'lang': 'zh', 'name': name}],
+            'names': [{'lang': lang, 'name': name}],
             'emails': None,
             'identifiers': None,
             'affiliations': None,
@@ -224,6 +251,11 @@ def _extract_file_format(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
+def _extract_file_names(soup: BeautifulSoup) -> Optional[str]:
+    names = _unique_list(_text_or_none(name_node) for name_node in soup.select('.file-info .name'))
+    return '；'.join(names) if names else None
+
+
 def _extract_download_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
     return _unique_list(
         urljoin(base_url, href)
@@ -248,14 +280,50 @@ def _format_byte_size(value: Optional[Any]) -> Optional[str]:
     return f'{formatted} {units[unit_index]}'
 
 
-def _data_amount(soup: BeautifulSoup, table_values: Dict[str, str]) -> Optional[str]:
+def _format_file_count(value: Optional[Any], language: str = 'zh') -> Optional[str]:
+    file_count = _clean_text(value)
+    if not file_count:
+        return None
+    if language == 'en':
+        unit = 'file' if file_count == '1' else 'files'
+        return f'{file_count} {unit}'
+    return f'{file_count}个文件'
+
+
+def _data_amount(soup: BeautifulSoup, table_values: Dict[str, str], language: str = 'zh') -> Optional[str]:
     size = _first_non_empty(
         _extract_file_size(soup),
         _format_byte_size(table_values.get('总大小（字节）')),
     )
     file_count = _clean_text(table_values.get('文件数量'))
-    parts = [size, f'{file_count}个文件' if file_count else None]
-    return '；'.join(_unique_list(parts)) or None
+    parts = [size, _format_file_count(file_count, language)]
+    return ('; ' if language == 'en' else '；').join(_unique_list(parts)) or None
+
+
+def _fetch_english_content(url: str) -> Optional[str]:
+    if not url:
+        return None
+    try:
+        response = requests.get(
+            url,
+            headers={**HTTP_HEADERS, 'Cookie': 'gvb_translate_lang=en_US'},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except Exception:
+        return None
+    return response.text
+
+
+def _extract_version(soup: BeautifulSoup) -> Optional[str]:
+    for row in soup.select('.version-table tbody tr'):
+        cells = row.find_all('td')
+        if not cells:
+            continue
+        version = _text_or_none(cells[0])
+        if version:
+            return version
+    return None
 
 
 def matches(url: str, title: str, content: str) -> bool:
@@ -278,14 +346,27 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     soup = BeautifulSoup(content, 'html.parser')
     info_rows = _extract_info_rows(soup)
     table_values = _extract_table_labels(soup)
+    en_content = _fetch_english_content(url) if url else None
+    en_soup = BeautifulSoup(en_content, 'html.parser') if en_content else None
+    en_info_rows = _extract_info_rows(en_soup) if en_soup else {}
+    en_table_values = _extract_table_labels(en_soup) if en_soup else {}
 
     title_zh = _first_non_empty(_text_or_none(soup.select_one('.detail-title')), title, url)
+    title_en = _first_non_empty(_text_or_none(en_soup.select_one('.detail-title')) if en_soup else None)
     keywords = info_rows.get('关键词') if isinstance(info_rows.get('关键词'), list) else _split_terms(info_rows.get('关键词'))
+    keywords_en = en_info_rows.get('Keywords') if isinstance(en_info_rows.get('Keywords'), list) else _split_terms(en_info_rows.get('Keywords'))
+    if not keywords_en:
+        keywords_en = keywords
     card_text = _extract_markdown_card(soup)
+    card_text_en = _extract_markdown_card(en_soup) if en_soup else None
     summary = _first_non_empty(info_rows.get('摘要'), card_text)
+    summary_en = _first_non_empty(en_info_rows.get('Abstract'), card_text_en)
     description = _first_non_empty(summary, card_text)
+    description_en = _first_non_empty(summary_en, card_text_en)
     subject = _first_non_empty(info_rows.get('学科分类'), table_values.get('研究领域'))
+    subject_en = _first_non_empty(en_info_rows.get('Discipline Classification'), en_table_values.get('Research Field'))
     source_org = _clean_text(info_rows.get('来源机构'))
+    source_org_en = _clean_text(en_info_rows.get('Source Organization'))
 
     identifier, cstr_identifier, identifier_url = _extract_identifier(info_rows, soup)
     identifier_text = ' '.join(_text_or_none(anchor) or '' for anchor in soup.select('.info-row a.card-link'))
@@ -299,19 +380,25 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     )
     submitter_email = _first_non_empty(table_values.get('汇交人电子邮箱'))
     submitter_affiliation = _first_non_empty(table_values.get('汇交人所在任职机构'))
+    submitter_name_en = _first_non_empty(en_table_values.get('Submitter Name'), en_table_values.get('Resource Contributors (EN)'))
+    submitter_affiliation_en = _first_non_empty(en_table_values.get('Submitter Institution'), source_org_en)
     creator_name = _first_non_empty(submitter_name, table_values.get('资源贡献者（中文）'), table_values.get('资源贡献者'))
+    creator_name_en = _first_non_empty(submitter_name_en, creator_name)
     creator_agent_zh = (
         _person_agent(creator_name)
         if creator_name
         else _organization_agent(source_org or PUBLISHER_ZH, 'zh')
     )
     creator_agent_en = (
-        _person_agent(creator_name)
-        if creator_name
-        else _organization_agent(PUBLISHER_EN, 'en')
+        _person_agent(creator_name_en, 'en')
+        if creator_name_en
+        else _organization_agent(source_org_en or PUBLISHER_EN, 'en')
     )
     data_amount = _data_amount(soup, table_values)
+    data_amount_en = _data_amount(soup, table_values, 'en')
     data_format = _first_non_empty(table_values.get('文件格式'), table_values.get('数据格式'), _extract_file_format(soup))
+    file_content = _extract_file_names(soup)
+    file_content_en = file_content.replace('；', '; ') if file_content else None
     download_urls = _extract_download_urls(soup, resource_url or url)
 
     sharing_method = table_values.get('共享途径')
@@ -320,8 +407,10 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     license_text = table_values.get('许可协议')
     access_note = table_values.get('访问说明')
     other_note = table_values.get('其他')
+    version = _extract_version(soup) or (_extract_version(en_soup) if en_soup else None)
 
     dataset_author_names = [creator_name] if creator_name else [source_org or PUBLISHER_ZH]
+    dataset_author_names_en = [creator_name_en] if creator_name_en else [source_org_en or PUBLISHER_EN]
     rights = {
         '共享途径': sharing_method,
         '共享范围': sharing_scope,
@@ -332,6 +421,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     }
     rights = {key: value for key, value in rights.items() if value}
     rights_description = _rights_description(rights)
+    rights_description_en = _rights_description(rights, 'en')
+    access_note_en = _translate_en(access_note)
+    access_right_en = _translate_en(access_right)
 
     core_zh: Dict[str, Any] = {
         'titles': [{'lang': 'zh', 'name': title_zh}] if title_zh else None,
@@ -360,7 +452,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'cert_num': None,
         }] if (rights or license_text or access_right) else None,
         'funders': None,
-        'version': None,
+        'version': version,
         'urls': [resource_url] if resource_url else None,
         'resource_type': 'Dataset',
     }
@@ -376,7 +468,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
                 '空间范围': None,
             },
             '语种': '中文',
-            '文件内容': card_text,
+            '文件内容': file_content,
             '基金项目': None,
             '数据量': data_amount,
             '数据格式': data_format,
@@ -391,7 +483,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         '数据集出版信息': {
             '发布日期': publish_date,
             '出版期刊': None,
-            '版本信息': None,
+            '版本信息': version,
         },
         '数据集服务信息': {
             '数据集引用格式': None,
@@ -403,7 +495,7 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
     }
 
     core_en: Dict[str, Any] = {
-        'titles': None,
+        'titles': [{'lang': 'en', 'name': title_en}] if title_en else None,
         'identifier': cstr_identifier or identifier,
         'creators': [creator_agent_en],
         'publisher': {
@@ -411,9 +503,9 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'identifiers': None,
         },
         'publish_date': publish_date,
-        'descriptions': None,
-        'keywords': None,
-        'subjects': None,
+        'descriptions': [{'lang': 'en', 'description': description_en}] if description_en else None,
+        'keywords': [{'lang': 'en', 'keyword': keywords_en}] if keywords_en else None,
+        'subjects': [{'standard_gbt': None, 'standard_oecd': [subject_en]}] if subject_en else None,
         'language': 'zh',
         'contributors': None,
         'alternative_identifiers': _alternative_identifiers(doi),
@@ -422,11 +514,11 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
             'license_type': None,
             'license': license_text,
             'type': None,
-            'description': rights_description,
+            'description': rights_description_en,
             'cert_num': None,
         }] if (rights or license_text or access_right) else None,
         'funders': None,
-        'version': None,
+        'version': version,
         'urls': [resource_url] if resource_url else None,
         'resource_type': 'Dataset',
     }
@@ -434,21 +526,21 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Core Metadata': {'metadatas': [core_en]},
         'Dataset Basic Information': {
             'Identifier': identifier,
-            'Title': title_zh,
-            'Abstract': description,
-            'Keywords': keywords or None,
+            'Title': title_en,
+            'Abstract': description_en,
+            'Keywords': keywords_en or None,
             'Coverage': {
                 'Time Range': None,
                 'Spatial Range': None,
             },
             'Language': 'Chinese',
-            'File Content': card_text,
+            'File Content': file_content_en,
             'Project/Funder': None,
-            'Data Size': data_amount,
+            'Data Size': data_amount_en,
             'Data Format': data_format,
             'Dataset Authors': {
-                'Author Name': dataset_author_names,
-                'Affiliation': submitter_affiliation or source_org or PUBLISHER_ZH,
+                'Author Name': dataset_author_names_en,
+                'Affiliation': submitter_affiliation_en or source_org_en or PUBLISHER_EN,
                 'Email': submitter_email,
                 'Contribution': 'Dataset construction, publication, and service',
                 'Biography': None,
@@ -457,13 +549,13 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[MetadataDi
         'Dataset Publication Information': {
             'Publication Date': publish_date,
             'Journal': None,
-            'Version Information': None,
+            'Version Information': version,
         },
         'Dataset Service Information': {
             'Dataset Citation Format': None,
             'Dataset License': license_text,
-            'Dataset Usage Statement': access_note or access_right,
-            'Dataset Download URL': '；'.join(download_urls) if download_urls else None,
+            'Dataset Usage Statement': access_note_en or access_right_en,
+            'Dataset Download URL': '; '.join(download_urls) if download_urls else None,
             'Dataset Paper URL': resource_url,
         },
     }

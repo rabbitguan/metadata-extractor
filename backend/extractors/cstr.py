@@ -212,6 +212,8 @@ def extract(content: str, url: str = '', title: str = '') -> Optional[Dict[str, 
     if not keywords_zh and keywords_en:
         keywords_zh = keywords_en
     keywords_en = _english_list(keywords_en)
+    if not keywords_en:
+        keywords_en = keywords_zh
 
     subject_classifications = content_data.get('subjectClassifications') or []
     subjects = _unique_list(

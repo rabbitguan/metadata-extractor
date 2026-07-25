@@ -2603,6 +2603,11 @@ function filterLocalizedTree(data, language = state.language, options = {}) {
 
 function splitDisplayParts(value) {
     if (isMissingDisplayValue(value)) return [];
+    if (isObject(value) || Array.isArray(value)) {
+        const normalizedValue = normalizeDisplayValue(value);
+        if (isMissingDisplayValue(normalizedValue) || isObject(normalizedValue) || Array.isArray(normalizedValue)) return [];
+        value = normalizedValue;
+    }
     return String(value)
         .split(/[;；]+/)
         .map((item) => item.trim())
@@ -2633,12 +2638,15 @@ function normalizeDisplayValue(data, language = state.language) {
         if (data.every((item) => isObject(item) && Object.prototype.hasOwnProperty.call(item, "lang"))) {
             const localized = pickLocalizedItem(data, language);
             if (!localized) return "";
-            if (Object.prototype.hasOwnProperty.call(localized, "name")) return localized.name;
-            if (Object.prototype.hasOwnProperty.call(localized, "description")) return localized.description;
+            if (Object.prototype.hasOwnProperty.call(localized, "name")) return normalizeDisplayValue(localized.name, language);
+            if (Object.prototype.hasOwnProperty.call(localized, "description")) return normalizeDisplayValue(localized.description, language);
             if (Object.prototype.hasOwnProperty.call(localized, "keyword")) {
-                return Array.isArray(localized.keyword) ? localized.keyword.join("；") : localized.keyword;
+                return Array.isArray(localized.keyword)
+                    ? joinUniqueDisplayParts(localized.keyword.map((item) => normalizeDisplayValue(item, language)).filter(Boolean))
+                    : normalizeDisplayValue(localized.keyword, language);
             }
             if (Object.prototype.hasOwnProperty.call(localized, "value")) return normalizeDisplayValue(localized.value, language);
+            if (Object.prototype.hasOwnProperty.call(localized, "值")) return normalizeDisplayValue(localized["值"], language);
             return normalizeDisplayValue(filterLocalizedTree(localized, language), language);
         }
         return data
@@ -2658,14 +2666,18 @@ function normalizeDisplayValue(data, language = state.language) {
     if (!isObject(data)) return data;
 
     if (data.names) return normalizeDisplayValue(data.names, language);
-    if (Object.prototype.hasOwnProperty.call(data, "name") && Object.keys(data).every((key) => key === "name" || key === "lang")) return data.name;
-    if (Object.prototype.hasOwnProperty.call(data, "description") && Object.keys(data).every((key) => key === "description" || key === "lang")) return data.description;
+    if (Object.prototype.hasOwnProperty.call(data, "name") && Object.keys(data).every((key) => key === "name" || key === "lang")) return normalizeDisplayValue(data.name, language);
+    if (Object.prototype.hasOwnProperty.call(data, "description") && Object.keys(data).every((key) => key === "description" || key === "lang")) return normalizeDisplayValue(data.description, language);
     if (Object.prototype.hasOwnProperty.call(data, "keyword") && Object.keys(data).every((key) => key === "keyword" || key === "lang")) {
-        return Array.isArray(data.keyword) ? data.keyword.join("；") : data.keyword;
+        return Array.isArray(data.keyword)
+            ? joinUniqueDisplayParts(data.keyword.map((item) => normalizeDisplayValue(item, language)).filter(Boolean))
+            : normalizeDisplayValue(data.keyword, language);
     }
-    if (Array.isArray(data.keyword)) return data.keyword.join("；");
-    if ((data.identifier || data.value) && data.type) {
-        const identifierValue = data.identifier || data.value;
+    if (Array.isArray(data.keyword)) {
+        return joinUniqueDisplayParts(data.keyword.map((item) => normalizeDisplayValue(item, language)).filter(Boolean));
+    }
+    if ((data.identifier || data.value || data["值"]) && data.type) {
+        const identifierValue = data.identifier || data.value || data["值"];
         if (isObject(identifierValue) || Array.isArray(identifierValue)) {
             return normalizeDisplayValue(identifierValue, language);
         }
@@ -2675,6 +2687,7 @@ function normalizeDisplayValue(data, language = state.language) {
         return `${data.type}: ${identifierValue}`;
     }
     if (Object.prototype.hasOwnProperty.call(data, "value")) return normalizeDisplayValue(data.value, language);
+    if (Object.prototype.hasOwnProperty.call(data, "值")) return normalizeDisplayValue(data["值"], language);
     if (data.person) {
         const name = normalizeDisplayValue(data.person.names, language);
         const affiliation = normalizeDisplayValue(data.person.affiliations, language);
@@ -2688,7 +2701,11 @@ function normalizeDisplayValue(data, language = state.language) {
         ].join("；");
     }
     if (data.license || data.description || data.cert_num) {
-        return joinUniqueDisplayParts([data.license, data.description, data.cert_num].filter(Boolean));
+        return joinUniqueDisplayParts(
+            [data.license, data.description, data.cert_num]
+                .map((item) => normalizeDisplayValue(item, language))
+                .filter((item) => item && !isObject(item))
+        );
     }
     if (data.name || data.proj_name || data.proj_num) {
         return joinUniqueDisplayParts([
@@ -2901,7 +2918,7 @@ function normalizeCstrIdentifier(value) {
     while (/^CSTR\s*[:：]\s*/i.test(text)) {
         text = text.replace(/^CSTR\s*[:：]\s*/i, "").trim();
     }
-    const match = text.match(/^\d{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/);
+    const match = text.match(/^[A-Za-z0-9]{5}\.\d{2}\.[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/);
     return match ? match[0] : "";
 }
 
@@ -2923,8 +2940,8 @@ function renderFieldValue(data, label = "") {
         if (cstrDisplay) return { text: cstrDisplay, isEmpty: false };
         return { text: ui.noContent, isEmpty: true };
     }
-    if (isObject(data) && Object.prototype.hasOwnProperty.call(data, "value")) {
-        const rawValue = data.value;
+    if (isObject(data) && (Object.prototype.hasOwnProperty.call(data, "value") || Object.prototype.hasOwnProperty.call(data, "值"))) {
+        const rawValue = Object.prototype.hasOwnProperty.call(data, "value") ? data.value : data["值"];
         if (isMissingDisplayValue(rawValue)) return { text: ui.noContent, isEmpty: true };
         return { text: displayTextFromValue(rawValue) || ui.noContent, isEmpty: false };
     }
@@ -3080,8 +3097,9 @@ function stripMetadataForDownload(schemaNode, valueNode, language = state.langua
             result[outputKey] = stripMetadataForDownload(description, currentValue || {}, language);
             return;
         }
-        if (isObject(currentValue) && Object.prototype.hasOwnProperty.call(currentValue, "value")) {
-            result[outputKey] = filterLocalizedTree(currentValue.value, language) ?? null;
+        if (isObject(currentValue) && (Object.prototype.hasOwnProperty.call(currentValue, "value") || Object.prototype.hasOwnProperty.call(currentValue, "值"))) {
+            const rawValue = Object.prototype.hasOwnProperty.call(currentValue, "value") ? currentValue.value : currentValue["值"];
+            result[outputKey] = filterLocalizedTree(rawValue, language) ?? null;
             return;
         }
         result[outputKey] = filterLocalizedTree(currentValue, language) ?? null;

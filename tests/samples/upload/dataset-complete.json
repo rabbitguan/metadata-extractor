@@ -1,0 +1,43 @@
+{
+  "resource_type": "dataset",
+  "core": {
+    "title": "China Urban Heat Island Observation Dataset 2018-2025",
+    "cstr_identifier": "31253.11.CSTR.2026.100001",
+    "creators": [
+      "National Earth System Science Data Center",
+      "Liu Xiaoyan",
+      "Chen Rui",
+      "Wang Ming"
+    ],
+    "publisher": "National Earth System Science Data Center",
+    "publication_date": "2026-04-18",
+    "description": "A multi-source urban heat island observation dataset covering 35 major Chinese cities from 2018 to 2025.",
+    "keywords": [
+      "urban heat island",
+      "surface temperature",
+      "meteorological observation",
+      "urban climate",
+      "remote sensing",
+      "China"
+    ],
+    "subjects": [
+      "Atmospheric Science",
+      "Geography",
+      "Urban Planning"
+    ],
+    "language": "zh; en",
+    "rights": "CC BY 4.0",
+    "version": "v2.1",
+    "resource_url": [
+      "https://data.example.org/datasets/china-urban-heat-island-2018-2025"
+    ]
+  },
+  "domain": {
+    "dataset_basic_information": {
+      "Title": "China Urban Heat Island Observation Dataset 2018-2025",
+      "Abstract": "This dataset provides harmonized hourly air temperature observations and satellite-derived land surface temperature for 35 Chinese cities.",
+      "Data Format": "CSV, GeoTIFF, SHP, JSON, PDF"
+    }
+  }
+}
+

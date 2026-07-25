@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>接口测试用例编辑器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>接口测试用例编辑器</h1>
+      <p>编辑 tests/cases，用单条调用调试预期和结论</p>
+    </div>
+    <div class="top-actions">
+      <label>
+        后端地址
+        <input id="baseUrlInput" value="http://127.0.0.1:4000">
+      </label>
+      <button id="reloadButton" type="button">刷新</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="case-list-pane">
+      <div class="pane-header">
+        <h2>用例</h2>
+        <div class="button-row">
+          <button id="newRegisterButton" type="button">新增 register</button>
+          <button id="newQueryButton" type="button">新增 query</button>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="searchInput" placeholder="搜索 id、描述、URL、结论">
+        <select id="endpointFilter">
+          <option value="">全部接口</option>
+          <option value="register">register</option>
+          <option value="query">query</option>
+        </select>
+        <select id="enabledFilter">
+          <option value="">全部状态</option>
+          <option value="yes">enabled=yes</option>
+          <option value="no">enabled!=yes</option>
+        </select>
+      </div>
+      <div id="caseList" class="case-list"></div>
+    </aside>
+
+    <section class="editor-pane">
+      <div class="pane-header">
+        <h2>请求与预期</h2>
+        <div class="button-row">
+          <button id="saveButton" type="button">保存</button>
+          <button id="runButton" type="button">运行</button>
+          <button id="duplicateButton" type="button">复制</button>
+          <button id="deleteButton" type="button" class="danger">删除</button>
+        </div>
+      </div>
+
+      <form id="caseForm" class="case-form">
+        <div class="grid two">
+          <label>ID<input name="id"></label>
+          <label>启用
+            <select name="enabled">
+              <option value="yes">yes</option>
+              <option value="no">no</option>
+            </select>
+          </label>
+          <label>接口
+            <select name="endpoint">
+              <option value="register">register</option>
+              <option value="query">query</option>
+            </select>
+          </label>
+          <label>分类<input name="category"></label>
+          <label>输入类型<input name="input_type" placeholder="url / text / upload / identifier / html"></label>
+          <label>source<input name="source" placeholder="url / text / upload / identifier"></label>
+          <label>mode<input name="mode" placeholder="common / domain"></label>
+          <label>strategy<input name="strategy" placeholder="auto / rule / llm"></label>
+          <label>期望状态码<input name="expected_status" inputmode="numeric"></label>
+          <label>描述<input name="description"></label>
+        </div>
+
+        <label>payload_or_file
+          <div class="inline-field">
+            <input name="payload_or_file" placeholder="URL、identifier 或 tests/samples/...">
+            <button id="loadSampleButton" type="button">查看样例</button>
+          </div>
+        </label>
+
+        <label>机器检查 expected_checks
+          <textarea name="expected_checks" rows="4" placeholder="核心元数据;领域元数据;title_non_empty;contains=关键词"></textarea>
+        </label>
+
+        <label>自然语言预期 expected_nl
+          <textarea name="expected_nl" rows="4" placeholder="例如：应返回青藏高原多年冻土数据集，并包含空间范围、发布日期、发布机构"></textarea>
+        </label>
+
+        <label>人工结论 manual_conclusion
+          <div class="conclusion-toolbar">
+            <button id="toggleConclusionButton" type="button" class="toggle-action">切换通过/不通过</button>
+            <button id="markPassButton" type="button" class="pass-action">标记通过</button>
+            <button id="markFailButton" type="button" class="fail-action">标记不通过</button>
+            <button id="clearConclusionButton" type="button">清除结论</button>
+          </div>
+          <textarea name="manual_conclusion" rows="5" placeholder="运行后在这里写人工判断结论"></textarea>
+        </label>
+
+        <div class="grid two">
+          <label>最近状态<input name="last_status" readonly></label>
+          <label>最近运行时间<input name="last_run_at" readonly></label>
+        </div>
+      </form>
+    </section>
+
+    <section class="result-pane">
+      <div class="pane-header">
+        <h2>调用结果</h2>
+        <div class="button-row">
+          <button id="formatJsonButton" type="button">格式化 JSON</button>
+          <button id="makeContainsButton" type="button">生成 contains</button>
+        </div>
+      </div>
+
+      <div id="statusBox" class="status-box">尚未运行</div>
+
+      <h3>自动检查</h3>
+      <div id="checkList" class="check-list"></div>
+
+      <h3>请求</h3>
+      <pre id="requestPreview" class="json-view"></pre>
+
+      <h3>响应 JSON</h3>
+      <pre id="responsePreview" class="json-view tall"></pre>
+
+      <h3>样例文件</h3>
+      <pre id="samplePreview" class="json-view"></pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

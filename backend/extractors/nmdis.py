@@ -550,6 +550,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 
     english_keywords = [_english_text(item) for item in keywords]
     english_keywords = [item for item in english_keywords if item]
+    if not english_keywords:
+        english_keywords = keywords
 
     en: Dict[str, Any] = {
         'Resource Type Classification': resource_type,

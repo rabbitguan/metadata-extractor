@@ -297,6 +297,8 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 
     english_keywords = [_english_text(item) for item in keywords]
     english_keywords = [item for item in english_keywords if item]
+    if not english_keywords:
+        english_keywords = keywords
 
     zh: Dict[str, Any] = {
         '资源类型判定': '数据集',
@@ -464,10 +466,13 @@ def _payload_from_data(data: Dict[str, Any], url: str, title: str) -> MetadataDi
 def matches(url: str, title: str, content: str) -> bool:
     normalized_url = (url or '').strip().lower()
     combined = ' '.join([str(title or ''), str(content or '')]).lower()
+    if normalized_url:
+        if _is_nasdc_detail_url(url) or 'agridata.cn/api/databasemanageservice.asmx/getsubjectdbinfobyid' in normalized_url:
+            return True
+        if 'agridata.cn' not in normalized_url:
+            return False
     return bool(
-        _is_nasdc_detail_url(url)
-        or 'agridata.cn/api/databasemanageservice.asmx/getsubjectdbinfobyid' in normalized_url
-        or '国家农业科学数据中心' in combined
+        '国家农业科学数据中心' in combined
         and ('databasename' in combined or '数据基本信息' in combined)
     )
 
